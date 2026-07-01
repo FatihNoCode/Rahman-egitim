@@ -1,0 +1,114 @@
+Soera Al-Fatihah (De Opening) - Fâtiha Sûresi - 7
+Soera Al-Baqarah (De Koe) - Bakara Sûresi - 286
+Soera Al-Imran (De Familie van Imran) - Âl-i İmrân Sûresi - 200
+Soera An-Nisa (De Vrouwen) - Nisâ Sûresi - 176
+Soera Al-Ma'idah (De Tafel) - Mâide Sûresi - 120
+Soera Al-An'am (Het Vee) - En'âm Sûresi - 165
+Soera Al-A'raf (De Kantelen) - A'râf Sûresi - 206
+Soera Al-Anfal (De Oorlogsbuit) - Enfâl Sûresi - 75
+Soera At-Tawbah (Het Berouw) - Tevbe Sûresi - 129
+Soera Yunus (Jonas) - Yûnus Sûresi - 109
+Soera Hud (Hud) - Hûd Sûresi - 123
+Soera Yusuf (Jozef) - Yûsuf Sûresi - 111
+Soera Ar-Ra'd (De Donder) - Ra'd Sûresi - 43
+Soera Ibrahim (Abraham) - İbrâhîm Sûresi - 52
+Soera Al-Hijr (Het Rotsdal) - Hicr Sûresi - 99
+Soera An-Nahl (De Bijen) - Nahl Sûresi - 128
+Soera Al-Isra (De Nachtreis) - İsrâ Sûresi - 111
+Soera Al-Kahf (De Spelonk) - Kehf Sûresi - 110
+Soera Maryam (Maria) - Meryem Sûresi - 98
+Soera Ta Ha (Ta Ha) - Tâhâ Sûresi - 135
+Soera Al-Anbiya (De Profeten) - Enbiyâ Sûresi - 112
+Soera Al-Hajj (De Bedevaart) - Hac Sûresi - 78
+Soera Al-Mu'minun (De Gelovigen) - Mü'minûn Sûresi - 118
+Soera An-Nur (Het Licht) - Nûr Sûresi - 64
+Soera Al-Furqan (De Onderscheiding) - Furkân Sûresi - 77
+Soera Ash-Shu'ara (De Dichters) - Şuarâ Sûresi - 227
+Soera An-Naml (De Mieren) - Neml Sûresi - 93
+Soera Al-Qasas (De Vertelling) - Kasas Sûresi - 88
+Soera Al-'Ankabut (De Spin) - Ankebût Sûresi - 69
+Soera Ar-Rum (De Romeinen) - Rûm Sûresi - 60
+Soera Luqman (Luqman) - Lokmân Sûresi - 34
+Soera As-Sajdah (De Aanbidding) - Secde Sûresi - 30
+Soera Al-Ahzab (De Bondgenoten) - Ahzâb Sûresi - 73
+Soera Saba (Saba) - Sebe' Sûresi - 54
+Soera Fatir (De Schepper) - Fâtır Sûresi - 45
+Soera Ya Sin (Ya Sin) - Yâsîn Sûresi - 83
+Soera As-Saffat (In Rijen Geklasseerden) - Sâffât Sûresi - 182
+Soera Sad (Sad) - Sâd Sûresi - 88
+Soera Az-Zumar (De Drommen) - Zümer Sûresi - 75
+Soera Ghafir (De Vergevensgezinde) - Mü'min Sûresi - 85
+Soera Fussilat (Gedetailleerd) - Fussilet Sûresi - 54
+Soera Ash-Shura (De Consultatie) - Şûrâ Sûresi - 53
+Soera Az-Zukhruf (De Versiering) - Zuhruf Sûresi - 89
+Soera Ad-Dukhan (De Rook) - Duhân Sûresi - 59
+Soera Al-Jathiyah (De Knielende) - Câsiye Sûresi - 37
+Soera Al-Ahqaf (De Zandduinen) - Ahkâf Sûresi - 35
+Soera Muhammad (Mohammed) - Muhammed Sûresi - 38
+Soera Al-Fath (De Overwinning) - Fetih Sûresi - 29
+Soera Al-Hujurat (De Binnenvertrekken) - Hucurât Sûresi - 18
+Soera Qaf (Qaf) - Kâf Sûresi - 45
+Soera Ad-Dhariyat (De Winden) - Zâriyât Sûresi - 60
+Soera At-Tur (De Berg) - Tûr Sûresi - 49
+Soera An-Najm (De Ster) - Necm Sûresi - 62
+Soera Al-Qamar (De Maan) - Kamer Sûresi - 55
+Soera Ar-Rahman (De Barmhartige) - Rahmân Sûresi - 78
+Soera Al-Waqi'ah (De Onoverkomelijke Gebeurtenis) - Vâkıa Sûresi - 96
+Soera Al-Hadid (Het IJzer) - Hadîd Sûresi - 29
+Soera Al-Mujadilah (De Pleitende Vrouw) - Mücâdele Sûresi - 22
+Soera Al-Hashr (De Verbanning) - Haşr Sûresi - 24
+Soera Al-Mumtahanah (De Gekeurde Vrouw) - Mümtehine Sûresi - 13
+Soera As-Saff (De Rijen) - Saff Sûresi - 14
+Soera Al-Jumu'ah (De Vrijdag) - Cuma Sûresi - 11
+Soera Al-Munafiqun (De Huichelaars) - Münâfikûn Sûresi - 11
+Soera At-Taghabun (De Wederzijdse Winst en Verlies) - Tegâbün Sûresi - 18
+Soera At-Talaq (De Echtscheiding) - Talâk Sûresi - 12
+Soera At-Tahrim (De Verbieding) - Tahrîm Sûresi - 12
+Soera Al-Mulk (Het Heerschappij) - Mülk Sûresi - 30
+Soera Al-Qalam (De Pen) - Kalem Sûresi - 52
+Soera Al-Haqqah (De Onvermijdelijke Waarheid) - Hâkka Sûresi - 52
+Soera Al-Ma'arij (De Stijgende Trappen) - Meâric Sûresi - 44
+Soera Nuh (Noach) - Nûh Sûresi - 28
+Soera Al-Jinn (De Djinn) - Cin Sûresi - 28
+Soera Al-Muzzammil (De Omwikkelde) - Müzzemmil Sûresi - 20
+Soera Al-Muddaththir (De Bekleedde) - Müddessir Sûresi - 56
+Soera Al-Qiyamah (De Opstanding) - Kıyâme Sûresi - 40
+Soera Al-Insan (De Mens) - İnsân Sûresi - 31
+Soera Al-Mursalat (De Uitgezondenen) - Mürselât Sûresi - 50
+Soera An-Naba (Het Nieuws) - Nebe Sûresi - 40
+Soera An-Nazi'at (De Uittrekkenden) - Nâziât Sûresi - 46
+Soera 'Abasa (Hij Fronste) - Abese Sûresi - 42
+Soera At-Takwir (Het Opvouwen) - Tekvîr Sûresi - 29
+Soera Al-Infitar (De Splijting) - İnfitâr Sûresi - 19
+Soera Al-Mutaffifin (De Fraudeurs) - Mutaffifîn Sûresi - 36
+Soera Al-Inshiqaq (De Scheuring) - İnşikâk Sûresi - 25
+Soera Al-Buruj (De Sterrenbeelden) - Bürûc Sûresi - 22
+Soera At-Tariq (De Nachtelijke Bezoeker) - Târık Sûresi - 17
+Soera Al-A'la (De Allerhoogste) - A'lâ Sûresi - 19
+Soera Al-Ghashiyah (De Overweldigende Gebeurtenis) - Gâşiye Sûresi - 26
+Soera Al-Fajr (De Dageraad) - Fecr Sûresi - 30
+Soera Al-Balad (De Stad) - Beled Sûresi - 20
+Soera Ash-Shams (De Zon) - Şems Sûresi - 15
+Soera Al-Lail (De Nacht) - Leyl Sûresi - 21
+Soera Ad-Duha (De Ochtendglorie) - Duhâ Sûresi - 11
+Soera Ash-Sharh (De Verruiming) - İnşirâh Sûresi - 8
+Soera At-Tin (De Vijg) - Tîn Sûresi - 8
+Soera Al-'Alaq (De Bloedklomp) - Alak Sûresi - 19
+Soera Al-Qadr (De Waardigheid) - Kadir Sûresi - 5
+Soera Al-Bayyinah (Het Duidelijke Bewijs) - Beyyine Sûresi - 8
+Soera Az-Zalzalah (De Beving) - Zilzâl Sûresi - 8
+Soera Al-'Adiyat (De Rennenden) - Âdiyât Sûresi - 11
+Soera Al-Qari'ah (De Kletterende Slag) - Kâria Sûresi - 11
+Soera At-Takathur (De Wedijver om Vermeerdering) - Tekâsür Sûresi - 8
+Soera Al-'Asr (De Tijd) - Asr Sûresi - 3
+Soera Al-Humazah (De Lasteraar) - Hümeze Sûresi - 9
+Soera Al-Fil (De Olifant) - Fîl Sûresi - 5
+Soera Quraysh (Koreisj) - Kureyş Sûresi - 4
+Soera Al-Ma'un (De Kleine Vriendelijkheden) - Mâûn Sûresi - 7
+Soera Al-Kawthar (De Overvloed) - Kevser Sûresi - 3
+Soera Al-Kafirun (De Ongelovigen) - Kâfirûn Sûresi - 6
+Soera An-Nasr (De Hulp) - Nasr Sûresi - 3
+Soera Al-Masad (De Palmvezels) - Tebbet Sûresi - 5
+Soera Al-Ikhlas (De Zuiverheid) - İhlâs Sûresi - 4
+Soera Al-Falaq (De Dageraad) - Felak Sûresi - 5
+Soera An-Nas (De Mensheid) - Nâs Sûresi - 6

@@ -97,7 +97,7 @@ app.post("/make-server-6679cacd/signup", async (c) => {
       const emailSubjectNl = 'Welkom - Moskee Leerling Volgsysteem';
 
       const emailBodyTr = `
-Merhaba ${name},
+Merhaba ${email},
 
 Cami öğrenci takip sistemine hoş geldiniz!
 
@@ -115,7 +115,7 @@ Cami Yönetimi
       `;
 
       const emailBodyNl = `
-Hallo ${name},
+Hallo ${email},
 
 Welkom bij het moskee leerling volgsysteem!
 
@@ -1238,7 +1238,7 @@ Cami Yönetimi
     `;
 
     const emailBodyNl = `
-Hallo ${name},
+Hallo ${email},
 
 U bent uitgenodigd als leraar voor ons moskee leerling volgsysteem.
 
@@ -1259,7 +1259,7 @@ Moskee Beheer
         type: 'invite',
         email,
         options: {
-          data: { inviteToken, name, role: 'teacher' }
+          data: { inviteToken, role: 'teacher' }
         }
       });
     } catch (emailError) {
@@ -1587,7 +1587,7 @@ app.get("/make-server-6679cacd/absence-notifications-week", async (c) => {
     if (!from || !to) return c.json({ error: 'from and to are required' }, 400);
 
     // Get students in the class (or all students for admin without classId)
-    const allStudents: any[] = await kv.get('students') || [];
+    const allStudents: any[] = (await kv.getByPrefix('student:')).filter((s: any) => s && s.id);
     const students = classId
       ? allStudents.filter((s: any) => s.classId === classId)
       : allStudents;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Phone, User, Calendar, Tag, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Mail, Phone, User, Calendar, Tag, ChevronDown, ChevronUp, RefreshCw, MessageCircleQuestion } from 'lucide-react';
 
 interface Registration {
   id: string;
@@ -11,6 +11,7 @@ interface Registration {
   contactTelefoon: string;
   contactEmail: string;
   opmerkingen?: string;
+  vraag?: string;
   ingediendOp: string;
   status: 'nieuw' | 'gezien' | 'geaccepteerd';
 }
@@ -158,6 +159,15 @@ export default function InschrijvingenView({ language, apiRequest }: Inschrijvin
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
+                    {reg.vraag && (
+                      <span
+                        title={nl('Heeft een vraag', 'Bir sorusu var')}
+                        className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full border bg-indigo-100 text-indigo-700 border-indigo-200"
+                      >
+                        <MessageCircleQuestion className="h-3.5 w-3.5" />
+                        {nl('Vraag', 'Soru')}
+                      </span>
+                    )}
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${statusInfo.color}`}>
                       {language === 'tr' ? statusInfo.tr : statusInfo.nl}
                     </span>
@@ -215,6 +225,25 @@ export default function InschrijvingenView({ language, apiRequest }: Inschrijvin
                           {nl('Opmerkingen', 'Notlar')}
                         </p>
                         <p className="text-sm text-gray-700 whitespace-pre-wrap">{reg.opmerkingen}</p>
+                      </div>
+                    )}
+
+                    {reg.vraag && (
+                      <div className="mb-4 bg-indigo-50 border border-indigo-100 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-xs text-indigo-700 font-semibold flex items-center gap-1">
+                            <MessageCircleQuestion className="h-3.5 w-3.5" />
+                            {nl('Vraag', 'Soru')}
+                          </p>
+                          <a
+                            href={`mailto:${reg.contactEmail}?subject=${encodeURIComponent(nl('Uw vraag over de inschrijving', 'Kayıt hakkındaki sorunuz'))}`}
+                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                          >
+                            <Mail className="h-3.5 w-3.5" />
+                            {nl('Beantwoorden', 'Yanıtla')}
+                          </a>
+                        </div>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{reg.vraag}</p>
                       </div>
                     )}
 

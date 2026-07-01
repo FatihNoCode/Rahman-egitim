@@ -2221,7 +2221,7 @@ app.get("/make-server-6679cacd/parents/by-email", async (c) => {
 app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
   try {
     const body = await c.req.json();
-    const { geslacht, voornaam, achternaam, leeftijd, contactNaam, contactTelefoon, contactEmail, opmerkingen, contact2Naam, contact2Telefoon, contact2Email } = body;
+    const { geslacht, voornaam, achternaam, leeftijd, contactNaam, contactTelefoon, contactEmail, opmerkingen, contact2Naam, contact2Telefoon, contact2Email, vraag } = body;
 
     if (!geslacht || !voornaam || !achternaam || !leeftijd || !contactNaam || !contactTelefoon || !contactEmail) {
       return c.json({ error: 'Alle verplichte velden moeten ingevuld zijn' }, 400);
@@ -2241,6 +2241,7 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
       contact2Telefoon: contact2Telefoon || '',
       contact2Email: contact2Email || '',
       opmerkingen: opmerkingen || '',
+      vraag: (vraag || '').trim(),
       ingediendOp: new Date().toISOString(),
       status: 'nieuw',
     };

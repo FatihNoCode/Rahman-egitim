@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import faviconUrl from '../../imports/books__1_.png';
-import { ChevronDown, Plus, X } from 'lucide-react';
+import { ChevronDown, Plus, X, Mail } from 'lucide-react';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
 
@@ -34,10 +34,16 @@ const T = {
     successMsg: 'Uw gegevens zijn opgeslagen. Rond de zomervakantie doen we ons best om u verder te informeren over de inschrijving van uw kind.',
     successSub: 'Bedankt voor uw interesse!',
     newForm: 'Nog een kind inschrijven',
+    close: 'Sluiten',
     errorMsg: 'Er is iets misgegaan. Probeer het opnieuw.',
     allRequired: 'Vul alle verplichte velden in.',
     faqTitle: 'Veelgestelde vragen',
     faqSubtitle: 'Alles wat u moet weten over onze lessen',
+    hasQuestion: 'Heb je vragen rondom de inschrijving of andere gerelateerde vragen?',
+    questionPlaceholder: 'Stel hier je vraag...',
+    faqNudge: 'Grote kans dat je antwoord al hieronder staat — bekijk eerst even de veelgestelde vragen.',
+    viewFaqs: 'Bekijk de veelgestelde vragen',
+    questionReceived: 'We hebben ook je vraag ontvangen en reageren zo snel mogelijk per e-mail.',
   },
   tr: {
     title: 'Çocuk Kayıt Formu',
@@ -65,10 +71,16 @@ const T = {
     successMsg: 'Bilgileriniz kaydedildi. Yaz tatili civarında çocuğunuzun kaydı hakkında sizi bilgilendirmeye çalışacağız.',
     successSub: 'İlginiz için teşekkür ederiz!',
     newForm: 'Başka bir çocuk kayıt ettir',
+    close: 'Kapat',
     errorMsg: 'Bir hata oluştu. Lütfen tekrar deneyin.',
     allRequired: 'Lütfen tüm zorunlu alanları doldurun.',
     faqTitle: 'Sıkça Sorulan Sorular',
     faqSubtitle: 'Derslerimiz hakkında bilmeniz gereken her şey',
+    hasQuestion: 'Kayıt veya ilgili konularda bir sorunuz mu var?',
+    questionPlaceholder: 'Sorunuzu buraya yazın...',
+    faqNudge: 'Cevabınız büyük olasılıkla aşağıda — önce sıkça sorulan sorulara göz atın.',
+    viewFaqs: 'Sıkça sorulan sorulara bak',
+    questionReceived: 'Sorunuzu da aldık ve en kısa sürede e-posta ile size geri döneceğiz.',
   },
 };
 
@@ -182,11 +194,16 @@ export default function InschrijvingPage() {
     contact2Telefoon: '',
     contact2Email: '',
     opmerkingen: '',
+    vraag: '',
   });
   const [showSecond, setShowSecond] = useState(false);
+  const [heeftVraag, setHeeftVraag] = useState(false);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // Whether the just-submitted registration also included a question — drives
+  // the confirmation modal so the "we'll reply by e-mail" line only shows then.
+  const [sentQuestion, setSentQuestion] = useState(false);
   const [serverError, setServerError] = useState('');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
@@ -218,6 +235,9 @@ export default function InschrijvingPage() {
         payload.contact2Telefoon = '';
         payload.contact2Email = '';
       }
+      // Only attach a question if the user opened the box and actually typed one.
+      const question = heeftVraag ? form.vraag.trim() : '';
+      payload.vraag = question;
       const res = await fetch(`${API_BASE}/inschrijvingen`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${publicAnonKey}` },
@@ -225,6 +245,7 @@ export default function InschrijvingPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error');
+      setSentQuestion(question.length > 0);
       setSubmitted(true);
     } catch (err) {
       console.error('Submit error:', err);
@@ -235,11 +256,17 @@ export default function InschrijvingPage() {
   };
 
   const reset = () => {
-    setForm({ geslacht: '', voornaam: '', achternaam: '', leeftijd: '', contactNaam: '', contactTelefoon: '', contactEmail: '', contact2Naam: '', contact2Telefoon: '', contact2Email: '', opmerkingen: '' });
+    setForm({ geslacht: '', voornaam: '', achternaam: '', leeftijd: '', contactNaam: '', contactTelefoon: '', contactEmail: '', contact2Naam: '', contact2Telefoon: '', contact2Email: '', opmerkingen: '', vraag: '' });
     setErrors({});
     setSubmitted(false);
+    setSentQuestion(false);
     setServerError('');
     setShowSecond(false);
+    setHeeftVraag(false);
+  };
+
+  const scrollToFaq = () => {
+    document.getElementById('inschrijven-faq')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   // NOTE: this is a render helper that must be CALLED — e.g. {renderField({...})}
@@ -282,28 +309,7 @@ export default function InschrijvingPage() {
 
       <div className="flex-1 flex items-start justify-center px-4 py-10">
         <div className="w-full max-w-2xl space-y-6">
-          {/* Success screen */}
-          {submitted ? (
-            <div className="bg-white rounded-2xl shadow-lg p-8 sm:p-10 text-center">
-              <div className="flex justify-center mb-5">
-                <div className="bg-emerald-100 rounded-full p-5">
-                  <svg className="h-14 w-14 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-emerald-800 mb-4">{t.successTitle}</h2>
-              <p className="text-gray-600 text-base sm:text-lg leading-relaxed mb-2">{t.successMsg}</p>
-              <p className="text-emerald-600 font-semibold text-lg mt-4">{t.successSub}</p>
-              <button
-                onClick={reset}
-                className="mt-8 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition text-sm"
-              >
-                {t.newForm}
-              </button>
-            </div>
-          ) : (
-            <>
+          <>
               {/* Registration form */}
               <div className="bg-white rounded-2xl shadow-lg p-6 sm:p-8">
                 <div className="mb-7 text-center">
@@ -415,6 +421,48 @@ export default function InschrijvingPage() {
                     />
                   </div>
 
+                  {/* Question (optional) */}
+                  <div className="border-t border-gray-100 pt-5">
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={heeftVraag}
+                        onChange={e => {
+                          setHeeftVraag(e.target.checked);
+                          if (!e.target.checked) set('vraag', '');
+                        }}
+                        className="mt-0.5 h-4 w-4 accent-emerald-600 cursor-pointer flex-shrink-0"
+                      />
+                      <span className="text-sm font-medium text-gray-700">{t.hasQuestion}</span>
+                    </label>
+
+                    {heeftVraag && (
+                      <div className="mt-3 space-y-3">
+                        {/* Clever nudge toward the FAQ before they ask */}
+                        <div className="flex items-start gap-2 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2.5">
+                          <span className="text-base leading-none mt-0.5">💡</span>
+                          <div className="text-xs text-emerald-800">
+                            <p>{t.faqNudge}</p>
+                            <button
+                              type="button"
+                              onClick={scrollToFaq}
+                              className="mt-1 font-semibold text-emerald-700 hover:text-emerald-900 underline underline-offset-2"
+                            >
+                              {t.viewFaqs} ↓
+                            </button>
+                          </div>
+                        </div>
+                        <textarea
+                          value={form.vraag}
+                          onChange={e => set('vraag', e.target.value)}
+                          rows={3}
+                          placeholder={t.questionPlaceholder}
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+
                   {serverError && (
                     <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
                       {serverError}
@@ -432,7 +480,7 @@ export default function InschrijvingPage() {
               </div>
 
               {/* FAQ section */}
-              <div className="bg-white rounded-2xl shadow-lg p-6 sm:p-8">
+              <div id="inschrijven-faq" className="bg-white rounded-2xl shadow-lg p-6 sm:p-8 scroll-mt-4">
                 <div className="mb-6 text-center">
                   <h2 className="text-xl sm:text-2xl font-bold text-emerald-800 mb-1">{t.faqTitle}</h2>
                   <p className="text-gray-500 text-sm">{t.faqSubtitle}</p>
@@ -461,9 +509,68 @@ export default function InschrijvingPage() {
                 </div>
               </div>
             </>
-          )}
         </div>
       </div>
+
+      {/* Confirmation modal */}
+      {submitted && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+          style={{ animation: 'iy-overlay-in 0.2s ease-out' }}
+          onClick={reset}
+        >
+          <div
+            className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 text-center"
+            style={{ animation: 'iy-modal-in 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={reset}
+              aria-label={t.close}
+              className="absolute top-4 right-4 text-gray-300 hover:text-gray-500 transition"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex justify-center mb-5">
+              <div className="bg-emerald-100 rounded-full p-4">
+                <svg className="h-12 w-12 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+
+            <h2 className="text-2xl font-bold text-emerald-800 mb-3">{t.successTitle}</h2>
+            <p className="text-gray-600 text-base leading-relaxed mb-2">{t.successMsg}</p>
+
+            {sentQuestion && (
+              <div className="mt-4 bg-emerald-50 border border-emerald-100 rounded-lg px-4 py-3">
+                <p className="text-sm text-emerald-800 flex items-start gap-2">
+                  <Mail className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <span>{t.questionReceived}</span>
+                </p>
+              </div>
+            )}
+
+            <p className="text-emerald-600 font-semibold text-lg mt-5">{t.successSub}</p>
+
+            <button
+              onClick={reset}
+              className="mt-7 w-full px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition text-sm"
+            >
+              {t.newForm}
+            </button>
+          </div>
+
+          <style>{`
+            @keyframes iy-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes iy-modal-in {
+              from { opacity: 0; transform: translateY(12px) scale(0.96); }
+              to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+          `}</style>
+        </div>
+      )}
     </div>
   );
 }

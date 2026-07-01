@@ -61,7 +61,7 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const { language, setLanguage, apiRequest } = useApp();
   const t = translations[language];
-  const [activeTab, setActiveTab] = useState<'metrics' | 'entities' | 'teachers' | 'meldingen' | 'settings' | 'boekhouding' | 'inschrijvingen'>('metrics');
+  const [activeTab, setActiveTab] = useState<'metrics' | 'entities' | 'teachers' | 'meldingen' | 'settings' | 'boekhouding' | 'inschrijvingen'>('entities');
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [classes, setClasses] = useState<Class[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -437,16 +437,6 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
         <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
           <div className="flex gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6 border-b overflow-x-auto">
-            <button
-              onClick={() => setActiveTab('metrics')}
-              className={`pb-2 sm:pb-3 px-2 sm:px-3 md:px-4 font-semibold transition whitespace-nowrap text-xs sm:text-sm md:text-base ${
-                activeTab === 'metrics'
-                  ? 'border-b-2 border-emerald-600 text-emerald-600'
-                  : 'text-gray-500'
-              }`}
-            >
-              {t.metrics}
-            </button>
             <button
               onClick={() => setActiveTab('entities')}
               className={`pb-2 sm:pb-3 px-2 sm:px-3 md:px-4 font-semibold transition whitespace-nowrap text-xs sm:text-sm md:text-base ${

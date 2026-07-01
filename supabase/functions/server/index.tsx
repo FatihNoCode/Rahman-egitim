@@ -785,7 +785,7 @@ app.post("/make-server-6679cacd/attendance", async (c) => {
       return c.json({ error: 'Only teachers can mark attendance' }, 403);
     }
 
-    const { classId, date, records } = await c.req.json();
+    const { classId, date, records, lessonSummary } = await c.req.json();
 
     console.log('Saving attendance for class:', classId, 'date:', date, 'records:', records.length);
 
@@ -798,6 +798,19 @@ app.post("/make-server-6679cacd/attendance", async (c) => {
     };
 
     await kv.set(`attendance:${classId}:${date}`, attendanceData);
+
+    // Store the lesson summary (visible to parents) as its own record so it can
+    // be shown without exposing the full per-student attendance list.
+    if (typeof lessonSummary === 'string' && lessonSummary.trim()) {
+      await kv.set(`lesson:${classId}:${date}`, {
+        classId,
+        date,
+        summary: lessonSummary.trim(),
+        updatedBy: user.id,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
     console.log('Attendance saved successfully');
 
     return c.json({ success: true });
@@ -857,6 +870,39 @@ app.get("/make-server-6679cacd/attendance/:classId/dates", async (c) => {
   }
 });
 
+// ============= LESSON SUMMARY ROUTES =============
+
+// Get lesson summaries for a class (parent must have a child in the class)
+app.get("/make-server-6679cacd/lessons/:classId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const classId = c.req.param('classId');
+    const userData = await getUserData(user.id);
+
+    if (userData?.role === 'parent') {
+      // Verify the parent has at least one child in this class
+      const childrenIds = await kv.get(`parent_children:${user.id}`) || [];
+      const children = await kv.mget(childrenIds.map((id: string) => `student:${id}`));
+      const owns = children.some((s: any) => s && s.classId === classId);
+      if (!owns) return c.json({ error: 'Unauthorized' }, 403);
+    } else if (userData?.role !== 'teacher' && userData?.role !== 'admin') {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const lessons = await kv.getByPrefix(`lesson:${classId}:`);
+    const valid = lessons
+      .filter((l: any) => l && l.date && l.summary)
+      .sort((a: any, b: any) => b.date.localeCompare(a.date));
+
+    return c.json({ lessons: valid });
+  } catch (err) {
+    console.log('Get lessons error:', err);
+    return c.json({ error: 'Failed to get lessons' }, 500);
+  }
+});
+
 // ============= BEHAVIOR ROUTES =============
 
 app.post("/make-server-6679cacd/behavior", async (c) => {
@@ -895,6 +941,16 @@ app.get("/make-server-6679cacd/behavior/:studentId", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const studentId = c.req.param('studentId');
+
+    // Parents may only view their own children's behavior
+    const userData = await getUserData(user.id);
+    if (userData?.role === 'parent') {
+      const childrenIds = await kv.get(`parent_children:${user.id}`) || [];
+      if (!childrenIds.includes(studentId)) {
+        return c.json({ error: 'Unauthorized' }, 403);
+      }
+    }
+
     const allBehavior = await kv.getByPrefix('behavior:');
     const studentBehavior = allBehavior.filter((b: any) => b && b.studentId === studentId);
 

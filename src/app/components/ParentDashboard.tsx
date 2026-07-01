@@ -33,6 +33,10 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [homeworkCompletion, setHomeworkCompletion] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState<Record<string, Class>>({});
+  const [selectedChildId, setSelectedChildId] = useState<string>('');
+  const [lessons, setLessons] = useState<any[]>([]);
+  const [behaviorList, setBehaviorList] = useState<any[]>([]);
+  const [loadingChild, setLoadingChild] = useState(false);
   const [showAbsenceModal, setShowAbsenceModal] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<string>('');
   const [absenceDate, setAbsenceDate] = useState('');
@@ -50,6 +54,44 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   useEffect(() => {
     checkDeadline();
   }, [absenceDate, notificationDeadlineTime]);
+
+  useEffect(() => {
+    if (selectedChildId && students.length > 0) {
+      loadChildDetails(selectedChildId);
+    }
+  }, [selectedChildId, students]);
+
+  const loadChildDetails = async (childId: string) => {
+    const child = students.find((s) => s.id === childId);
+    if (!child) return;
+    setLoadingChild(true);
+    try {
+      const [lessonsRes, behaviorRes] = await Promise.all([
+        child.classId ? apiRequest(`/lessons/${child.classId}`) : Promise.resolve({ lessons: [] }),
+        apiRequest(`/behavior/${childId}`),
+      ]);
+      setLessons(lessonsRes.lessons || []);
+      // Behaviour records are append-only, so a day can have duplicates if the
+      // teacher re-saved. Keep the most recent record per date.
+      const byDate: Record<string, any> = {};
+      for (const b of behaviorRes.behavior || []) {
+        if (!b || !b.date) continue;
+        if (!byDate[b.date] || (b.createdAt || '') > (byDate[b.date].createdAt || '')) {
+          byDate[b.date] = b;
+        }
+      }
+      const sortedBehavior = Object.values(byDate).sort(
+        (a: any, b: any) => (b.date || '').localeCompare(a.date || '')
+      );
+      setBehaviorList(sortedBehavior);
+    } catch (error) {
+      console.error('Error loading child details:', error);
+      setLessons([]);
+      setBehaviorList([]);
+    } finally {
+      setLoadingChild(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -77,6 +119,11 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
       setStudents(studentsWithClassNames);
       setHomework(homeworkData.homework || []);
+
+      // Default the child switcher to the first child
+      if (studentsWithClassNames.length > 0) {
+        setSelectedChildId((prev) => prev || studentsWithClassNames[0].id);
+      }
 
       // Load homework completion status from server
       setHomeworkCompletion(completionData.completions || {});
@@ -195,6 +242,18 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     );
   }
 
+  const selectedChild = students.find((s) => s.id === selectedChildId);
+  const childHomework = selectedChild
+    ? homework.filter(
+        (hw) => hw.classId === selectedChild.classId || (hw as any).studentIds?.includes(selectedChild.id)
+      )
+    : [];
+  const behaviorEmoji = (rating: number) => (rating <= 2 ? '😢' : rating <= 4 ? '😐' : '😊');
+  const fmtDate = (d: string) =>
+    new Date(d).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+
   return (
     <div className="size-full overflow-auto p-3 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
@@ -222,48 +281,56 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
-          <h2 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-3 sm:mb-4">{t.myChildren}</h2>
-          {students.length === 0 ? (
-            <p className="text-sm sm:text-base text-gray-500">{t.noChildren}</p>
-          ) : (
-            <div className="overflow-x-auto -mx-3 sm:-mx-4 md:-mx-6 px-3 sm:px-4 md:px-6">
-              <table className="w-full min-w-full">
-                <thead className="bg-emerald-50">
-                  <tr>
-                    <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-left text-emerald-800 text-xs sm:text-sm md:text-base">{t.studentName}</th>
-                    <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-left text-emerald-800 text-xs sm:text-sm md:text-base">{t.class}</th>
-                    <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-left text-emerald-800 text-xs sm:text-sm md:text-base">{t.actions}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((student) => (
-                    <tr key={student.id} className="border-b">
-                      <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-xs sm:text-sm md:text-base">{student.name}</td>
-                      <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-xs sm:text-sm md:text-base">{student.className || '-'}</td>
-                      <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 text-xs sm:text-sm md:text-base">
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <button
-                            onClick={() => openAbsenceModal(student.id)}
-                            className="px-2 sm:px-3 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 text-xs sm:text-sm"
-                          >
-                            {t.reportAbsence}
-                          </button>
-                          <button
-                            onClick={() => loadStats(student.id)}
-                            className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs sm:text-sm"
-                          >
-                            {t.viewStats}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        {students.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 md:p-8 text-center text-sm sm:text-base text-gray-500">
+            {t.noChildren}
+          </div>
+        ) : (
+          <>
+            {/* Child switcher (only when there is more than one child) */}
+            {students.length > 1 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {students.map((child) => (
+                  <button
+                    key={child.id}
+                    onClick={() => setSelectedChildId(child.id)}
+                    className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
+                      selectedChildId === child.id
+                        ? 'bg-emerald-600 text-white shadow'
+                        : 'bg-white text-gray-600 hover:bg-emerald-50 border border-gray-200'
+                    }`}
+                  >
+                    {child.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Selected child header + actions */}
+            {selectedChild && (
+              <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-semibold text-emerald-800">{selectedChild.name}</h2>
+                  <p className="text-sm text-gray-500">{t.class}: {selectedChild.className || '-'}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => openAbsenceModal(selectedChild.id)}
+                    className="px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm"
+                  >
+                    {t.reportAbsence}
+                  </button>
+                  <button
+                    onClick={() => loadStats(selectedChild.id)}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                  >
+                    {t.viewStats}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
 
         {showStats && stats && (
           <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
@@ -368,58 +435,105 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mt-4 sm:mt-6">
-          <h2 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-3 sm:mb-4">{t.homework}</h2>
-          {homework.length === 0 ? (
-            <p className="text-sm sm:text-base text-gray-500">{t.noHomework}</p>
-          ) : (
-            <div className="space-y-3 sm:space-y-4">
-              {students.map((student) => {
-                const studentHomework = homework.filter(
-                  (hw) => hw.classId === student.classId || (hw as any).studentIds?.includes(student.id)
-                );
-
-                if (studentHomework.length === 0) return null;
-
-                return (
-                  <div key={student.id} className="border-l-4 border-emerald-500 pl-2 sm:pl-3 md:pl-4">
-                    <h3 className="font-semibold text-base sm:text-lg mb-2 sm:mb-3">{student.name}</h3>
-                    <div className="space-y-2">
-                      {studentHomework.map((hw) => {
-                        const key = `${student.id}:${hw.id}`;
-                        const completed = homeworkCompletion[key];
-
-                        return (
-                          <div
-                            key={hw.id}
-                            className="flex flex-col sm:flex-row items-start gap-2 sm:gap-3 bg-gray-50 p-3 sm:p-4 rounded-lg"
-                          >
-                            <div className="flex-1 w-full">
-                              <p className="font-medium text-sm sm:text-base">{hw.description}</p>
-                              <p className="text-xs sm:text-sm text-gray-600">
-                                {t.dueDate}: {new Date(hw.dueDate).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => toggleHomeworkCompletion(student.id, hw.id)}
-                              className={`w-full sm:w-auto whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-xs sm:text-sm ${
-                                completed
-                                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                              }`}
-                            >
-                              {completed ? '✓ ' + t.homeworkCompleted : t.markAsComplete}
-                            </button>
-                          </div>
-                        );
-                      })}
+        {selectedChild && (
+          <>
+            {/* 1. Lesson summaries */}
+            <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-3 sm:mb-4">
+                {language === 'tr' ? 'Ders Özetleri' : 'Lesverslagen'}
+              </h2>
+              {loadingChild ? (
+                <p className="text-sm text-gray-400">{t.loading}</p>
+              ) : lessons.length === 0 ? (
+                <p className="text-sm sm:text-base text-gray-500">
+                  {language === 'tr' ? 'Henüz ders özeti yok' : 'Nog geen lesverslagen'}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {lessons.map((lesson) => (
+                    <div key={lesson.date} className="border-l-4 border-emerald-500 bg-gray-50 rounded-r-lg p-3 sm:p-4">
+                      <p className="text-xs font-semibold text-emerald-700 mb-1">{fmtDate(lesson.date)}</p>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{lesson.summary}</p>
                     </div>
-                  </div>
-                );
-              })}
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            {/* 2. Behaviour + explanation */}
+            <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-3 sm:mb-4">
+                {language === 'tr' ? 'Davranış' : 'Gedrag'}
+              </h2>
+              {loadingChild ? (
+                <p className="text-sm text-gray-400">{t.loading}</p>
+              ) : behaviorList.length === 0 ? (
+                <p className="text-sm sm:text-base text-gray-500">
+                  {language === 'tr' ? 'Henüz davranış kaydı yok' : 'Nog geen gedragsnotities'}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {behaviorList.map((b) => (
+                    <div key={b.id} className="flex items-start gap-3 bg-gray-50 p-3 sm:p-4 rounded-lg">
+                      <span className="text-2xl sm:text-3xl leading-none">{behaviorEmoji(b.rating)}</span>
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-gray-500">{fmtDate(b.date)}</p>
+                        {b.notes && b.notes.trim() && (
+                          <p className="text-sm text-gray-700 mt-1">
+                            <span className="font-medium text-gray-500">
+                              {language === 'tr' ? 'Açıklama' : 'Toelichting'}:{' '}
+                            </span>
+                            {b.notes}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 3. Homework (mark as done) */}
+            <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-3 sm:mb-4">{t.homework}</h2>
+              {childHomework.length === 0 ? (
+                <p className="text-sm sm:text-base text-gray-500">{t.noHomework}</p>
+              ) : (
+                <div className="space-y-2">
+                  {childHomework.map((hw) => {
+                    const key = `${selectedChild.id}:${hw.id}`;
+                    const completed = homeworkCompletion[key];
+                    const parts = hw.description.split(' | ');
+                    const hwText = language === 'tr' ? parts[0] : parts[1] || parts[0];
+                    return (
+                      <div
+                        key={hw.id}
+                        className="flex flex-col sm:flex-row items-start gap-2 sm:gap-3 bg-gray-50 p-3 sm:p-4 rounded-lg"
+                      >
+                        <div className="flex-1 w-full">
+                          <p className="font-medium text-sm sm:text-base">{hwText}</p>
+                          <p className="text-xs sm:text-sm text-gray-600">
+                            {t.dueDate}: {new Date(hw.dueDate).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => toggleHomeworkCompletion(selectedChild.id, hw.id)}
+                          className={`w-full sm:w-auto whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-xs sm:text-sm ${
+                            completed
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          }`}
+                        >
+                          {completed ? '✓ ' + t.homeworkCompleted : t.markAsComplete}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

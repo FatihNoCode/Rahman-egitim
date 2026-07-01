@@ -34,6 +34,11 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, boolean | 'late'>>({});
   const [behaviorRecords, setBehaviorRecords] = useState<Record<string, 'sad' | 'neutral' | 'happy'>>({});
   const [absenceNotifications, setAbsenceNotifications] = useState<Record<string, any>>({});
+  // Mandatory short lesson summary (visible to parents)
+  const [lessonSummary, setLessonSummary] = useState('');
+  // Optional per-student behaviour explanation (checkbox reveals a note box)
+  const [behaviorNeedsInfo, setBehaviorNeedsInfo] = useState<Record<string, boolean>>({});
+  const [behaviorNotes, setBehaviorNotes] = useState<Record<string, string>>({});
 
   // Homework state
   const [addHomework, setAddHomework] = useState(false);
@@ -122,9 +127,11 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
 
       // Load notifications for ALL students in class for this date — so clicking
       // "Afwezig" shows the parent notification status immediately, even before saving.
-      const [behaviorData, notifications] = await Promise.all([
+      const [behaviorResult, notifications] = await Promise.all([
         (async () => {
           const behaviorData: Record<string, 'sad' | 'neutral' | 'happy'> = {};
+          const notesData: Record<string, string> = {};
+          const needsInfoData: Record<string, boolean> = {};
           if (attendanceData.attendance?.records) {
             await Promise.all(attendanceData.attendance.records
               .filter((r: any) => r.present === true || r.present === 'late')
@@ -136,12 +143,16 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                     if (todayBehavior.rating <= 2) behaviorData[record.studentId] = 'sad';
                     else if (todayBehavior.rating <= 4) behaviorData[record.studentId] = 'neutral';
                     else behaviorData[record.studentId] = 'happy';
+                    if (todayBehavior.notes && todayBehavior.notes.trim()) {
+                      notesData[record.studentId] = todayBehavior.notes;
+                      needsInfoData[record.studentId] = true;
+                    }
                   }
                 } catch (err) { console.error('Error loading behavior:', err); }
               })
             );
           }
-          return behaviorData;
+          return { behaviorData, notesData, needsInfoData };
         })(),
         (async () => {
           const notifications: Record<string, any> = {};
@@ -158,12 +169,26 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
         })(),
       ]);
 
-      setBehaviorRecords(behaviorData);
+      setBehaviorRecords(behaviorResult.behaviorData);
+      setBehaviorNotes(behaviorResult.notesData);
+      setBehaviorNeedsInfo(behaviorResult.needsInfoData);
       setAbsenceNotifications(notifications);
+
+      // Prefill the lesson summary for this class/date if one was saved
+      try {
+        const lessonsRes = await apiRequest(`/lessons/${selectedClass}`);
+        const todayLesson = (lessonsRes.lessons || []).find((l: any) => l.date === attendanceDate);
+        setLessonSummary(todayLesson?.summary || '');
+      } catch (err) {
+        setLessonSummary('');
+      }
     } catch (error) {
       console.error('Error loading attendance:', error);
       setAttendanceRecords({});
       setBehaviorRecords({});
+      setBehaviorNotes({});
+      setBehaviorNeedsInfo({});
+      setLessonSummary('');
       setAbsenceNotifications({});
     }
   };
@@ -216,6 +241,12 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       return;
     }
 
+    // Lesson summary is mandatory
+    if (!lessonSummary.trim()) {
+      alert(language === 'tr' ? 'Lütfen kısa bir ders özeti girin!' : 'Vul een korte lessamenvatting in!');
+      return;
+    }
+
     // Validate homework fields if homework is being added
     if (addHomework) {
       if (!homeworkDueDate) {
@@ -246,11 +277,17 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     setIsSaving(true);
     setSaveProgress(0);
 
-    const behaviorEntries = Object.entries(behaviorRecords).filter(
-      ([studentId]) => attendanceRecords[studentId] === true || attendanceRecords[studentId] === 'late'
+    // Save a behavior record for present students who have either an emoji
+    // rating or a behaviour note (note-only defaults to a neutral rating so
+    // the explanation isn't lost).
+    const presentStudentIds = Object.keys(attendanceRecords).filter(
+      (id) => attendanceRecords[id] === true || attendanceRecords[id] === 'late'
+    );
+    const behaviorTargets = presentStudentIds.filter(
+      (id) => behaviorRecords[id] || (behaviorNeedsInfo[id] && (behaviorNotes[id] || '').trim())
     );
     const homeworkStep = addHomework ? 1 : 0;
-    const totalSteps = 1 + behaviorEntries.length + homeworkStep;
+    const totalSteps = 1 + behaviorTargets.length + homeworkStep;
     let completedSteps = 0;
 
     try {
@@ -261,22 +298,24 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
           classId: selectedClass,
           date: attendanceDate,
           records,
+          lessonSummary: lessonSummary.trim(),
         }),
       });
       completedSteps++;
       setSaveProgress((completedSteps / totalSteps) * 100);
 
       // 2. Save behavior for present students
-      for (const [studentId, behavior] of behaviorEntries) {
+      for (const studentId of behaviorTargets) {
         const ratingMap = { sad: 1, neutral: 3, happy: 5 };
+        const behavior = behaviorRecords[studentId];
         try {
           await apiRequest('/behavior', {
             method: 'POST',
             body: JSON.stringify({
               studentId,
               date: attendanceDate,
-              rating: ratingMap[behavior],
-              notes: '',
+              rating: behavior ? ratingMap[behavior] : 3,
+              notes: behaviorNeedsInfo[studentId] ? (behaviorNotes[studentId] || '').trim() : '',
             }),
           });
         } catch (behaviorError) {
@@ -319,6 +358,9 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       // Reset all fields
       setAttendanceRecords({});
       setBehaviorRecords({});
+      setBehaviorNotes({});
+      setBehaviorNeedsInfo({});
+      setLessonSummary('');
       resetHomeworkForm();
     } catch (error) {
       console.error('Error saving:', error);
@@ -454,10 +496,31 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                   )}
                 </div>
 
-                {/* ── Step 1: Attendance & Behavior ── */}
+                {/* ── Step 1: Lesson summary (mandatory, visible to parents) ── */}
+                <div className="mb-6">
+                  <h3 className="text-sm sm:text-base font-semibold text-emerald-800 mb-2 flex items-center gap-2">
+                    <span className="bg-emerald-100 text-emerald-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">1</span>
+                    {language === 'tr' ? 'Ders Özeti' : 'Lessamenvatting'}
+                    <span className="text-red-500">*</span>
+                  </h3>
+                  <p className="text-xs text-gray-500 mb-2">
+                    {language === 'tr'
+                      ? 'Bu dersin kısa bir özeti — velilere gösterilir.'
+                      : 'Een korte samenvatting van deze les — zichtbaar voor ouders.'}
+                  </p>
+                  <textarea
+                    value={lessonSummary}
+                    onChange={(e) => setLessonSummary(e.target.value)}
+                    rows={3}
+                    placeholder={language === 'tr' ? 'Bugün ne işlendi?' : 'Wat is er vandaag behandeld?'}
+                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                  />
+                </div>
+
+                {/* ── Step 2: Attendance & Behavior ── */}
                 <div className="mb-6">
                   <h3 className="text-sm sm:text-base font-semibold text-emerald-800 mb-3 flex items-center gap-2">
-                    <span className="bg-emerald-100 text-emerald-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">1</span>
+                    <span className="bg-emerald-100 text-emerald-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">2</span>
                     {language === 'tr' ? 'Devamsızlık & Davranış' : 'Aanwezigheid & Gedrag'}
                   </h3>
 
@@ -549,6 +612,39 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                                   title={language === 'tr' ? 'Mutlu' : 'Blij'}
                                 >😊</button>
                               </div>
+
+                              {/* Optional behaviour explanation */}
+                              <div className="mt-3">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!behaviorNeedsInfo[student.id]}
+                                    onChange={(e) => {
+                                      setBehaviorNeedsInfo({ ...behaviorNeedsInfo, [student.id]: e.target.checked });
+                                      if (!e.target.checked) {
+                                        const next = { ...behaviorNotes };
+                                        delete next[student.id];
+                                        setBehaviorNotes(next);
+                                      }
+                                    }}
+                                    className="w-3.5 sm:w-4 h-3.5 sm:h-4 accent-emerald-600"
+                                  />
+                                  <span className="text-xs sm:text-sm text-gray-600">
+                                    {language === 'tr'
+                                      ? 'Davranış hakkında ek bilgi ekle'
+                                      : 'Extra toelichting over gedrag toevoegen'}
+                                  </span>
+                                </label>
+                                {behaviorNeedsInfo[student.id] && (
+                                  <textarea
+                                    value={behaviorNotes[student.id] || ''}
+                                    onChange={(e) => setBehaviorNotes({ ...behaviorNotes, [student.id]: e.target.value })}
+                                    rows={2}
+                                    placeholder={language === 'tr' ? 'Kısa açıklama...' : 'Korte toelichting...'}
+                                    className="mt-2 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                                  />
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -562,7 +658,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                   <div className="border-t border-gray-200 pt-5">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-sm sm:text-base font-semibold text-emerald-800 flex items-center gap-2">
-                        <span className="bg-emerald-100 text-emerald-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">2</span>
+                        <span className="bg-emerald-100 text-emerald-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">3</span>
                         {language === 'tr' ? 'Ödev (opsiyonel)' : 'Huiswerk (optioneel)'}
                       </h3>
                       <label className="flex items-center gap-2 cursor-pointer">

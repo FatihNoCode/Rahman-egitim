@@ -1,6 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
+import { Calendar } from './ui/calendar';
+
+// Local-time date helpers (avoid UTC parsing shifting the day)
+const toYMD = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fromYMD = (s: string) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
 
 interface Student {
   id: string;
@@ -37,6 +46,8 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [lessons, setLessons] = useState<any[]>([]);
   const [behaviorList, setBehaviorList] = useState<any[]>([]);
   const [loadingChild, setLoadingChild] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
   const [showAbsenceModal, setShowAbsenceModal] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<string>('');
   const [absenceDate, setAbsenceDate] = useState('');
@@ -70,7 +81,11 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
         child.classId ? apiRequest(`/lessons/${child.classId}`) : Promise.resolve({ lessons: [] }),
         apiRequest(`/behavior/${childId}`),
       ]);
-      setLessons(lessonsRes.lessons || []);
+      const loadedLessons = lessonsRes.lessons || [];
+      setLessons(loadedLessons);
+      // Default to the most recent lesson (lessons come sorted newest-first)
+      setSelectedDate(loadedLessons.length > 0 ? loadedLessons[0].date : '');
+      if (loadedLessons.length > 0) setCalendarMonth(fromYMD(loadedLessons[0].date));
       // Behaviour records are append-only, so a day can have duplicates if the
       // teacher re-saved. Keep the most recent record per date.
       const byDate: Record<string, any> = {};
@@ -250,9 +265,19 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     : [];
   const behaviorEmoji = (rating: number) => (rating <= 2 ? '😢' : rating <= 4 ? '😐' : '😊');
   const fmtDate = (d: string) =>
-    new Date(d).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', {
+    fromYMD(d).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     });
+
+  // Only dates that have a lesson (summary) are revisitable on the calendar
+  const lessonDateSet = new Set(lessons.map((l) => l.date));
+  const lessonDateObjs = lessons.map((l) => fromYMD(l.date));
+  const hwLessonDate = (hw: any) => hw.lessonDate || (hw.createdAt ? hw.createdAt.split('T')[0] : '');
+
+  // Data for the currently selected lesson day
+  const selectedLesson = lessons.find((l) => l.date === selectedDate);
+  const selectedBehavior = behaviorList.find((b) => b.date === selectedDate);
+  const selectedHomework = childHomework.filter((hw) => hwLessonDate(hw) === selectedDate);
 
   return (
     <div className="size-full overflow-auto p-3 sm:p-4 md:p-6">
@@ -436,103 +461,146 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
         )}
 
         {selectedChild && (
-          <>
-            {/* 1. Lesson summaries */}
-            <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
-              <h2 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-3 sm:mb-4">
-                {language === 'tr' ? 'Ders Özetleri' : 'Lesverslagen'}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
+            {/* Calendar — only lesson dates (green dot) are selectable */}
+            <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6">
+              <h2 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-3">
+                {language === 'tr' ? 'Bir ders seç' : 'Kies een les'}
               </h2>
               {loadingChild ? (
                 <p className="text-sm text-gray-400">{t.loading}</p>
               ) : lessons.length === 0 ? (
                 <p className="text-sm sm:text-base text-gray-500">
-                  {language === 'tr' ? 'Henüz ders özeti yok' : 'Nog geen lesverslagen'}
+                  {language === 'tr' ? 'Henüz ders yok' : 'Nog geen lessen'}
                 </p>
               ) : (
-                <div className="space-y-3">
-                  {lessons.map((lesson) => (
-                    <div key={lesson.date} className="border-l-4 border-emerald-500 bg-gray-50 rounded-r-lg p-3 sm:p-4">
-                      <p className="text-xs font-semibold text-emerald-700 mb-1">{fmtDate(lesson.date)}</p>
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{lesson.summary}</p>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <Calendar
+                    mode="single"
+                    month={calendarMonth}
+                    onMonthChange={setCalendarMonth}
+                    selected={selectedDate ? fromYMD(selectedDate) : undefined}
+                    onSelect={(d: Date | undefined) => d && setSelectedDate(toYMD(d))}
+                    disabled={(date: Date) => !lessonDateSet.has(toYMD(date))}
+                    modifiers={{ hasLesson: lessonDateObjs }}
+                    modifiersClassNames={{ hasLesson: 'iy-has-lesson' }}
+                    classNames={{
+                      day_selected: 'bg-emerald-600 text-white rounded-md hover:bg-emerald-700',
+                      day_today: 'font-bold text-emerald-700',
+                    }}
+                  />
+                  <p className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-600" />
+                    {language === 'tr' ? 'Ders verilen gün' : 'Dag met een les'}
+                  </p>
+                  <style>{`
+                    .iy-has-lesson { position: relative; }
+                    .iy-has-lesson::after {
+                      content: ''; position: absolute; bottom: 5px; left: 50%;
+                      transform: translateX(-50%); width: 5px; height: 5px;
+                      border-radius: 9999px; background: #059669;
+                    }
+                    .iy-has-lesson[aria-selected="true"]::after { background: #fff; }
+                  `}</style>
+                </>
               )}
             </div>
 
-            {/* 2. Behaviour + explanation */}
-            <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
-              <h2 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-3 sm:mb-4">
-                {language === 'tr' ? 'Davranış' : 'Gedrag'}
-              </h2>
-              {loadingChild ? (
-                <p className="text-sm text-gray-400">{t.loading}</p>
-              ) : behaviorList.length === 0 ? (
-                <p className="text-sm sm:text-base text-gray-500">
-                  {language === 'tr' ? 'Henüz davranış kaydı yok' : 'Nog geen gedragsnotities'}
-                </p>
+            {/* Combined single-lesson result box */}
+            <div className="lg:col-span-3 bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6">
+              {!selectedLesson ? (
+                <div className="h-full flex items-center justify-center py-10 text-center text-gray-400 text-sm">
+                  {language === 'tr'
+                    ? 'Görüntülemek için takvimden bir ders seçin'
+                    : 'Kies een les in de kalender om te bekijken'}
+                </div>
               ) : (
-                <div className="space-y-2">
-                  {behaviorList.map((b) => (
-                    <div key={b.id} className="flex items-start gap-3 bg-gray-50 p-3 sm:p-4 rounded-lg">
-                      <span className="text-2xl sm:text-3xl leading-none">{behaviorEmoji(b.rating)}</span>
-                      <div className="flex-1">
-                        <p className="text-xs font-semibold text-gray-500">{fmtDate(b.date)}</p>
-                        {b.notes && b.notes.trim() && (
-                          <p className="text-sm text-gray-700 mt-1">
+                <div className="space-y-5">
+                  <h2 className="text-lg sm:text-xl font-bold text-emerald-800 capitalize">
+                    {fmtDate(selectedDate)}
+                  </h2>
+
+                  {/* Lesverslag */}
+                  <section>
+                    <h3 className="text-sm font-semibold text-emerald-700 mb-1">
+                      {language === 'tr' ? 'Ders Özeti' : 'Lesverslag'}
+                    </h3>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-3">
+                      {selectedLesson.summary}
+                    </p>
+                  </section>
+
+                  {/* Gedrag */}
+                  <section>
+                    <h3 className="text-sm font-semibold text-emerald-700 mb-1">
+                      {language === 'tr' ? 'Davranış' : 'Gedrag'}
+                    </h3>
+                    {selectedBehavior ? (
+                      <div className="flex items-start gap-3 bg-gray-50 p-3 rounded-lg">
+                        <span className="text-2xl sm:text-3xl leading-none">{behaviorEmoji(selectedBehavior.rating)}</span>
+                        {selectedBehavior.notes && selectedBehavior.notes.trim() ? (
+                          <p className="text-sm text-gray-700 flex-1">
                             <span className="font-medium text-gray-500">
                               {language === 'tr' ? 'Açıklama' : 'Toelichting'}:{' '}
                             </span>
-                            {b.notes}
+                            {selectedBehavior.notes}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-gray-400 flex-1 self-center">
+                            {language === 'tr' ? 'Ek açıklama yok' : 'Geen toelichting'}
                           </p>
                         )}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    ) : (
+                      <p className="text-sm text-gray-400">
+                        {language === 'tr' ? 'Davranış kaydı yok' : 'Geen gedrag genoteerd'}
+                      </p>
+                    )}
+                  </section>
 
-            {/* 3. Homework (mark as done) */}
-            <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
-              <h2 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-3 sm:mb-4">{t.homework}</h2>
-              {childHomework.length === 0 ? (
-                <p className="text-sm sm:text-base text-gray-500">{t.noHomework}</p>
-              ) : (
-                <div className="space-y-2">
-                  {childHomework.map((hw) => {
-                    const key = `${selectedChild.id}:${hw.id}`;
-                    const completed = homeworkCompletion[key];
-                    const parts = hw.description.split(' | ');
-                    const hwText = language === 'tr' ? parts[0] : parts[1] || parts[0];
-                    return (
-                      <div
-                        key={hw.id}
-                        className="flex flex-col sm:flex-row items-start gap-2 sm:gap-3 bg-gray-50 p-3 sm:p-4 rounded-lg"
-                      >
-                        <div className="flex-1 w-full">
-                          <p className="font-medium text-sm sm:text-base">{hwText}</p>
-                          <p className="text-xs sm:text-sm text-gray-600">
-                            {t.dueDate}: {new Date(hw.dueDate).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => toggleHomeworkCompletion(selectedChild.id, hw.id)}
-                          className={`w-full sm:w-auto whitespace-nowrap px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-xs sm:text-sm ${
-                            completed
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                          }`}
-                        >
-                          {completed ? '✓ ' + t.homeworkCompleted : t.markAsComplete}
-                        </button>
+                  {/* Huiswerk */}
+                  <section>
+                    <h3 className="text-sm font-semibold text-emerald-700 mb-1">{t.homework}</h3>
+                    {selectedHomework.length === 0 ? (
+                      <p className="text-sm text-gray-400">{t.noHomework}</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {selectedHomework.map((hw) => {
+                          const key = `${selectedChild.id}:${hw.id}`;
+                          const completed = homeworkCompletion[key];
+                          const parts = hw.description.split(' | ');
+                          const hwText = language === 'tr' ? parts[0] : parts[1] || parts[0];
+                          return (
+                            <div
+                              key={hw.id}
+                              className="flex flex-col sm:flex-row items-start gap-2 sm:gap-3 bg-gray-50 p-3 rounded-lg"
+                            >
+                              <div className="flex-1 w-full">
+                                <p className="font-medium text-sm">{hwText}</p>
+                                <p className="text-xs text-gray-600">
+                                  {t.dueDate}: {new Date(hw.dueDate).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => toggleHomeworkCompletion(selectedChild.id, hw.id)}
+                                className={`w-full sm:w-auto whitespace-nowrap px-3 py-2 rounded-lg font-semibold transition text-xs ${
+                                  completed
+                                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                              >
+                                {completed ? '✓ ' + t.homeworkCompleted : t.markAsComplete}
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
+                    )}
+                  </section>
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

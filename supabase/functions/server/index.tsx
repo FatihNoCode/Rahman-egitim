@@ -973,7 +973,7 @@ app.post("/make-server-6679cacd/homework", async (c) => {
       return c.json({ error: 'Only teachers can assign homework' }, 403);
     }
 
-    const { studentIds, classId, description, dueDate } = await c.req.json();
+    const { studentIds, classId, description, dueDate, lessonDate } = await c.req.json();
     const homeworkId = crypto.randomUUID();
 
     await kv.set(`homework:${homeworkId}`, {
@@ -982,6 +982,7 @@ app.post("/make-server-6679cacd/homework", async (c) => {
       classId,
       description,
       dueDate,
+      lessonDate: lessonDate || null, // Date of the lesson this was assigned in
       assignedBy: user.id,
       createdAt: new Date().toISOString()
     });

@@ -337,6 +337,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
               classId: selectedClass,
               description: fullDescription,
               dueDate: homeworkDueDate,
+              lessonDate: attendanceDate,
             }),
           });
         }

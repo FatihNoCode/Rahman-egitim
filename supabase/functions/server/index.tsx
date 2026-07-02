@@ -58,7 +58,11 @@ app.post("/make-server-6679cacd/signup", async (c) => {
   try {
     const { email, password, role } = await c.req.json();
 
-    if (!['parent', 'teacher', 'admin'].includes(role)) {
+    // This endpoint is public and unauthenticated (parents self-register).
+    // Teacher accounts are provisioned only via the admin invite flow
+    // (POST /teachers), and admin accounts are provisioned manually — never
+    // accept those roles from an anonymous signup request.
+    if (role !== 'parent') {
       return c.json({ error: 'Invalid role' }, 400);
     }
 

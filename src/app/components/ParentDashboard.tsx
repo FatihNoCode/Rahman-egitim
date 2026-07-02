@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
 import { Calendar } from './ui/calendar';
+import { useHashTab } from '../useHashTab';
+import { Euro } from 'lucide-react';
 
 // Local-time date helpers (avoid UTC parsing shifting the day)
 const toYMD = (d: Date) =>
@@ -34,6 +36,38 @@ interface ParentDashboardProps {
   onLogout: () => void;
 }
 
+const CATEGORY_LABELS: Record<string, { nl: string; tr: string }> = {
+  schoolgeld: { nl: 'Schoolgeld', tr: 'Okul Ücreti' },
+  tas: { nl: 'Tas', tr: 'Çanta' },
+  quran: { nl: 'Quran', tr: 'Kuran' },
+  elifbe: { nl: 'Elif-be', tr: 'Elif-be' },
+  temel: { nl: 'Temel Bilgileri', tr: 'Temel Bilgileri' },
+};
+
+interface BoekhoudingSettings {
+  schoolgeld: { noMemberNoSibling: number; noMemberWithSibling: number; memberNoSibling: number; memberWithSibling: number };
+  tas: number;
+  quran: number;
+  elifbe: number;
+  temel: number;
+}
+
+interface PaymentLogEntry {
+  id: string;
+  studentId: string;
+  date: string;
+  category: string;
+  amount: number;
+  note: string;
+}
+
+function getSchoolPrice(s: BoekhoudingSettings, isMember: boolean, hasSibling: boolean) {
+  if (!isMember && !hasSibling) return s.schoolgeld.noMemberNoSibling;
+  if (!isMember && hasSibling) return s.schoolgeld.noMemberWithSibling;
+  if (isMember && !hasSibling) return s.schoolgeld.memberNoSibling;
+  return s.schoolgeld.memberWithSibling;
+}
+
 export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const { language, setLanguage, apiRequest } = useApp();
   const t = translations[language];
@@ -58,6 +92,11 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [stats, setStats] = useState<any>(null);
   const [notificationDeadlineTime, setNotificationDeadlineTime] = useState('09:00');
   const [deadlinePassed, setDeadlinePassed] = useState(false);
+  const [activeTab, setActiveTab] = useHashTab<'overview' | 'billing'>('overview', ['overview', 'billing'] as const);
+  const [billingSettings, setBillingSettings] = useState<BoekhoudingSettings | null>(null);
+  const [billingRecord, setBillingRecord] = useState<any>(null);
+  const [billingPayments, setBillingPayments] = useState<PaymentLogEntry[]>([]);
+  const [loadingBilling, setLoadingBilling] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -71,8 +110,30 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   useEffect(() => {
     if (selectedChildId && students.length > 0) {
       loadChildDetails(selectedChildId);
+      loadBilling(selectedChildId);
     }
   }, [selectedChildId, students]);
+
+  const loadBilling = async (childId: string) => {
+    setLoadingBilling(true);
+    try {
+      const [settingsRes, recordRes, paymentsRes] = await Promise.all([
+        apiRequest('/boekhouding/settings'),
+        apiRequest(`/boekhouding/student/${childId}`),
+        apiRequest(`/boekhouding/payments/${childId}`),
+      ]);
+      setBillingSettings(settingsRes.settings);
+      setBillingRecord(recordRes.record);
+      setBillingPayments(paymentsRes.entries || []);
+    } catch (error) {
+      console.error('Error loading billing info:', error);
+      setBillingSettings(null);
+      setBillingRecord(null);
+      setBillingPayments([]);
+    } finally {
+      setLoadingBilling(false);
+    }
+  };
 
   const loadChildDetails = async (childId: string) => {
     const child = students.find((s) => s.id === childId);
@@ -383,6 +444,157 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           </>
         )}
 
+        {selectedChild && (
+          <div className="flex gap-2 sm:gap-3 mb-4 sm:mb-6 border-b overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`pb-2 sm:pb-3 px-2 sm:px-3 font-semibold transition whitespace-nowrap text-sm ${
+                activeTab === 'overview' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'
+              }`}
+            >
+              {language === 'tr' ? 'Genel Bakış' : 'Overzicht'}
+            </button>
+            <button
+              onClick={() => setActiveTab('billing')}
+              className={`pb-2 sm:pb-3 px-2 sm:px-3 font-semibold transition whitespace-nowrap text-sm ${
+                activeTab === 'billing' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'
+              }`}
+            >
+              {language === 'tr' ? 'Ödemeler' : 'Facturatie'}
+            </button>
+          </div>
+        )}
+
+        {selectedChild && activeTab === 'billing' && (
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
+            {loadingBilling ? (
+              <p className="text-sm text-gray-400">{t.loading}</p>
+            ) : !billingSettings ? (
+              <p className="text-sm text-gray-500">
+                {language === 'tr' ? 'Ödeme bilgisi bulunamadı' : 'Geen betalingsgegevens gevonden'}
+              </p>
+            ) : (
+              (() => {
+                const record = billingRecord || { isMember: false, hasSibling: false };
+                const prices: Record<string, number> = {
+                  schoolgeld: getSchoolPrice(billingSettings, record.isMember, record.hasSibling),
+                  tas: billingSettings.tas,
+                  quran: billingSettings.quran,
+                  elifbe: billingSettings.elifbe,
+                  temel: billingSettings.temel,
+                };
+                const paidByCategory: Record<string, number> = { schoolgeld: 0, tas: 0, quran: 0, elifbe: 0, temel: 0 };
+                for (const p of billingPayments) {
+                  paidByCategory[p.category] = (paidByCategory[p.category] || 0) + (Number(p.amount) || 0);
+                }
+                const categoryLabel = (cat: string) => (language === 'tr' ? CATEGORY_LABELS[cat]?.tr : CATEGORY_LABELS[cat]?.nl) || cat;
+                const totalPaid = Object.values(paidByCategory).reduce((s, v) => s + v, 0);
+                const totalDue = Object.values(prices).reduce((s, v) => s + v, 0);
+
+                return (
+                  <div className="space-y-5">
+                    <div className="bg-emerald-700 text-white rounded-xl p-4 flex items-center gap-3">
+                      <div className="bg-emerald-600 rounded-lg p-2">
+                        <Euro className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-emerald-200 font-medium uppercase tracking-wide">
+                          {language === 'tr' ? 'Toplam Ödenen' : 'Totaal betaald'}
+                        </p>
+                        <p className="text-2xl sm:text-3xl font-bold">€{totalPaid.toFixed(2)} <span className="text-base font-normal text-emerald-200">/ €{totalDue.toFixed(2)}</span></p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                        {language === 'tr' ? 'Kalem Bazında Durum' : 'Overzicht per post'}
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {Object.keys(CATEGORY_LABELS).map((cat) => {
+                          const paid = paidByCategory[cat] || 0;
+                          const due = prices[cat] || 0;
+                          const isFull = paid >= due && due > 0;
+                          const isPartial = paid > 0 && paid < due;
+                          return (
+                            <div
+                              key={cat}
+                              className={`rounded-lg p-3 border ${
+                                isFull ? 'bg-emerald-50 border-emerald-200' : isPartial ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-gray-700">{categoryLabel(cat)}</span>
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                                  isFull ? 'bg-emerald-100 text-emerald-700' : isPartial ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
+                                }`}>
+                                  {isFull
+                                    ? (language === 'tr' ? 'Tam ödendi' : 'Volledig betaald')
+                                    : isPartial
+                                    ? (language === 'tr' ? 'Kısmi ödeme' : 'Gedeeltelijk betaald')
+                                    : (language === 'tr' ? 'Ödenmedi' : 'Niet betaald')}
+                                </span>
+                              </div>
+                              <p className="text-lg font-bold text-gray-800 mt-1">
+                                €{paid.toFixed(2)} <span className="text-sm font-normal text-gray-400">/ €{due.toFixed(2)}</span>
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                        {language === 'tr' ? 'Ödeme Geçmişi' : 'Betaalgeschiedenis'}
+                      </h3>
+                      {billingPayments.length === 0 ? (
+                        <p className="text-sm text-gray-400">
+                          {language === 'tr' ? 'Henüz ödeme kaydı yok' : 'Nog geen betalingen geregistreerd'}
+                        </p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse text-sm">
+                            <thead>
+                              <tr className="bg-emerald-50">
+                                <th className="border border-gray-200 px-3 py-2 text-left text-xs font-semibold text-emerald-800">
+                                  {language === 'tr' ? 'Tarih' : 'Datum'}
+                                </th>
+                                <th className="border border-gray-200 px-3 py-2 text-left text-xs font-semibold text-emerald-800">
+                                  {language === 'tr' ? 'Kalem' : 'Post'}
+                                </th>
+                                <th className="border border-gray-200 px-3 py-2 text-right text-xs font-semibold text-emerald-800">
+                                  {language === 'tr' ? 'Tutar' : 'Bedrag'}
+                                </th>
+                                <th className="border border-gray-200 px-3 py-2 text-left text-xs font-semibold text-emerald-800">
+                                  {language === 'tr' ? 'Not' : 'Notitie'}
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {billingPayments.map((p) => (
+                                <tr key={p.id} className="hover:bg-gray-50">
+                                  <td className="border border-gray-200 px-3 py-2 text-gray-700 whitespace-nowrap">
+                                    {new Date(p.date).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')}
+                                  </td>
+                                  <td className="border border-gray-200 px-3 py-2 text-gray-700">{categoryLabel(p.category)}</td>
+                                  <td className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-700">€{Number(p.amount).toFixed(2)}</td>
+                                  <td className="border border-gray-200 px-3 py-2 text-gray-500">{p.note || '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()
+            )}
+          </div>
+        )}
+
+        {selectedChild && activeTab === 'overview' && (
+        <>
         {showStats && stats && (
           <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
             <div className="flex justify-between items-center mb-3 sm:mb-4">
@@ -696,6 +908,8 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               )}
             </div>
           </div>
+        )}
+        </>
         )}
       </div>
     </div>

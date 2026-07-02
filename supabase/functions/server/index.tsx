@@ -2523,6 +2523,105 @@ app.post("/make-server-6679cacd/boekhouding/students/bulk", async (c) => {
   }
 });
 
+// ============= BOEKHOUDING PAYMENT LOG =============
+// An append-only ledger of individual payments (date, category, amount, note),
+// separate from the boekhouding:student summary above. This is what powers
+// both the admin's payment log tab and the parent's billing tab.
+
+app.post("/make-server-6679cacd/boekhouding/payments", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can log payments' }, 403);
+
+    const { studentId, date, category, amount, note } = await c.req.json();
+    if (!studentId || !date || !category || amount === undefined) {
+      return c.json({ error: 'studentId, date, category, amount are required' }, 400);
+    }
+    const validCategories = ['schoolgeld', 'tas', 'quran', 'elifbe', 'temel'];
+    if (!validCategories.includes(category)) {
+      return c.json({ error: 'Invalid category' }, 400);
+    }
+    const student = await kv.get(`student:${studentId}`);
+    if (!student) return c.json({ error: 'Student not found' }, 404);
+
+    const id = crypto.randomUUID();
+    const entry = {
+      id,
+      studentId,
+      date,
+      category,
+      amount: Number(amount),
+      note: note || '',
+      createdBy: user.id,
+      createdAt: new Date().toISOString(),
+    };
+    await kv.set(`boekhouding_payment:${id}`, entry);
+    return c.json({ success: true, entry });
+  } catch (err) {
+    console.log('Create boekhouding payment error:', err);
+    return c.json({ error: 'Failed to log payment' }, 500);
+  }
+});
+
+// Admin: list every logged payment (for the internal log tab)
+app.get("/make-server-6679cacd/boekhouding/payments", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can view the payment log' }, 403);
+
+    const entries = await kv.getByPrefix('boekhouding_payment:');
+    entries.sort((a: any, b: any) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return c.json({ entries });
+  } catch (err) {
+    console.log('List boekhouding payments error:', err);
+    return c.json({ error: 'Failed to get payment log' }, 500);
+  }
+});
+
+// Payments for a single student (used by the parent billing tab, and admin)
+app.get("/make-server-6679cacd/boekhouding/payments/:studentId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    const studentId = c.req.param('studentId');
+
+    if (userData?.role === 'parent') {
+      const childrenIds: string[] = await kv.get(`parent_children:${user.id}`) || [];
+      if (!childrenIds.includes(studentId)) return c.json({ error: 'Not your child' }, 403);
+    }
+
+    const allEntries = await kv.getByPrefix('boekhouding_payment:');
+    const entries = allEntries
+      .filter((e: any) => e.studentId === studentId)
+      .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return c.json({ entries });
+  } catch (err) {
+    console.log('Get student boekhouding payments error:', err);
+    return c.json({ error: 'Failed to get payments' }, 500);
+  }
+});
+
+app.delete("/make-server-6679cacd/boekhouding/payments/:id", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can delete payment log entries' }, 403);
+
+    const id = c.req.param('id');
+    await kv.del(`boekhouding_payment:${id}`);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Delete boekhouding payment error:', err);
+    return c.json({ error: 'Failed to delete payment' }, 500);
+  }
+});
+
 // ============= OUDERGESPREKKEN (Parent-Teacher Conferences) =============
 
 // Admin creates a conference session for a class

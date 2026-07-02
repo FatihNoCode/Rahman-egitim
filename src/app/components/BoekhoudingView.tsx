@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Settings, X, Check, ChevronDown, ChevronUp, Euro } from 'lucide-react';
+import { Search, Settings, X, Check, ChevronDown, ChevronUp, Euro, Trash2, Plus } from 'lucide-react';
 
 interface Student {
   id: string;
@@ -71,7 +71,26 @@ function getSchoolPrice(s: BoekhoudingSettings, isMember: boolean, hasSibling: b
   return s.schoolgeld.memberWithSibling;
 }
 
+const CATEGORY_LABELS: Record<string, { nl: string; tr: string }> = {
+  schoolgeld: { nl: 'Schoolgeld', tr: 'Okul Ücreti' },
+  tas: { nl: 'Tas', tr: 'Çanta' },
+  quran: { nl: 'Quran', tr: 'Kuran' },
+  elifbe: { nl: 'Elif-be', tr: 'Elif-be' },
+  temel: { nl: 'Temel Bilgileri', tr: 'Temel Bilgileri' },
+};
+
+interface PaymentLogEntry {
+  id: string;
+  studentId: string;
+  date: string;
+  category: string;
+  amount: number;
+  note: string;
+  createdAt: string;
+}
+
 export default function BoekhoudingView({ classes, students, language, apiRequest }: BoekhoudingViewProps) {
+  const [subTab, setSubTab] = useState<'overzicht' | 'log'>('overzicht');
   const [settings, setSettings] = useState<BoekhoudingSettings>(DEFAULT_SETTINGS);
   const [editSettings, setEditSettings] = useState<BoekhoudingSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
@@ -84,6 +103,14 @@ export default function BoekhoudingView({ classes, students, language, apiReques
 
   // Local schoolgeld input values (keyed by studentId) — avoids re-renders mid-type
   const [schoolgeldInputs, setSchoolgeldinputs] = useState<Record<string, string>>({});
+
+  // Payment log tab
+  const [logEntries, setLogEntries] = useState<PaymentLogEntry[]>([]);
+  const [loadingLog, setLoadingLog] = useState(false);
+  const todayYMD = () => new Date().toISOString().slice(0, 10);
+  const [logForm, setLogForm] = useState({ date: todayYMD(), studentId: '', category: 'schoolgeld', amount: '', note: '' });
+  const [logStudentSearch, setLogStudentSearch] = useState('');
+  const [savingLog, setSavingLog] = useState(false);
 
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const isMounted = useRef(true);
@@ -99,6 +126,63 @@ export default function BoekhoudingView({ classes, students, language, apiReques
   useEffect(() => {
     if (students.length > 0) loadAllRecords();
   }, [students]);
+
+  useEffect(() => {
+    if (subTab === 'log') loadLogEntries();
+  }, [subTab]);
+
+  const loadLogEntries = async () => {
+    setLoadingLog(true);
+    try {
+      const res = await apiRequest('/boekhouding/payments');
+      if (isMounted.current) setLogEntries(res.entries || []);
+    } catch (e) {
+      console.error('Error loading payment log:', e);
+    } finally {
+      if (isMounted.current) setLoadingLog(false);
+    }
+  };
+
+  const submitLogEntry = async () => {
+    if (!logForm.studentId || !logForm.date || !logForm.amount) {
+      alert(nl('Lütfen tüm zorunlu alanları doldurun', 'Vul alle verplichte velden in'));
+      return;
+    }
+    setSavingLog(true);
+    try {
+      await apiRequest('/boekhouding/payments', {
+        method: 'POST',
+        body: JSON.stringify({
+          studentId: logForm.studentId,
+          date: logForm.date,
+          category: logForm.category,
+          amount: Math.max(0, Number(logForm.amount) || 0),
+          note: logForm.note,
+        }),
+      });
+      setLogForm({ date: todayYMD(), studentId: '', category: 'schoolgeld', amount: '', note: '' });
+      setLogStudentSearch('');
+      await loadLogEntries();
+      // Keep the overzicht in sync too — a schoolgeld log entry should reflect there.
+      if (logForm.category === 'schoolgeld' || ['tas', 'quran', 'elifbe', 'temel'].includes(logForm.category)) {
+        loadAllRecords();
+      }
+    } catch (e) {
+      alert(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
+    } finally {
+      setSavingLog(false);
+    }
+  };
+
+  const deleteLogEntry = async (id: string) => {
+    if (!confirm(nl('Bu kaydı silmek istediğinize emin misiniz?', 'Weet u zeker dat u dit item wilt verwijderen?'))) return;
+    try {
+      await apiRequest(`/boekhouding/payments/${id}`, { method: 'DELETE' });
+      setLogEntries(prev => prev.filter(e => e.id !== id));
+    } catch (e) {
+      alert(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -349,20 +433,181 @@ export default function BoekhoudingView({ classes, students, language, apiReques
     </div>
   );
 
+  const logStudentOptions = logStudentSearch.trim()
+    ? students.filter(s => s.name.toLowerCase().includes(logStudentSearch.toLowerCase()))
+    : students;
+  const studentName = (id: string) => students.find(s => s.id === id)?.name || id;
+  const categoryLabel = (cat: string) => (language === 'tr' ? CATEGORY_LABELS[cat]?.tr : CATEGORY_LABELS[cat]?.nl) || cat;
+  const logTotal = logEntries.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
   return (
     <div>
       {/* Header */}
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between mb-5">
         <h3 className="text-xl sm:text-2xl font-semibold text-emerald-800">{nl('Muhasebe', 'Boekhouding')}</h3>
+        {subTab === 'overzicht' && (
+          <button
+            onClick={() => { setEditSettings(settings); setShowSettings(true); }}
+            className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition"
+          >
+            <Settings className="h-4 w-4" />
+            {nl('Ayarlar', 'Instellingen')}
+          </button>
+        )}
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2 sm:gap-3 mb-5 border-b overflow-x-auto">
         <button
-          onClick={() => { setEditSettings(settings); setShowSettings(true); }}
-          className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition"
+          onClick={() => setSubTab('overzicht')}
+          className={`pb-2 sm:pb-3 px-2 sm:px-3 font-semibold transition whitespace-nowrap text-sm ${
+            subTab === 'overzicht' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'
+          }`}
         >
-          <Settings className="h-4 w-4" />
-          {nl('Ayarlar', 'Instellingen')}
+          {nl('Genel Bakış', 'Overzicht')}
+        </button>
+        <button
+          onClick={() => setSubTab('log')}
+          className={`pb-2 sm:pb-3 px-2 sm:px-3 font-semibold transition whitespace-nowrap text-sm ${
+            subTab === 'log' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'
+          }`}
+        >
+          {nl('Ödeme Kaydı', 'Betalingslogboek')}
         </button>
       </div>
 
+      {subTab === 'log' ? (
+        <div>
+          {/* New entry form */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">{nl('Yeni Ödeme Kaydı', 'Nieuwe betaling loggen')}</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">{nl('Tarih', 'Datum')}</label>
+                <input
+                  type="date"
+                  value={logForm.date}
+                  onChange={e => setLogForm(prev => ({ ...prev, date: e.target.value }))}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div className="lg:col-span-2">
+                <label className="block text-xs text-gray-500 mb-1">{nl('Öğrenci', 'Leerling')}</label>
+                <input
+                  type="text"
+                  list="boekhouding-log-students"
+                  value={logStudentSearch || studentName(logForm.studentId)}
+                  onChange={e => {
+                    setLogStudentSearch(e.target.value);
+                    const match = students.find(s => s.name === e.target.value);
+                    setLogForm(prev => ({ ...prev, studentId: match ? match.id : '' }));
+                  }}
+                  placeholder={nl('Öğrenci seçin...', 'Kies leerling...')}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <datalist id="boekhouding-log-students">
+                  {logStudentOptions.map(s => <option key={s.id} value={s.name} />)}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">{nl('Kalem', 'Product/kosten')}</label>
+                <select
+                  value={logForm.category}
+                  onChange={e => setLogForm(prev => ({ ...prev, category: e.target.value }))}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  {Object.keys(CATEGORY_LABELS).map(cat => (
+                    <option key={cat} value={cat}>{categoryLabel(cat)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">{nl('Tutar (€)', 'Bedrag (€)')}</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={logForm.amount}
+                  onChange={e => setLogForm(prev => ({ ...prev, amount: e.target.value }))}
+                  placeholder="0"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div className="sm:col-span-2 lg:col-span-4">
+                <label className="block text-xs text-gray-500 mb-1">{nl('Not (opsiyonel)', 'Notitie (optioneel)')}</label>
+                <input
+                  type="text"
+                  value={logForm.note}
+                  onChange={e => setLogForm(prev => ({ ...prev, note: e.target.value }))}
+                  placeholder={nl('Örn: nakit ödeme', 'Bijv. contant betaald')}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={submitLogEntry}
+                  disabled={savingLog}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg transition disabled:opacity-50"
+                >
+                  <Plus className="h-4 w-4" />
+                  {savingLog ? nl('Kaydediliyor...', 'Opslaan...') : nl('Ekle', 'Toevoegen')}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Log table */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-emerald-50">
+                    <th className="border border-gray-200 px-3 py-2 text-left text-sm font-semibold text-emerald-800">{nl('Tarih', 'Datum')}</th>
+                    <th className="border border-gray-200 px-3 py-2 text-left text-sm font-semibold text-emerald-800">{nl('Öğrenci', 'Leerling')}</th>
+                    <th className="border border-gray-200 px-3 py-2 text-left text-sm font-semibold text-emerald-800">{nl('Kalem', 'Product/kosten')}</th>
+                    <th className="border border-gray-200 px-3 py-2 text-right text-sm font-semibold text-emerald-800">{nl('Tutar', 'Bedrag')}</th>
+                    <th className="border border-gray-200 px-3 py-2 text-left text-sm font-semibold text-emerald-800">{nl('Not', 'Notitie')}</th>
+                    <th className="border border-gray-200 px-3 py-2 text-center text-sm font-semibold text-emerald-800 w-12"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingLog ? (
+                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">{nl('Yükleniyor...', 'Laden...')}</td></tr>
+                  ) : logEntries.length === 0 ? (
+                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">{nl('Henüz kayıt yok', 'Nog geen betalingen gelogd')}</td></tr>
+                  ) : (
+                    logEntries.map(entry => (
+                      <tr key={entry.id} className="hover:bg-gray-50">
+                        <td className="border border-gray-200 px-3 py-2 text-gray-700 whitespace-nowrap">
+                          {new Date(entry.date).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')}
+                        </td>
+                        <td className="border border-gray-200 px-3 py-2 font-medium text-gray-800">{studentName(entry.studentId)}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-gray-700">{categoryLabel(entry.category)}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-700">€{Number(entry.amount).toFixed(2)}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-gray-500">{entry.note || '—'}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-center">
+                          <button onClick={() => deleteLogEntry(entry.id)} className="text-gray-400 hover:text-red-600" title={nl('Sil', 'Verwijderen')}>
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {logEntries.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-emerald-700 text-white font-semibold">
+                      <td colSpan={3} className="border border-emerald-700 px-3 py-2 text-right">{nl('Toplam', 'Totaal')}</td>
+                      <td className="border border-emerald-700 px-3 py-2 text-right">€{logTotal.toFixed(2)}</td>
+                      <td colSpan={2} className="border border-emerald-700 px-3 py-2"></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* ── Total collected banner ── */}
       <div className="bg-emerald-700 text-white rounded-xl p-4 mb-5 flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-center gap-3 flex-1">
@@ -456,6 +701,8 @@ export default function BoekhoudingView({ classes, students, language, apiReques
             </div>
           )}
         </div>
+      )}
+      </>
       )}
 
       {/* Settings modal */}

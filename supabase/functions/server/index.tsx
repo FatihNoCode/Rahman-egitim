@@ -2866,6 +2866,74 @@ app.delete("/make-server-6679cacd/boekhouding/payments/:id", async (c) => {
   }
 });
 
+// Admin: email every parent with an outstanding schoolgeld balance. Computes
+// the outstanding set itself from the payment log + settings (doesn't trust
+// a client-supplied list) so the count always matches what actually gets sent.
+app.post("/make-server-6679cacd/boekhouding/send-schoolgeld-reminders", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can send reminders' }, 403);
+
+    const settings = await kv.get('boekhouding:settings') || DEFAULT_BOEKHOUDING_SETTINGS;
+    const tiers = settings.schoolgeld || DEFAULT_BOEKHOUDING_SETTINGS.schoolgeld;
+    const allStudents: any[] = (await kv.getByPrefix('student:')).filter((s: any) => s && s.id);
+
+    // Group outstanding children by parent so each parent gets one email
+    // listing every child they still owe for, instead of one email per child.
+    const byParent: Record<string, { email: string; children: { name: string; owed: number }[] }> = {};
+
+    for (const student of allStudents) {
+      if (!student.parentId) continue;
+      const record = await kv.get(`boekhouding:student:${student.id}`) || defaultBoekhoudingRecord(student.id);
+      const required = record.isMember
+        ? (record.hasSibling ? tiers.memberWithSibling : tiers.memberNoSibling)
+        : (record.hasSibling ? tiers.noMemberWithSibling : tiers.noMemberNoSibling);
+      const paid = Number(record.payments?.schoolgeld) || 0;
+      if (paid >= required) continue;
+
+      const parentData = await getUserData(student.parentId);
+      if (!parentData?.email) continue;
+
+      if (!byParent[student.parentId]) {
+        byParent[student.parentId] = { email: parentData.email, children: [] };
+      }
+      byParent[student.parentId].children.push({ name: student.name || '', owed: required - paid });
+    }
+
+    const parentIds = Object.keys(byParent);
+    let sent = 0;
+    for (const parentId of parentIds) {
+      const { email, children } = byParent[parentId];
+      const rowsNl = children.map(ch => `<li style="color:#374151;line-height:1.8"><strong>${ch.name}</strong>: €${ch.owed} nog te betalen</li>`).join('');
+      const rowsTr = children.map(ch => `<li style="color:#374151;line-height:1.8"><strong>${ch.name}</strong>: €${ch.owed} kalan tutar</li>`).join('');
+      const ok = await sendEmail(
+        email,
+        'Herinnering openstaand schoolgeld | Ödenmemiş Okul Ücreti Hatırlatması - Ilim Yolu',
+        emailWrapper('Openstaand schoolgeld', `
+          <p style="color:#374151;line-height:1.6">Beste ouder,</p>
+          <p style="color:#374151;line-height:1.6">Dit is een vriendelijke herinnering dat er nog schoolgeld openstaat voor:</p>
+          <ul style="margin:8px 0 16px 20px;padding:0">${rowsNl}</ul>
+          <p style="color:#374151;line-height:1.6">Wilt u dit zo spoedig mogelijk voldoen? Bedankt!</p>
+          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+          <p style="color:#374151;line-height:1.6">Sayın veli,</p>
+          <p style="color:#374151;line-height:1.6">Aşağıdaki öğrenciler için hala ödenmemiş okul ücreti bulunmaktadır:</p>
+          <ul style="margin:8px 0 16px 20px;padding:0">${rowsTr}</ul>
+          <p style="color:#374151;line-height:1.6">En kısa sürede ödemenizi rica ederiz. Teşekkür ederiz!</p>
+        `)
+      );
+      if (ok) sent++;
+    }
+
+    return c.json({ success: true, sent, totalParents: parentIds.length });
+  } catch (err) {
+    console.log('Send schoolgeld reminders error:', err);
+    return c.json({ error: 'Failed to send reminders' }, 500);
+  }
+});
+
 // ============= OUDERGESPREKKEN (Parent-Teacher Conferences) =============
 
 // Admin creates a conference session for a class

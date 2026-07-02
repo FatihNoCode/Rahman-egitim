@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Settings, X, Check, ChevronDown, ChevronUp, Euro, Trash2, Plus, Pencil } from 'lucide-react';
+import { Search, Settings, X, Check, ChevronDown, ChevronUp, Euro, Trash2, Plus, Pencil, Mail } from 'lucide-react';
 
 interface Student {
   id: string;
   name: string;
   classId?: string;
+  parentId?: string;
 }
 
 interface Class {
@@ -101,6 +102,10 @@ export default function BoekhoudingView({ classes, students, language, apiReques
   const [search, setSearch] = useState('');
   const [records, setRecords] = useState<Record<string, StudentRecord>>({});
   const [expandedClasses, setExpandedClasses] = useState<Set<string>>(new Set());
+
+  // Send schoolgeld reminder
+  const [showReminderConfirm, setShowReminderConfirm] = useState(false);
+  const [sendingReminders, setSendingReminders] = useState(false);
 
   // Payment log tab
   const [logEntries, setLogEntries] = useState<PaymentLogEntry[]>([]);
@@ -309,6 +314,35 @@ export default function BoekhoudingView({ classes, students, language, apiReques
   );
   const grandTotal = totals.schoolgeld + totals.tas + totals.quran + totals.elifbe + totals.temel;
 
+  // Unique parents (by parentId) who have at least one child with outstanding
+  // schoolgeld — mirrors the server's own computation used when actually sending.
+  const outstandingParentIds = new Set(
+    students
+      .filter(s => {
+        if (!s.parentId) return false;
+        const rec = records[s.id] || emptyRecord(s.id);
+        const fullPrice = getSchoolPrice(settings, rec.isMember, rec.hasSibling);
+        return (Number(rec.payments.schoolgeld) || 0) < fullPrice;
+      })
+      .map(s => s.parentId as string)
+  );
+
+  const sendSchoolgeldReminders = async () => {
+    setSendingReminders(true);
+    try {
+      const res = await apiRequest('/boekhouding/send-schoolgeld-reminders', { method: 'POST' });
+      setShowReminderConfirm(false);
+      alert(nl(
+        `${res.sent} / ${res.totalParents} veliye hatırlatma e-postası gönderildi.`,
+        `${res.sent} / ${res.totalParents} herinneringsmails verstuurd.`
+      ));
+    } catch (e) {
+      alert(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
+    } finally {
+      setSendingReminders(false);
+    }
+  };
+
   // ─── Filter + group ───
   const filteredStudents = search.trim()
     ? students.filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
@@ -440,13 +474,23 @@ export default function BoekhoudingView({ classes, students, language, apiReques
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between mb-5">
         <h3 className="text-xl sm:text-2xl font-semibold text-emerald-800">{nl('Muhasebe', 'Boekhouding')}</h3>
         {subTab === 'overzicht' && (
-          <button
-            onClick={() => { setEditSettings(settings); setShowSettings(true); }}
-            className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition"
-          >
-            <Settings className="h-4 w-4" />
-            {nl('Ayarlar', 'Instellingen')}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowReminderConfirm(true)}
+              disabled={outstandingParentIds.size === 0}
+              className="flex items-center gap-2 px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Mail className="h-4 w-4" />
+              {nl('Hatırlatma Gönder', 'Herinnering sturen')}
+            </button>
+            <button
+              onClick={() => { setEditSettings(settings); setShowSettings(true); }}
+              className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition"
+            >
+              <Settings className="h-4 w-4" />
+              {nl('Ayarlar', 'Instellingen')}
+            </button>
+          </div>
         )}
       </div>
 
@@ -783,6 +827,43 @@ export default function BoekhoudingView({ classes, students, language, apiReques
         </div>
       )}
       </>
+      )}
+
+      {/* Send schoolgeld reminder confirmation */}
+      {showReminderConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-amber-100 rounded-full p-2">
+                <Mail className="h-5 w-5 text-amber-700" />
+              </div>
+              <h4 className="text-lg font-bold text-gray-800">{nl('Hatırlatma Gönder', 'Herinnering versturen')}</h4>
+            </div>
+            <p className="text-sm text-gray-600 mb-6">
+              {nl(
+                `Ödenmemiş okul ücreti olan velilere hatırlatma e-postası göndermek istediğinize emin misiniz? Bu e-posta ${outstandingParentIds.size} veliye gönderilecek.`,
+                `Weet u zeker dat u een herinneringsmail wilt sturen naar ouders met openstaand schoolgeld? Deze e-mail wordt verstuurd naar ${outstandingParentIds.size} ${outstandingParentIds.size === 1 ? 'ouder' : 'ouders'}.`
+              )}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={sendSchoolgeldReminders}
+                disabled={sendingReminders}
+                className="flex-1 flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2.5 rounded-lg transition disabled:opacity-50"
+              >
+                <Check className="h-4 w-4" />
+                {sendingReminders ? nl('Gönderiliyor...', 'Versturen...') : nl('Evet, Gönder', 'Ja, versturen')}
+              </button>
+              <button
+                onClick={() => setShowReminderConfirm(false)}
+                disabled={sendingReminders}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2.5 rounded-lg transition disabled:opacity-50"
+              >
+                {nl('İptal', 'Annuleren')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Settings modal */}

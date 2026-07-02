@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Moon, LogOut } from 'lucide-react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
@@ -402,83 +403,71 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     }
   };
 
+  const TabButton = ({ tab, children }: { tab: typeof activeTab; children: React.ReactNode }) => (
+    <button
+      onClick={() => setActiveTab(tab)}
+      className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm ${
+        activeTab === tab
+          ? 'bg-white text-emerald-700 shadow-sm'
+          : 'text-gray-500 hover:text-gray-700'
+      }`}
+    >
+      {children}
+    </button>
+  );
+
   return (
     <div className="size-full overflow-auto p-3 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-emerald-800">{t.teacherDashboard}</h1>
-          <div className="flex flex-wrap gap-2 sm:gap-3">
-            <button
-              onClick={() => setLanguage('tr')}
-              className={`px-2.5 sm:px-3 py-1 rounded text-sm ${language === 'tr' ? 'bg-emerald-600 text-white' : 'bg-white'}`}
-            >
-              TR
-            </button>
-            <button
-              onClick={() => setLanguage('nl')}
-              className={`px-2.5 sm:px-3 py-1 rounded text-sm ${language === 'nl' ? 'bg-emerald-600 text-white' : 'bg-white'}`}
-            >
-              NL
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl p-2 sm:p-2.5 shadow-md shadow-emerald-900/10">
+              <Moon className="h-5 w-5 sm:h-6 sm:w-6 text-white" fill="currentColor" strokeWidth={0} />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 leading-tight">{t.teacherDashboard}</h1>
+              <p className="text-xs text-gray-400 hidden sm:block">Ilim Yolu</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="flex gap-1 bg-white rounded-full p-1 shadow-sm">
+              <button
+                onClick={() => setLanguage('tr')}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-semibold transition ${language === 'tr' ? 'bg-emerald-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                TR
+              </button>
+              <button
+                onClick={() => setLanguage('nl')}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-semibold transition ${language === 'nl' ? 'bg-emerald-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                NL
+              </button>
+            </div>
             <button
               onClick={onLogout}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-red-600 rounded-full hover:bg-red-50 text-xs sm:text-sm font-semibold shadow-sm transition"
             >
+              <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               {t.logout}
             </button>
           </div>
         </div>
 
         {classes.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 md:p-8 text-center">
+          <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-4 sm:p-6 md:p-8 text-center">
             <p className="text-gray-500 text-base sm:text-lg">
               {language === 'tr' ? 'Size atanmış sınıf bulunamadı.' : 'Geen klassen toegewezen.'}
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
+          <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
             {/* Tab navigation */}
-            <div className="flex gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6 border-b overflow-x-auto">
-              <button
-                onClick={() => setActiveTab('attendance')}
-                className={`pb-2 sm:pb-3 px-2 sm:px-3 md:px-4 font-semibold transition whitespace-nowrap text-xs sm:text-sm md:text-base ${
-                  activeTab === 'attendance'
-                    ? 'border-b-2 border-emerald-600 text-emerald-600'
-                    : 'text-gray-500'
-                }`}
-              >
-                {language === 'tr' ? 'Les Kaydı' : 'Les Registratie'}
-              </button>
-              <button
-                onClick={() => setActiveTab('meldingen')}
-                className={`pb-2 sm:pb-3 px-2 sm:px-3 md:px-4 font-semibold transition whitespace-nowrap text-xs sm:text-sm md:text-base ${
-                  activeTab === 'meldingen'
-                    ? 'border-b-2 border-emerald-600 text-emerald-600'
-                    : 'text-gray-500'
-                }`}
-              >
-                {language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen'}
-              </button>
-              <button
-                onClick={() => setActiveTab('beheer')}
-                className={`pb-2 sm:pb-3 px-2 sm:px-3 md:px-4 font-semibold transition whitespace-nowrap text-xs sm:text-sm md:text-base ${
-                  activeTab === 'beheer'
-                    ? 'border-b-2 border-emerald-600 text-emerald-600'
-                    : 'text-gray-500'
-                }`}
-              >
-                Beheer
-              </button>
-              <button
-                onClick={() => setActiveTab('oudergesprekken')}
-                className={`pb-2 sm:pb-3 px-2 sm:px-3 md:px-4 font-semibold transition whitespace-nowrap text-xs sm:text-sm md:text-base ${
-                  activeTab === 'oudergesprekken'
-                    ? 'border-b-2 border-emerald-600 text-emerald-600'
-                    : 'text-gray-500'
-                }`}
-              >
-                {language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken'}
-              </button>
+            <div className="flex gap-1 sm:gap-1.5 mb-4 sm:mb-6 bg-gray-100 rounded-xl p-1 overflow-x-auto">
+              <TabButton tab="attendance">{language === 'tr' ? 'Les Kaydı' : 'Les Registratie'}</TabButton>
+              <TabButton tab="meldingen">{language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen'}</TabButton>
+              <TabButton tab="beheer">Beheer</TabButton>
+              <TabButton tab="oudergesprekken">{language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken'}</TabButton>
             </div>
 
             {/* ─── COMBINED ATTENDANCE + BEHAVIOR + HOMEWORK TAB ─── */}

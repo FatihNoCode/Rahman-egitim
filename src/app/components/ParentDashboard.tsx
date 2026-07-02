@@ -3,7 +3,7 @@ import { useApp } from '../App';
 import { translations } from './translations';
 import { Calendar } from './ui/calendar';
 import { useHashTab } from '../useHashTab';
-import { Euro } from 'lucide-react';
+import { Euro, Moon, LogOut } from 'lucide-react';
 
 // Local-time date helpers (avoid UTC parsing shifting the day)
 const toYMD = (d: Date) =>
@@ -370,31 +370,42 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     <div className="size-full overflow-auto p-3 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-emerald-800">{t.parentDashboard}</h1>
-          <div className="flex flex-wrap gap-2 sm:gap-3">
-            <button
-              onClick={() => setLanguage('tr')}
-              className={`px-2.5 sm:px-3 py-1 rounded text-sm ${language === 'tr' ? 'bg-emerald-600 text-white' : 'bg-white'}`}
-            >
-              TR
-            </button>
-            <button
-              onClick={() => setLanguage('nl')}
-              className={`px-2.5 sm:px-3 py-1 rounded text-sm ${language === 'nl' ? 'bg-emerald-600 text-white' : 'bg-white'}`}
-            >
-              NL
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl p-2 sm:p-2.5 shadow-md shadow-emerald-900/10">
+              <Moon className="h-5 w-5 sm:h-6 sm:w-6 text-white" fill="currentColor" strokeWidth={0} />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 leading-tight">{t.parentDashboard}</h1>
+              <p className="text-xs text-gray-400 hidden sm:block">Ilim Yolu</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="flex gap-1 bg-white rounded-full p-1 shadow-sm">
+              <button
+                onClick={() => setLanguage('tr')}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-semibold transition ${language === 'tr' ? 'bg-emerald-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                TR
+              </button>
+              <button
+                onClick={() => setLanguage('nl')}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-semibold transition ${language === 'nl' ? 'bg-emerald-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                NL
+              </button>
+            </div>
             <button
               onClick={onLogout}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-red-600 rounded-full hover:bg-red-50 text-xs sm:text-sm font-semibold shadow-sm transition"
             >
+              <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               {t.logout}
             </button>
           </div>
         </div>
 
         {students.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 md:p-8 text-center text-sm sm:text-base text-gray-500">
+          <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-4 sm:p-6 md:p-8 text-center text-sm sm:text-base text-gray-500">
             {t.noChildren}
           </div>
         ) : (
@@ -408,8 +419,8 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                     onClick={() => setSelectedChildId(child.id)}
                     className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
                       selectedChildId === child.id
-                        ? 'bg-emerald-600 text-white shadow'
-                        : 'bg-white text-gray-600 hover:bg-emerald-50 border border-gray-200'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'bg-white text-gray-600 hover:bg-emerald-50 ring-1 ring-black/5'
                     }`}
                   >
                     {child.name}
@@ -420,21 +431,21 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
             {/* Selected child header + actions */}
             {selectedChild && (
-              <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-4 sm:p-6 mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-xl sm:text-2xl font-semibold text-emerald-800">{selectedChild.name}</h2>
+                  <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">{selectedChild.name}</h2>
                   <p className="text-sm text-gray-500">{t.class}: {selectedChild.className || '-'}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => openAbsenceModal(selectedChild.id)}
-                    className="px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm"
+                    className="px-3 py-1.5 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 text-sm font-medium transition"
                   >
                     {t.reportAbsence}
                   </button>
                   <button
                     onClick={() => loadStats(selectedChild.id)}
-                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                    className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm font-medium transition"
                   >
                     {t.viewStats}
                   </button>
@@ -445,19 +456,19 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
         )}
 
         {selectedChild && (
-          <div className="flex gap-2 sm:gap-3 mb-4 sm:mb-6 border-b overflow-x-auto">
+          <div className="flex gap-1 sm:gap-1.5 mb-4 sm:mb-6 bg-gray-100 rounded-xl p-1 overflow-x-auto w-fit">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`pb-2 sm:pb-3 px-2 sm:px-3 font-semibold transition whitespace-nowrap text-sm ${
-                activeTab === 'overview' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'
+              className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm ${
+                activeTab === 'overview' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               {language === 'tr' ? 'Genel Bakış' : 'Overzicht'}
             </button>
             <button
               onClick={() => setActiveTab('billing')}
-              className={`pb-2 sm:pb-3 px-2 sm:px-3 font-semibold transition whitespace-nowrap text-sm ${
-                activeTab === 'billing' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'
+              className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm ${
+                activeTab === 'billing' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               {language === 'tr' ? 'Ödemeler' : 'Facturatie'}

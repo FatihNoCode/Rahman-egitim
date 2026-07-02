@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Moon, Mail, Lock, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { translations } from './translations';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../../lib/supabase';
@@ -140,28 +141,60 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
     }
   };
 
+  // Decorative blurred backdrop shapes, shared by both screens.
+  const Backdrop = () => (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="absolute -top-24 -left-20 w-72 h-72 bg-emerald-300/30 rounded-full blur-3xl" />
+      <div className="absolute -bottom-24 -right-16 w-80 h-80 bg-teal-300/30 rounded-full blur-3xl" />
+      <div className="absolute top-1/3 right-1/4 w-40 h-40 bg-amber-200/20 rounded-full blur-3xl" />
+    </div>
+  );
+
+  const LanguageToggle = () => (
+    <div className="flex gap-1 bg-gray-100 rounded-full p-1">
+      <button
+        onClick={() => setLanguage('tr')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'tr' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+      >
+        TR
+      </button>
+      <button
+        onClick={() => setLanguage('nl')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'nl' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+      >
+        NL
+      </button>
+    </div>
+  );
+
+  const BrandMark = () => (
+    <div className="flex flex-col items-center mb-6">
+      <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-3.5 shadow-lg shadow-emerald-900/10 mb-3">
+        <Moon className="h-7 w-7 text-white" fill="currentColor" strokeWidth={0} />
+      </div>
+      <h1 className="text-xl font-bold text-gray-800 tracking-tight">Ilim Yolu</h1>
+    </div>
+  );
+
   if (isForgot) {
     return (
-      <div className="size-full flex items-center justify-center p-3 sm:p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 md:p-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
-              <h1 className="text-2xl font-bold text-emerald-800">
+      <div className="relative size-full flex items-center justify-center p-3 sm:p-4">
+        <Backdrop />
+        <div className="relative w-full max-w-md">
+          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-emerald-950/5 ring-1 ring-black/5 p-5 sm:p-7 md:p-9">
+            <BrandMark />
+            <div className="flex items-center justify-between gap-3 mb-6">
+              <h2 className="text-lg font-semibold text-gray-800">
                 {language === 'tr' ? 'Şifremi Unuttum' : 'Wachtwoord vergeten'}
-              </h1>
-              <div className="flex gap-2">
-                <button onClick={() => setLanguage('tr')} className={`px-2.5 py-1 rounded text-sm ${language === 'tr' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}>TR</button>
-                <button onClick={() => setLanguage('nl')} className={`px-2.5 py-1 rounded text-sm ${language === 'nl' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}>NL</button>
-              </div>
+              </h2>
+              <LanguageToggle />
             </div>
 
             {forgotSent ? (
               <div className="py-2">
                 <div className="flex justify-center mb-4">
                   <div className="bg-emerald-100 rounded-full p-4 inline-flex">
-                    <svg className="h-8 w-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                    </svg>
+                    <CheckCircle2 className="h-8 w-8 text-emerald-600" />
                   </div>
                 </div>
                 <p className="font-semibold text-gray-800 text-center mb-1">
@@ -173,17 +206,21 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
                     : `Er is een link verstuurd naar:`}
                 </p>
                 <p className="text-sm font-semibold text-emerald-700 text-center mb-4 break-all">{forgotEmail}</p>
-                <div className="bg-red-50 border border-red-300 rounded-lg px-4 py-3 mb-6">
-                  <p className="text-red-700 text-sm font-semibold mb-0.5">
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6">
+                  <p className="text-amber-800 text-sm font-semibold mb-0.5">
                     {language === 'tr' ? '⚠️ Spam klasörünüzü kontrol edin!' : '⚠️ Controleer uw spammap!'}
                   </p>
-                  <p className="text-red-600 text-xs">
+                  <p className="text-amber-700 text-xs">
                     {language === 'tr'
                       ? 'E-posta bazen spam veya onaysız e-posta klasörüne düşebilir.'
                       : 'De e-mail kan in uw spam- of ongewenste e-mailmap terechtkomen.'}
                   </p>
                 </div>
-                <button onClick={() => { setIsForgot(false); setForgotSent(false); setForgotEmail(''); }} className="w-full text-center text-emerald-600 hover:underline text-sm">
+                <button
+                  onClick={() => { setIsForgot(false); setForgotSent(false); setForgotEmail(''); }}
+                  className="w-full flex items-center justify-center gap-1.5 text-emerald-600 hover:text-emerald-800 font-medium text-sm transition"
+                >
+                  <ArrowLeft className="h-4 w-4" />
                   {language === 'tr' ? 'Giriş sayfasına dön' : 'Terug naar inloggen'}
                 </button>
               </div>
@@ -195,20 +232,27 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
                     : 'Vul uw e-mailadres in en we sturen u een link om uw wachtwoord te resetten.'}
                 </p>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t.email}</label>
-                  <input
-                    type="email"
-                    value={forgotEmail}
-                    onChange={e => setForgotEmail(e.target.value)}
-                    required
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
-                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t.email}</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={e => setForgotEmail(e.target.value)}
+                      required
+                      className="w-full pl-10 pr-4 py-2.5 border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition text-sm"
+                    />
+                  </div>
                 </div>
-                {error && <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-2 rounded-lg text-sm">{error}</div>}
-                <button type="submit" disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-lg transition disabled:opacity-50 text-sm">
+                {error && <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-2.5 rounded-xl text-sm">{error}</div>}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-50 text-sm shadow-md shadow-emerald-900/10"
+                >
                   {loading ? t.loading : language === 'tr' ? 'Bağlantı Gönder' : 'Link versturen'}
                 </button>
-                <button type="button" onClick={() => { setIsForgot(false); setError(''); }} className="w-full text-gray-500 hover:text-gray-700 text-sm">
+                <button type="button" onClick={() => { setIsForgot(false); setError(''); }} className="w-full text-gray-400 hover:text-gray-600 text-sm transition">
                   {language === 'tr' ? 'İptal' : 'Annuleren'}
                 </button>
               </form>
@@ -220,75 +264,88 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
   }
 
   return (
-    <div className="size-full flex items-center justify-center p-3 sm:p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 md:p-8">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 sm:mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-emerald-800">
-              {isSignup ? t.signup : t.login}
-            </h1>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setLanguage('tr')}
-                className={`px-2.5 sm:px-3 py-1 rounded text-sm ${language === 'tr' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}
-              >
-                TR
-              </button>
-              <button
-                onClick={() => setLanguage('nl')}
-                className={`px-2.5 sm:px-3 py-1 rounded text-sm ${language === 'nl' ? 'bg-emerald-600 text-white' : 'bg-gray-200'}`}
-              >
-                NL
-              </button>
-            </div>
+    <div className="relative size-full flex items-center justify-center p-3 sm:p-4">
+      <Backdrop />
+      <div className="relative w-full max-w-md">
+        <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-emerald-950/5 ring-1 ring-black/5 p-5 sm:p-7 md:p-9">
+          <div className="flex items-center justify-end mb-1">
+            <LanguageToggle />
+          </div>
+          <BrandMark />
+
+          {/* Login / signup segmented switch */}
+          <div className="flex bg-gray-100 rounded-xl p-1 mb-6">
+            <button
+              type="button"
+              onClick={() => { setIsSignup(false); setError(''); }}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${!isSignup ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              {t.login}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setIsSignup(true); setError(''); }}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${isSignup ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              {t.signup}
+            </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-4">
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                 {t.email}
               </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full pl-10 pr-4 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                 {t.password}
               </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="w-full pl-10 pr-4 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
+                />
+              </div>
             </div>
 
             {isSignup && (
               <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                   {t.confirmPassword}
                 </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className="w-full pl-10 pr-4 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
+                  />
+                </div>
               </div>
             )}
 
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-800 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm">
+              <div className="bg-red-50 border border-red-200 text-red-800 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm">
                 {error}
               </div>
             )}
@@ -296,31 +353,22 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 sm:py-3 rounded-lg transition disabled:opacity-50 text-sm sm:text-base"
+              className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold py-2.5 sm:py-3 rounded-xl transition disabled:opacity-50 text-sm sm:text-base shadow-md shadow-emerald-900/10"
             >
               {loading ? t.loading : isSignup ? t.signup : t.login}
             </button>
           </form>
 
-          <div className="mt-4 sm:mt-6 text-center space-y-2">
-            <button
-              onClick={() => {
-                setIsSignup(!isSignup);
-                setError('');
-              }}
-              className="text-emerald-600 hover:underline text-sm sm:text-base block w-full"
-            >
-              {isSignup ? t.loginPrompt : t.signupPrompt}
-            </button>
-            {!isSignup && (
+          {!isSignup && (
+            <div className="mt-4 sm:mt-5 text-center">
               <button
                 onClick={() => { setIsForgot(true); setError(''); }}
-                className="text-gray-400 hover:text-gray-600 text-xs sm:text-sm block w-full"
+                className="text-gray-400 hover:text-gray-600 text-xs sm:text-sm transition"
               >
                 {language === 'tr' ? 'Şifremi unuttum' : 'Wachtwoord vergeten?'}
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

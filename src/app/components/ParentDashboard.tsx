@@ -718,15 +718,14 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           </div>
         )}
 
-        {/* Oudergesprekken — show available conferences for this child's class */}
-        {selectedChild && conferSessions.filter((s) => s.classId === selectedChild.classId).length > 0 && (
+        {/* Oudergesprekken — conferences now span every class */}
+        {selectedChild && conferSessions.length > 0 && (
           <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
             <h2 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-3">
               {language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken'}
             </h2>
             <div className="space-y-4">
               {conferSessions
-                .filter((s) => s.classId === selectedChild.classId)
                 .map((session: any) => {
                   const myBooking = session.slots.find((s: any) => s.studentId === selectedChild.id);
                   const isExpanded = bookingSessionId === session.id;
@@ -734,7 +733,9 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                     <div key={session.id} className="border border-gray-200 rounded-lg overflow-hidden">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-2">
                         <div>
-                          <h4 className="font-semibold text-emerald-800">{session.className}</h4>
+                          <h4 className="font-semibold text-emerald-800">
+                            {session.className || (language === 'tr' ? 'Tüm Sınıflar' : 'Alle klassen')}
+                          </h4>
                           <p className="text-sm text-gray-500">
                             {session.date} &middot; {session.minutesPerSlot} min {language === 'tr' ? '/ görüşme' : '/ gesprek'}
                           </p>

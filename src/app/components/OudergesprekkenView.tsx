@@ -1,10 +1,5 @@
 import { useState, useEffect } from 'react';
 
-interface Class {
-  id: string;
-  name: string;
-}
-
 interface Slot {
   start: string;
   end: string;
@@ -15,8 +10,8 @@ interface Slot {
 
 interface Session {
   id: string;
-  classId: string;
-  className: string;
+  classId: string | null;
+  className: string | null;
   date: string;
   startTime: string;
   endTime: string;
@@ -27,18 +22,16 @@ interface Session {
 }
 
 interface OudergesprekkenViewProps {
-  classes: Class[];
   language: 'tr' | 'nl';
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
 }
 
-export default function OudergesprekkenView({ classes, language, apiRequest }: OudergesprekkenViewProps) {
+export default function OudergesprekkenView({ language, apiRequest }: OudergesprekkenViewProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
   // Form state
-  const [classId, setClassId] = useState('');
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('10:00');
   const [endTime, setEndTime] = useState('13:00');
@@ -63,7 +56,7 @@ export default function OudergesprekkenView({ classes, language, apiRequest }: O
   };
 
   const createSession = async () => {
-    if (!classId || !date || !startTime || !endTime) {
+    if (!date || !startTime || !endTime) {
       alert(language === 'tr' ? 'Tüm alanları doldurun' : 'Vul alle velden in');
       return;
     }
@@ -71,14 +64,13 @@ export default function OudergesprekkenView({ classes, language, apiRequest }: O
     try {
       const result = await apiRequest('/oudergesprekken', {
         method: 'POST',
-        body: JSON.stringify({ classId, date, startTime, endTime, minutesPerSlot }),
+        body: JSON.stringify({ date, startTime, endTime, minutesPerSlot }),
       });
       alert(
         language === 'tr'
           ? `Veli görüşmesi oluşturuldu! ${result.emailsSent} e-posta gönderildi.`
           : `Oudergesprek aangemaakt! ${result.emailsSent} e-mail(s) verstuurd.`
       );
-      setClassId('');
       setDate('');
       loadSessions();
     } catch (err: any) {
@@ -99,7 +91,6 @@ export default function OudergesprekkenView({ classes, language, apiRequest }: O
   };
 
   // Calculate a preview of how many slots would be generated
-  const selectedClass = classes.find((c) => c.id === classId);
   const previewSlotCount = (() => {
     if (!startTime || !endTime || !minutesPerSlot) return 0;
     const [sH, sM] = startTime.split(':').map(Number);
@@ -116,23 +107,13 @@ export default function OudergesprekkenView({ classes, language, apiRequest }: O
           {language === 'tr' ? 'Yeni Veli Görüşmesi Oluştur' : 'Nieuw Oudergesprek Aanmaken'}
         </h3>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {language === 'tr' ? 'Sınıf' : 'Klas'}
-            </label>
-            <select
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
-            >
-              <option value="">{language === 'tr' ? 'Sınıf seçin' : 'Selecteer klas'}</option>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
+        <p className="text-sm text-gray-500 mb-4">
+          {language === 'tr'
+            ? 'Bu veli görüşmesi tüm sınıflar için geçerlidir.'
+            : 'Dit oudergesprek geldt voor alle klassen.'}
+        </p>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               {language === 'tr' ? 'Tarih' : 'Datum'}
@@ -186,7 +167,7 @@ export default function OudergesprekkenView({ classes, language, apiRequest }: O
         </div>
 
         {/* Preview info */}
-        {classId && previewSlotCount > 0 && (
+        {date && previewSlotCount > 0 && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-4 text-sm">
             <p className="text-emerald-800">
               {language === 'tr'
@@ -203,7 +184,7 @@ export default function OudergesprekkenView({ classes, language, apiRequest }: O
 
         <button
           onClick={createSession}
-          disabled={creating || !classId || !date}
+          disabled={creating || !date}
           className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50 text-sm"
         >
           {creating
@@ -238,7 +219,9 @@ export default function OudergesprekkenView({ classes, language, apiRequest }: O
                     className="flex flex-col sm:flex-row sm:items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition gap-2"
                   >
                     <div>
-                      <h4 className="font-semibold text-emerald-800">{session.className}</h4>
+                      <h4 className="font-semibold text-emerald-800">
+                        {session.className || (language === 'tr' ? 'Tüm Sınıflar' : 'Alle klassen')}
+                      </h4>
                       <p className="text-sm text-gray-500">
                         {session.date} &middot; {session.startTime} - {session.slots[session.slots.length - 1]?.end || session.endTime}
                         &middot; {session.minutesPerSlot} min

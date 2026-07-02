@@ -1092,7 +1092,6 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
           {activeTab === 'oudergesprekken' && (
             <OudergesprekkenView
-              classes={classes}
               language={language}
               apiRequest={apiRequest}
             />

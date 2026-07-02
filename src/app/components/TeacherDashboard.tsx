@@ -1003,7 +1003,9 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                             className="flex flex-col sm:flex-row sm:items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition gap-2"
                           >
                             <div>
-                              <h4 className="font-semibold text-emerald-800">{session.className}</h4>
+                              <h4 className="font-semibold text-emerald-800">
+                                {session.className || (language === 'tr' ? 'Tüm Sınıflar' : 'Alle klassen')}
+                              </h4>
                               <p className="text-sm text-gray-500">
                                 {session.date} &middot; {session.startTime} - {session.slots[session.slots.length - 1]?.end || session.endTime}
                                 &middot; {session.minutesPerSlot} min

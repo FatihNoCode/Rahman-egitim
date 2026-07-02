@@ -47,6 +47,49 @@ async function getUserData(userId: string) {
   return userData;
 }
 
+// Shared helper for sending transactional emails via Resend. Every
+// notification flow (signup, payments, inschrijvingen, status changes,
+// absence alerts) routes through this so the from-address and error
+// handling stay consistent in one place.
+async function sendEmail(to: string, subject: string, html: string) {
+  const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+  if (!RESEND_API_KEY) {
+    console.log('RESEND_API_KEY not configured, skipping email to', to);
+    return false;
+  }
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'Ilim Yolu <info@ilimyolu.com>',
+        to: [to],
+        subject,
+        html,
+      }),
+    });
+    if (!res.ok) {
+      console.log(`Resend error for ${to}:`, await res.text());
+    }
+    return res.ok;
+  } catch (err) {
+    console.log(`Failed to send email to ${to}:`, err);
+    return false;
+  }
+}
+
+function emailWrapper(titleNl: string, bodyHtml: string) {
+  return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+    <h2 style="color:#065f46;margin-bottom:16px">Ilim Yolu${titleNl ? ' - ' + titleNl : ''}</h2>
+    ${bodyHtml}
+    <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+    <p style="color:#9ca3af;font-size:12px">Dit bericht is verstuurd via het Ilim Yolu leerlingvolgsysteem.</p>
+  </div>`;
+}
+
 // Shared access check for anything scoped to a class (attendance, lessons,
 // conferences): admins can see everything, teachers only their own assigned
 // classes, parents only classes one of their children is enrolled in.
@@ -115,45 +158,20 @@ app.post("/make-server-6679cacd/signup", async (c) => {
       await kv.set(`parent_children:${data.user.id}`, []);
 
       // Send welcome email to parent
-      const emailSubjectTr = 'Hoş Geldiniz - Cami Öğrenci Takip Sistemi';
-      const emailSubjectNl = 'Welkom - Moskee Leerling Volgsysteem';
-
-      const emailBodyTr = `
-Merhaba ${email},
-
-Cami öğrenci takip sistemine hoş geldiniz!
-
-Artık çocuğunuzun/çocuklarınızın:
-- Devam durumunu
-- Davranış notlarını
-- Ödevlerini
-
-takip edebilirsiniz.
-
-Giriş yapmak için: www.nonexistingwebsiteyet.com
-
-Saygılarımızla,
-Cami Yönetimi
-      `;
-
-      const emailBodyNl = `
-Hallo ${email},
-
-Welkom bij het moskee leerling volgsysteem!
-
-U kunt nu het volgende volgen van uw kind(eren):
-- Aanwezigheid
-- Gedragsnota's
-- Huiswerk
-
-Om in te loggen: www.nonexistingwebsiteyet.com
-
-Met vriendelijke groet,
-Moskee Beheer
-      `;
-
-      console.log('Parent welcome email preview (TR):', emailBodyTr);
-      console.log('Parent welcome email preview (NL):', emailBodyNl);
+      await sendEmail(
+        email,
+        'Welkom bij Ilim Yolu | Hoş Geldiniz',
+        emailWrapper('Welkom', `
+          <p style="color:#374151;line-height:1.6">Beste ouder,</p>
+          <p style="color:#374151;line-height:1.6">Welkom bij het Ilim Yolu leerlingvolgsysteem! U kunt nu de aanwezigheid, gedragsnota's en huiswerk van uw kind(eren) volgen via het ouderportaal.</p>
+          <p style="margin:24px 0"><a href="https://ilimyolu.com" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Naar het portaal</a></p>
+          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+          <p style="color:#374151;line-height:1.6">Sayın veli,</p>
+          <p style="color:#374151;line-height:1.6">Ilim Yolu öğrenci takip sistemine hoş geldiniz! Artık çocuğunuzun/çocuklarınızın devam durumunu, davranış notlarını ve ödevlerini veli portalından takip edebilirsiniz.</p>
+          <p style="margin:24px 0"><a href="https://ilimyolu.com" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Portala git</a></p>
+        `)
+      );
     } else if (role === 'teacher') {
       await kv.set(`teacher_classes:${data.user.id}`, []);
     }
@@ -835,6 +853,38 @@ app.post("/make-server-6679cacd/attendance", async (c) => {
     }
 
     console.log('Attendance saved successfully');
+
+    // Notify parents whose child was marked absent today but never reported
+    // it in advance via the absence-notification flow.
+    const currentYear = await kv.get('school_year:current');
+    for (const rec of records) {
+      if (rec.present) continue;
+      const yearKey = `student_absence_notifications:${rec.studentId}:${currentYear?.id}`;
+      const notificationIds: string[] = await kv.get(yearKey) || [];
+      const notifications = await kv.mget(notificationIds.map((nid: string) => `absence_notification:${nid}`));
+      const wasReported = notifications.some((n: any) => n && n.lessonDate === date);
+      if (wasReported) continue;
+
+      const student = await kv.get(`student:${rec.studentId}`);
+      if (!student?.parentId) continue;
+      const parentData = await getUserData(student.parentId);
+      if (!parentData?.email) continue;
+
+      await sendEmail(
+        parentData.email,
+        `Afwezigheid gemeld door leerkracht | Devamsızlık Bildirimi - Ilim Yolu`,
+        emailWrapper('Afwezigheid', `
+          <p style="color:#374151;line-height:1.6">Beste ouder,</p>
+          <p style="color:#374151;line-height:1.6"><strong>${student.name || ''}</strong> is op <strong>${date}</strong> afwezig geregistreerd op de les, zonder dat u dit vooraf had gemeld.</p>
+          <p style="color:#374151;line-height:1.6">Wilt u een afwezigheid voortaan vooraf melden via het ouderportaal?</p>
+          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+          <p style="color:#374151;line-height:1.6">Sayın veli,</p>
+          <p style="color:#374151;line-height:1.6"><strong>${student.name || ''}</strong>, önceden bildirim yapılmadan <strong>${date}</strong> tarihindeki derste devamsız olarak işaretlendi.</p>
+          <p style="color:#374151;line-height:1.6">Lütfen bundan sonra devamsızlıkları önceden veli portalı üzerinden bildirin.</p>
+        `)
+      );
+    }
 
     return c.json({ success: true });
   } catch (err) {
@@ -2337,6 +2387,20 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
     await kv.set(`inschrijving:${id}`, record);
 
     console.log('New inschrijving saved:', id, voornaam, achternaam);
+
+    await sendEmail(
+      contactEmail,
+      'Inschrijving ontvangen | Kayıt Alındı - Ilim Yolu',
+      emailWrapper('Inschrijving ontvangen', `
+        <p style="color:#374151;line-height:1.6">Beste ${contactNaam},</p>
+        <p style="color:#374151;line-height:1.6">Wij hebben de inschrijving van <strong>${voornaam} ${achternaam}</strong> in goede orde ontvangen. Wij nemen de aanvraag in behandeling en informeren u zodra hier een update in is.</p>
+        <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+        <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+        <p style="color:#374151;line-height:1.6">Sayın ${contactNaam},</p>
+        <p style="color:#374151;line-height:1.6"><strong>${voornaam} ${achternaam}</strong> için yapılan kaydı aldık. Başvurunuzu inceliyoruz ve bir gelişme olduğunda sizi bilgilendireceğiz.</p>
+      `)
+    );
+
     return c.json({ success: true, id });
   } catch (err) {
     console.log('Inschrijving error:', err);
@@ -2442,6 +2506,34 @@ app.patch("/make-server-6679cacd/inschrijvingen/:id", async (c) => {
     const rec = await kv.get(`inschrijving:${id}`);
     if (!rec) return c.json({ error: 'Not found' }, 404);
     await kv.set(`inschrijving:${id}`, { ...rec, status });
+
+    const statusLabelsNl: Record<string, string> = {
+      nieuw: 'Nieuw',
+      gezien: 'In behandeling',
+      geaccepteerd: 'Geaccepteerd',
+      afgewezen: 'Afgewezen',
+    };
+    const statusLabelsTr: Record<string, string> = {
+      nieuw: 'Yeni',
+      gezien: 'İnceleniyor',
+      geaccepteerd: 'Kabul edildi',
+      afgewezen: 'Reddedildi',
+    };
+    if (status && status !== rec.status && rec.contactEmail) {
+      await sendEmail(
+        rec.contactEmail,
+        `Update inschrijving ${rec.voornaam} ${rec.achternaam} | Kayıt Güncellemesi - Ilim Yolu`,
+        emailWrapper('Status inschrijving bijgewerkt', `
+          <p style="color:#374151;line-height:1.6">Beste ${rec.contactNaam},</p>
+          <p style="color:#374151;line-height:1.6">De status van de inschrijving van <strong>${rec.voornaam} ${rec.achternaam}</strong> is bijgewerkt naar: <strong>${statusLabelsNl[status] || status}</strong>.</p>
+          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+          <p style="color:#374151;line-height:1.6">Sayın ${rec.contactNaam},</p>
+          <p style="color:#374151;line-height:1.6"><strong>${rec.voornaam} ${rec.achternaam}</strong> kaydının durumu güncellendi: <strong>${statusLabelsTr[status] || status}</strong>.</p>
+        `)
+      );
+    }
+
     return c.json({ success: true });
   } catch (err) {
     console.log('Update inschrijving error:', err);
@@ -2621,7 +2713,45 @@ app.post("/make-server-6679cacd/boekhouding/payments", async (c) => {
       createdAt: new Date().toISOString(),
     };
     await kv.set(`boekhouding_payment:${id}`, entry);
+
+    const before = await kv.get(`boekhouding:student:${studentId}`) || defaultBoekhoudingRecord(studentId);
     const record = await recomputeStudentBoekhouding(studentId);
+
+    // If this payment just brought schoolgeld to the full required amount,
+    // notify the parent — but only on the payment that crosses the
+    // threshold, not on every payment after it's already been reached.
+    if (category === 'schoolgeld') {
+      const settings = await kv.get('boekhouding:settings') || DEFAULT_BOEKHOUDING_SETTINGS;
+      const tiers = settings.schoolgeld || DEFAULT_BOEKHOUDING_SETTINGS.schoolgeld;
+      const required = record.isMember
+        ? (record.hasSibling ? tiers.memberWithSibling : tiers.memberNoSibling)
+        : (record.hasSibling ? tiers.noMemberWithSibling : tiers.noMemberNoSibling);
+
+      const paidBefore = before.payments?.schoolgeld || 0;
+      const paidNow = record.payments?.schoolgeld || 0;
+
+      if (paidBefore < required && paidNow >= required) {
+        const student = await kv.get(`student:${studentId}`);
+        if (student?.parentId) {
+          const parentData = await getUserData(student.parentId);
+          if (parentData?.email) {
+            await sendEmail(
+              parentData.email,
+              `Schoolgeld volledig betaald | Okul Ücreti Tamamlandı - Ilim Yolu`,
+              emailWrapper('Betaling bevestigd', `
+                <p style="color:#374151;line-height:1.6">Beste ouder,</p>
+                <p style="color:#374151;line-height:1.6">Het schoolgeld voor <strong>${student.name || ''}</strong> is volledig voldaan. Bedankt voor uw betaling!</p>
+                <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+                <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+                <p style="color:#374151;line-height:1.6">Sayın veli,</p>
+                <p style="color:#374151;line-height:1.6"><strong>${student.name || ''}</strong> için okul ücreti tamamen ödenmiştir. Ödemeniz için teşekkür ederiz!</p>
+              `)
+            );
+          }
+        }
+      }
+    }
+
     return c.json({ success: true, entry, record });
   } catch (err) {
     console.log('Create boekhouding payment error:', err);

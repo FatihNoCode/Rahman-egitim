@@ -2464,18 +2464,22 @@ app.put("/make-server-6679cacd/boekhouding/settings", async (c) => {
   }
 });
 
+function defaultBoekhoudingRecord(studentId: string) {
+  return {
+    studentId,
+    isMember: false,
+    hasSibling: false,
+    payments: { schoolgeld: 0, tas: 0, quran: 0, elifbe: 0, temel: 0 },
+    paidDates: {},
+  };
+}
+
 app.get("/make-server-6679cacd/boekhouding/student/:studentId", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const studentId = c.req.param('studentId');
-    const record = await kv.get(`boekhouding:student:${studentId}`) || {
-      studentId,
-      isMember: false,
-      hasSibling: false,
-      payments: { schoolgeld: 0, tas: false, quran: false, elifbe: false, temel: false },
-      paidDates: {},
-    };
+    const record = await kv.get(`boekhouding:student:${studentId}`) || defaultBoekhoudingRecord(studentId);
     return c.json({ record });
   } catch (err) {
     console.log('Get boekhouding student error:', err);
@@ -2483,16 +2487,28 @@ app.get("/make-server-6679cacd/boekhouding/student/:studentId", async (c) => {
   }
 });
 
+// Only used to toggle isMember/hasSibling now — payments/paidDates are
+// derived from the payment log and recomputed server-side (see below), so
+// this merges the given fields into the existing record rather than
+// overwriting it wholesale.
 app.put("/make-server-6679cacd/boekhouding/student/:studentId", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can update payment records' }, 403);
+    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can update student records' }, 403);
     const studentId = c.req.param('studentId');
     const body = await c.req.json();
-    await kv.set(`boekhouding:student:${studentId}`, { ...body, studentId, updatedAt: new Date().toISOString() });
-    return c.json({ success: true });
+    const existing = await kv.get(`boekhouding:student:${studentId}`) || defaultBoekhoudingRecord(studentId);
+    const updated = {
+      ...existing,
+      ...('isMember' in body ? { isMember: !!body.isMember } : {}),
+      ...('hasSibling' in body ? { hasSibling: !!body.hasSibling } : {}),
+      studentId,
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`boekhouding:student:${studentId}`, updated);
+    return c.json({ success: true, record: updated });
   } catch (err) {
     console.log('Update boekhouding student error:', err);
     return c.json({ error: 'Failed to update record' }, 500);
@@ -2508,13 +2524,7 @@ app.post("/make-server-6679cacd/boekhouding/students/bulk", async (c) => {
     const records: Record<string, any> = {};
     for (const id of studentIds) {
       const rec = await kv.get(`boekhouding:student:${id}`);
-      records[id] = rec || {
-        studentId: id,
-        isMember: false,
-        hasSibling: false,
-        payments: { schoolgeld: 0, tas: false, quran: false, elifbe: false, temel: false },
-        paidDates: {},
-      };
+      records[id] = rec || defaultBoekhoudingRecord(id);
     }
     return c.json({ records });
   } catch (err) {
@@ -2524,9 +2534,35 @@ app.post("/make-server-6679cacd/boekhouding/students/bulk", async (c) => {
 });
 
 // ============= BOEKHOUDING PAYMENT LOG =============
-// An append-only ledger of individual payments (date, category, amount, note),
-// separate from the boekhouding:student summary above. This is what powers
-// both the admin's payment log tab and the parent's billing tab.
+// An append-only ledger of individual payments (date, category, amount, note).
+// This is the sole source of truth for money received — the boekhouding:student
+// summary record's `payments`/`paidDates` are recomputed from this log on every
+// write, so the read-only Overzicht tab always mirrors the logboek.
+
+async function recomputeStudentBoekhouding(studentId: string) {
+  const existing = await kv.get(`boekhouding:student:${studentId}`) || defaultBoekhoudingRecord(studentId);
+  const allEntries = await kv.getByPrefix('boekhouding_payment:');
+  const entries = allEntries.filter((e: any) => e && e.studentId === studentId);
+
+  const payments: Record<string, number> = { schoolgeld: 0, tas: 0, quran: 0, elifbe: 0, temel: 0 };
+  const paidDates: Record<string, string> = {};
+  for (const e of entries) {
+    payments[e.category] = (payments[e.category] || 0) + (Number(e.amount) || 0);
+    if (!paidDates[e.category] || e.date > paidDates[e.category]) {
+      paidDates[e.category] = e.date;
+    }
+  }
+
+  const updated = {
+    ...existing,
+    studentId,
+    payments,
+    paidDates,
+    updatedAt: new Date().toISOString(),
+  };
+  await kv.set(`boekhouding:student:${studentId}`, updated);
+  return updated;
+}
 
 app.post("/make-server-6679cacd/boekhouding/payments", async (c) => {
   try {
@@ -2558,7 +2594,8 @@ app.post("/make-server-6679cacd/boekhouding/payments", async (c) => {
       createdAt: new Date().toISOString(),
     };
     await kv.set(`boekhouding_payment:${id}`, entry);
-    return c.json({ success: true, entry });
+    const record = await recomputeStudentBoekhouding(studentId);
+    return c.json({ success: true, entry, record });
   } catch (err) {
     console.log('Create boekhouding payment error:', err);
     return c.json({ error: 'Failed to log payment' }, 500);
@@ -2614,7 +2651,9 @@ app.delete("/make-server-6679cacd/boekhouding/payments/:id", async (c) => {
     if (userData?.role !== 'admin') return c.json({ error: 'Only admins can delete payment log entries' }, 403);
 
     const id = c.req.param('id');
+    const entry = await kv.get(`boekhouding_payment:${id}`);
     await kv.del(`boekhouding_payment:${id}`);
+    if (entry?.studentId) await recomputeStudentBoekhouding(entry.studentId);
     return c.json({ success: true });
   } catch (err) {
     console.log('Delete boekhouding payment error:', err);

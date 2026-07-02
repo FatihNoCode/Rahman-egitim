@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Settings, X, Check, ChevronDown, ChevronUp, Euro, Trash2, Plus } from 'lucide-react';
 
 interface Student {
@@ -29,12 +29,14 @@ interface StudentRecord {
   studentId: string;
   isMember: boolean;
   hasSibling: boolean;
+  // All amounts paid-to-date, summed from the payment log. Read-only here —
+  // the logboek tab is the only place that can change these.
   payments: {
-    schoolgeld: number;   // amount paid (0 = nothing, partial OK)
-    tas: boolean;
-    quran: boolean;
-    elifbe: boolean;
-    temel: boolean;
+    schoolgeld: number;
+    tas: number;
+    quran: number;
+    elifbe: number;
+    temel: number;
   };
   paidDates: Record<string, string>;
 }
@@ -59,7 +61,7 @@ function emptyRecord(studentId: string): StudentRecord {
     studentId,
     isMember: false,
     hasSibling: false,
-    payments: { schoolgeld: 0, tas: false, quran: false, elifbe: false, temel: false },
+    payments: { schoolgeld: 0, tas: 0, quran: 0, elifbe: 0, temel: 0 },
     paidDates: {},
   };
 }
@@ -98,11 +100,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
 
   const [search, setSearch] = useState('');
   const [records, setRecords] = useState<Record<string, StudentRecord>>({});
-  const [savingCell, setSavingCell] = useState<string | null>(null);
   const [expandedClasses, setExpandedClasses] = useState<Set<string>>(new Set());
-
-  // Local schoolgeld input values (keyed by studentId) — avoids re-renders mid-type
-  const [schoolgeldInputs, setSchoolgeldinputs] = useState<Record<string, string>>({});
 
   // Payment log tab
   const [logEntries, setLogEntries] = useState<PaymentLogEntry[]>([]);
@@ -111,8 +109,8 @@ export default function BoekhoudingView({ classes, students, language, apiReques
   const [logForm, setLogForm] = useState({ date: todayYMD(), studentId: '', category: 'schoolgeld', amount: '', note: '' });
   const [logStudentSearch, setLogStudentSearch] = useState('');
   const [savingLog, setSavingLog] = useState(false);
+  const [savingLabel, setSavingLabel] = useState<string | null>(null);
 
-  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const isMounted = useRef(true);
 
   const nl = (tr: string, dutch: string) => language === 'tr' ? tr : dutch;
@@ -148,25 +146,28 @@ export default function BoekhoudingView({ classes, students, language, apiReques
       alert(nl('Lütfen tüm zorunlu alanları doldurun', 'Vul alle verplichte velden in'));
       return;
     }
+    const studentId = logForm.studentId;
     setSavingLog(true);
     try {
-      await apiRequest('/boekhouding/payments', {
+      const res = await apiRequest('/boekhouding/payments', {
         method: 'POST',
         body: JSON.stringify({
-          studentId: logForm.studentId,
+          studentId,
           date: logForm.date,
           category: logForm.category,
           amount: Math.max(0, Number(logForm.amount) || 0),
           note: logForm.note,
         }),
       });
+      // The server recomputes the student's Overzicht summary from the full
+      // log and returns it — use it directly so Overzicht stays in sync
+      // without a full re-fetch of every student.
+      if (res.record) {
+        setRecords(prev => ({ ...prev, [studentId]: res.record }));
+      }
       setLogForm({ date: todayYMD(), studentId: '', category: 'schoolgeld', amount: '', note: '' });
       setLogStudentSearch('');
       await loadLogEntries();
-      // Keep the overzicht in sync too — a schoolgeld log entry should reflect there.
-      if (logForm.category === 'schoolgeld' || ['tas', 'quran', 'elifbe', 'temel'].includes(logForm.category)) {
-        loadAllRecords();
-      }
     } catch (e) {
       alert(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
     } finally {
@@ -174,11 +175,14 @@ export default function BoekhoudingView({ classes, students, language, apiReques
     }
   };
 
-  const deleteLogEntry = async (id: string) => {
+  const deleteLogEntry = async (id: string, studentId: string) => {
     if (!confirm(nl('Bu kaydı silmek istediğinize emin misiniz?', 'Weet u zeker dat u dit item wilt verwijderen?'))) return;
     try {
       await apiRequest(`/boekhouding/payments/${id}`, { method: 'DELETE' });
       setLogEntries(prev => prev.filter(e => e.id !== id));
+      // Re-sync Overzicht for the affected student now that the log changed.
+      const res = await apiRequest(`/boekhouding/student/${studentId}`).catch(() => null);
+      if (res?.record) setRecords(prev => ({ ...prev, [studentId]: res.record }));
     } catch (e) {
       alert(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
     }
@@ -199,26 +203,9 @@ export default function BoekhoudingView({ classes, students, language, apiReques
         body: JSON.stringify({ studentIds: ids }),
       });
       if (!isMounted.current) return;
-      const recs: Record<string, StudentRecord> = res.records || {};
-      setRecords(recs);
-      // Seed local schoolgeld inputs
-      const inputs: Record<string, string> = {};
-      for (const id of ids) {
-        const paid = recs[id]?.payments?.schoolgeld;
-        inputs[id] = paid ? String(paid) : '';
-      }
-      setSchoolgeldinputs(inputs);
+      setRecords(res.records || {});
     } catch (e) { console.error('Error loading boekhouding records:', e); }
   };
-
-  const persistRecord = useCallback(async (rec: StudentRecord) => {
-    try {
-      await apiRequest(`/boekhouding/student/${rec.studentId}`, {
-        method: 'PUT',
-        body: JSON.stringify(rec),
-      });
-    } catch (e) { console.error('Error saving record:', e); }
-  }, [apiRequest]);
 
   const saveSettings = async () => {
     setSavingSettings(true);
@@ -231,47 +218,26 @@ export default function BoekhoudingView({ classes, students, language, apiReques
     } finally { setSavingSettings(false); }
   };
 
-  const togglePayment = async (studentId: string, field: 'tas' | 'quran' | 'elifbe' | 'temel') => {
-    const key = `${studentId}:${field}`;
-    setSavingCell(key);
-    const current = records[studentId] || emptyRecord(studentId);
-    const newPaid = !current.payments[field];
-    const newRecord: StudentRecord = {
-      ...current,
-      payments: { ...current.payments, [field]: newPaid },
-      paidDates: { ...current.paidDates, [field]: newPaid ? new Date().toISOString() : '' },
-    };
-    setRecords(prev => ({ ...prev, [studentId]: newRecord }));
-    await persistRecord(newRecord);
-    setSavingCell(null);
-  };
-
-  // Schoolgeld: debounced save on input change
-  const onSchoolgeldinputChange = (studentId: string, value: string) => {
-    setSchoolgeldinputs(prev => ({ ...prev, [studentId]: value }));
-    // Debounce 600ms
-    clearTimeout(saveTimers.current[studentId]);
-    saveTimers.current[studentId] = setTimeout(() => {
-      const amount = Math.max(0, Number(value) || 0);
-      const current = records[studentId] || emptyRecord(studentId);
-      const newRecord: StudentRecord = {
-        ...current,
-        payments: { ...current.payments, schoolgeld: amount },
-        paidDates: {
-          ...current.paidDates,
-          schoolgeld: amount > 0 ? (current.paidDates.schoolgeld || new Date().toISOString()) : '',
-        },
-      };
-      setRecords(prev => ({ ...prev, [studentId]: newRecord }));
-      persistRecord(newRecord);
-    }, 600);
-  };
-
+  // The only editable fields left on a student's Overzicht row — membership
+  // and sibling status affect the schoolgeld price but aren't "money in", so
+  // they're toggled from the logboek tab rather than from the read-only table.
   const toggleLabel = async (studentId: string, label: 'isMember' | 'hasSibling') => {
     const current = records[studentId] || emptyRecord(studentId);
-    const newRecord = { ...current, [label]: !current[label] };
-    setRecords(prev => ({ ...prev, [studentId]: newRecord }));
-    await persistRecord(newRecord);
+    const newValue = !current[label];
+    setSavingLabel(`${studentId}:${label}`);
+    setRecords(prev => ({ ...prev, [studentId]: { ...current, [label]: newValue } }));
+    try {
+      const res = await apiRequest(`/boekhouding/student/${studentId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ [label]: newValue }),
+      });
+      if (res.record) setRecords(prev => ({ ...prev, [studentId]: res.record }));
+    } catch (e) {
+      console.error('Error updating student label:', e);
+      setRecords(prev => ({ ...prev, [studentId]: current }));
+    } finally {
+      setSavingLabel(null);
+    }
   };
 
   const toggleClass = (classId: string) => {
@@ -287,10 +253,10 @@ export default function BoekhoudingView({ classes, students, language, apiReques
     (acc, s) => {
       const rec = records[s.id] || emptyRecord(s.id);
       acc.schoolgeld += Number(rec.payments.schoolgeld) || 0;
-      acc.tas += rec.payments.tas ? settings.tas : 0;
-      acc.quran += rec.payments.quran ? settings.quran : 0;
-      acc.elifbe += rec.payments.elifbe ? settings.elifbe : 0;
-      acc.temel += rec.payments.temel ? settings.temel : 0;
+      acc.tas += Number(rec.payments.tas) || 0;
+      acc.quran += Number(rec.payments.quran) || 0;
+      acc.elifbe += Number(rec.payments.elifbe) || 0;
+      acc.temel += Number(rec.payments.temel) || 0;
       return acc;
     },
     { schoolgeld: 0, tas: 0, quran: 0, elifbe: 0, temel: 0 }
@@ -313,33 +279,22 @@ export default function BoekhoudingView({ classes, students, language, apiReques
   const SchoolgeldCell = ({ student }: { student: Student }) => {
     const rec = records[student.id] || emptyRecord(student.id);
     const fullPrice = getSchoolPrice(settings, rec.isMember, rec.hasSibling);
-    const paid = Number(schoolgeldInputs[student.id]) || 0;
+    const paid = Number(rec.payments.schoolgeld) || 0;
     const isFullyPaid = paid >= fullPrice;
     const isPartial = paid > 0 && paid < fullPrice;
 
     return (
       <td className="border border-gray-200 px-2 py-1.5 align-middle min-w-[130px]">
         <div className={`rounded-lg px-2 py-1.5 ${isFullyPaid ? 'bg-emerald-50' : isPartial ? 'bg-amber-50' : 'bg-gray-50'}`}>
-          <div className="flex items-center gap-1 mb-0.5">
-            <span className="text-gray-400 text-xs">€</span>
-            <input
-              type="number"
-              min="0"
-              max={fullPrice * 2}
-              value={schoolgeldInputs[student.id] ?? ''}
-              onChange={e => onSchoolgeldinputChange(student.id, e.target.value)}
-              placeholder="0"
-              className={`w-full bg-transparent text-sm font-semibold outline-none ${
-                isFullyPaid ? 'text-emerald-700' : isPartial ? 'text-amber-700' : 'text-gray-400'
-              }`}
-            />
-          </div>
+          <p className={`text-sm font-semibold ${isFullyPaid ? 'text-emerald-700' : isPartial ? 'text-amber-700' : 'text-gray-400'}`}>
+            €{paid} <span className="text-xs font-normal text-gray-400">/ €{fullPrice}</span>
+          </p>
           <div className="text-[10px] text-gray-400 leading-tight">
             {isFullyPaid
               ? <span className="text-emerald-600 font-medium">✓ {nl('Tam ödendi', 'Volledig betaald')}</span>
               : isPartial
               ? <span className="text-amber-600 font-medium">⬤ {nl(`Kalan: €${fullPrice - paid}`, `Rest: €${fullPrice - paid}`)}</span>
-              : <span>/ €{fullPrice}</span>
+              : <span>{nl('Ödenmedi', 'Niet betaald')}</span>
             }
           </div>
         </div>
@@ -349,28 +304,27 @@ export default function BoekhoudingView({ classes, students, language, apiReques
 
   const PaymentCell = ({ studentId, field, price }: { studentId: string; field: 'tas' | 'quran' | 'elifbe' | 'temel'; price: number }) => {
     const rec = records[studentId] || emptyRecord(studentId);
-    const paid = rec.payments[field] as boolean;
-    const loading = savingCell === `${studentId}:${field}`;
+    const paid = Number(rec.payments[field]) || 0;
+    const isFullyPaid = paid >= price && price > 0;
+    const isPartial = paid > 0 && paid < price;
     const paidDate = rec.paidDates?.[field];
 
     return (
       <td className="border border-gray-200 px-2 py-2 text-center align-middle min-w-[90px]">
-        <button
-          onClick={() => togglePayment(studentId, field)}
-          disabled={loading}
+        <div
           title={paidDate ? new Date(paidDate).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL') : ''}
-          className={`w-full flex flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 px-1 transition text-xs font-medium ${
-            paid ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-          } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          className={`w-full flex flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 px-1 text-xs font-medium ${
+            isFullyPaid ? 'bg-emerald-100 text-emerald-700' : isPartial ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400'
+          }`}
         >
-          <span className="text-base leading-none">{paid ? '✓' : '○'}</span>
-          <span>€{price}</span>
-          {paid && paidDate && (
-            <span className="text-[10px] text-emerald-600 leading-tight">
+          <span className="text-base leading-none">{isFullyPaid ? '✓' : isPartial ? '⬤' : '○'}</span>
+          <span>€{paid} / €{price}</span>
+          {paidDate && (
+            <span className={`text-[10px] leading-tight ${isFullyPaid ? 'text-emerald-600' : 'text-amber-600'}`}>
               {new Date(paidDate).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', { day: '2-digit', month: '2-digit' })}
             </span>
           )}
-        </button>
+        </div>
       </td>
     );
   };
@@ -383,20 +337,14 @@ export default function BoekhoudingView({ classes, students, language, apiReques
           {student.name}
         </td>
         <td className="border border-gray-200 px-2 py-2 text-center align-middle">
-          <button
-            onClick={() => toggleLabel(student.id, 'isMember')}
-            className={`text-xs px-2 py-1 rounded-full font-medium transition ${rec.isMember ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'}`}
-          >
+          <span className={`text-xs px-2 py-1 rounded-full font-medium ${rec.isMember ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'}`}>
             {rec.isMember ? nl('Üye', 'Lid') : nl('Üye Değil', 'Geen lid')}
-          </button>
+          </span>
         </td>
         <td className="border border-gray-200 px-2 py-2 text-center align-middle">
-          <button
-            onClick={() => toggleLabel(student.id, 'hasSibling')}
-            className={`text-xs px-2 py-1 rounded-full font-medium transition ${rec.hasSibling ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-400'}`}
-          >
+          <span className={`text-xs px-2 py-1 rounded-full font-medium ${rec.hasSibling ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-400'}`}>
             {rec.hasSibling ? nl('Kardeş', 'Broer/Zus') : nl('Kardeş Yok', 'Geen B/Z')}
-          </button>
+          </span>
         </td>
         <SchoolgeldCell student={student} />
         <PaymentCell studentId={student.id} field="tas" price={settings.tas} />
@@ -508,6 +456,29 @@ export default function BoekhoudingView({ classes, students, language, apiReques
                 <datalist id="boekhouding-log-students">
                   {logStudentOptions.map(s => <option key={s.id} value={s.name} />)}
                 </datalist>
+                {logForm.studentId && (() => {
+                  const rec = records[logForm.studentId] || emptyRecord(logForm.studentId);
+                  return (
+                    <div className="flex gap-2 mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => toggleLabel(logForm.studentId, 'isMember')}
+                        disabled={savingLabel === `${logForm.studentId}:isMember`}
+                        className={`text-xs px-2 py-1 rounded-full font-medium transition ${rec.isMember ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'}`}
+                      >
+                        {rec.isMember ? nl('Üye', 'Lid') : nl('Üye Değil', 'Geen lid')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleLabel(logForm.studentId, 'hasSibling')}
+                        disabled={savingLabel === `${logForm.studentId}:hasSibling`}
+                        className={`text-xs px-2 py-1 rounded-full font-medium transition ${rec.hasSibling ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-400'}`}
+                      >
+                        {rec.hasSibling ? nl('Kardeş', 'Broer/Zus') : nl('Kardeş Yok', 'Geen B/Z')}
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">{nl('Kalem', 'Product/kosten')}</label>
@@ -585,7 +556,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
                         <td className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-700">€{Number(entry.amount).toFixed(2)}</td>
                         <td className="border border-gray-200 px-3 py-2 text-gray-500">{entry.note || '—'}</td>
                         <td className="border border-gray-200 px-3 py-2 text-center">
-                          <button onClick={() => deleteLogEntry(entry.id)} className="text-gray-400 hover:text-red-600" title={nl('Sil', 'Verwijderen')}>
+                          <button onClick={() => deleteLogEntry(entry.id, entry.studentId)} className="text-gray-400 hover:text-red-600" title={nl('Sil', 'Verwijderen')}>
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </td>
@@ -654,11 +625,16 @@ export default function BoekhoudingView({ classes, students, language, apiReques
         )}
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4 mb-4 text-xs text-gray-500">
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-emerald-100 inline-block" /> {nl('Tam ödendi', 'Volledig betaald')}</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-amber-100 inline-block" /> {nl('Kısmi ödeme', 'Gedeeltelijk betaald')}</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-gray-100 inline-block" /> {nl('Ödenmedi', 'Niet betaald')}</span>
+      {/* Legend + read-only notice */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex flex-wrap gap-4 text-xs text-gray-500">
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-emerald-100 inline-block" /> {nl('Tam ödendi', 'Volledig betaald')}</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-amber-100 inline-block" /> {nl('Kısmi ödeme', 'Gedeeltelijk betaald')}</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-gray-100 inline-block" /> {nl('Ödenmedi', 'Niet betaald')}</span>
+        </div>
+        <p className="text-xs text-gray-400 italic">
+          {nl('Salt okunur — ödeme eklemek/silmek için Ödeme Kaydı sekmesini kullanın', 'Alleen-lezen — gebruik het tabblad Betalingslogboek om betalingen toe te voegen/verwijderen')}
+        </p>
       </div>
 
       {/* Tables */}

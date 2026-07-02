@@ -47,6 +47,24 @@ async function getUserData(userId: string) {
   return userData;
 }
 
+// Shared access check for anything scoped to a class (attendance, lessons,
+// conferences): admins can see everything, teachers only their own assigned
+// classes, parents only classes one of their children is enrolled in.
+async function userHasClassAccess(userId: string, userData: any, classId: string): Promise<boolean> {
+  if (!userData) return false;
+  if (userData.role === 'admin') return true;
+  if (userData.role === 'teacher') {
+    const teacherClassIds: string[] = await kv.get(`teacher_classes:${userId}`) || [];
+    return teacherClassIds.includes(classId);
+  }
+  if (userData.role === 'parent') {
+    const childrenIds: string[] = await kv.get(`parent_children:${userId}`) || [];
+    const children = await kv.mget(childrenIds.map((id: string) => `student:${id}`));
+    return children.some((s: any) => s && s.classId === classId);
+  }
+  return false;
+}
+
 // Health check endpoint
 app.get("/make-server-6679cacd/health", (c) => {
   return c.json({ status: "ok" });
@@ -833,6 +851,13 @@ app.get("/make-server-6679cacd/attendance/:classId/:date", async (c) => {
     const classId = c.req.param('classId');
     const date = c.req.param('date');
 
+    // Raw per-student attendance is a teacher/admin tool — parents get their
+    // own filtered view via /lessons and /behavior instead.
+    const userData = await getUserData(user.id);
+    if (!userData || (userData.role !== 'admin' && !(userData.role === 'teacher' && await userHasClassAccess(user.id, userData, classId)))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
     const attendance = await kv.get(`attendance:${classId}:${date}`);
     return c.json({ attendance });
   } catch (err) {
@@ -848,6 +873,10 @@ app.get("/make-server-6679cacd/attendance/:classId/dates", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const classId = c.req.param('classId');
+    const userData = await getUserData(user.id);
+    if (!userData || (userData.role !== 'admin' && !(userData.role === 'teacher' && await userHasClassAccess(user.id, userData, classId)))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
     console.log('Getting attendance dates for class:', classId);
 
     // Use kv.getByPrefix to get all attendance records for this class
@@ -886,13 +915,7 @@ app.get("/make-server-6679cacd/lessons/:classId", async (c) => {
     const classId = c.req.param('classId');
     const userData = await getUserData(user.id);
 
-    if (userData?.role === 'parent') {
-      // Verify the parent has at least one child in this class
-      const childrenIds = await kv.get(`parent_children:${user.id}`) || [];
-      const children = await kv.mget(childrenIds.map((id: string) => `student:${id}`));
-      const owns = children.some((s: any) => s && s.classId === classId);
-      if (!owns) return c.json({ error: 'Unauthorized' }, 403);
-    } else if (userData?.role !== 'teacher' && userData?.role !== 'admin') {
+    if (!(await userHasClassAccess(user.id, userData, classId))) {
       return c.json({ error: 'Unauthorized' }, 403);
     }
 
@@ -2870,6 +2893,11 @@ app.get("/make-server-6679cacd/oudergesprekken/:id", async (c) => {
     const id = c.req.param('id');
     const session = await kv.get(`oudergesprek:${id}`);
     if (!session) return c.json({ error: 'Not found' }, 404);
+
+    const userData = await getUserData(user.id);
+    if (!(await userHasClassAccess(user.id, userData, session.classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
 
     return c.json({ session });
   } catch (err) {

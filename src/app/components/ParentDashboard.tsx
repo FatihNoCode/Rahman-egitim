@@ -3,7 +3,8 @@ import { useApp } from '../App';
 import { translations } from './translations';
 import { Calendar } from './ui/calendar';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, LogOut } from 'lucide-react';
+import { Euro, LogOut } from 'lucide-react';
+import booksLogo from '../../imports/books__1_.png';
 
 // Local-time date helpers (avoid UTC parsing shifting the day)
 const toYMD = (d: Date) =>
@@ -372,7 +373,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
           <div className="flex items-center gap-3">
             <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl p-2 sm:p-2.5 shadow-md shadow-emerald-900/10">
-              <Moon className="h-5 w-5 sm:h-6 sm:w-6 text-white" fill="currentColor" strokeWidth={0} />
+              <img src={booksLogo} alt="Ilim Yolu" className="h-5 w-5 sm:h-6 sm:w-6 object-contain" />
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 leading-tight">{t.parentDashboard}</h1>

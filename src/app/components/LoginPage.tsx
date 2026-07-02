@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Moon, Mail, Lock, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, CheckCircle2, UserPlus } from 'lucide-react';
 import { translations } from './translations';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../../lib/supabase';
 import type { Language } from '../App';
+import booksLogo from '../../imports/books__1_.png';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
 const supabase = getSupabaseClient();
@@ -169,8 +170,8 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
 
   const BrandMark = () => (
     <div className="flex flex-col items-center mb-6">
-      <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-3.5 shadow-lg shadow-emerald-900/10 mb-3">
-        <Moon className="h-7 w-7 text-white" fill="currentColor" strokeWidth={0} />
+      <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-3 shadow-lg shadow-emerald-900/10 mb-3">
+        <img src={booksLogo} alt="Ilim Yolu" className="h-8 w-8 object-contain" />
       </div>
       <h1 className="text-xl font-bold text-gray-800 tracking-tight">Ilim Yolu</h1>
     </div>
@@ -370,6 +371,15 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
             </div>
           )}
         </div>
+
+        {/* Prospective parents — link out to the public enrollment form */}
+        <button
+          onClick={() => { window.location.href = '/inschrijven'; }}
+          className="w-full flex items-center justify-center gap-2 mt-4 bg-white/80 backdrop-blur-sm hover:bg-white text-emerald-700 font-semibold py-3 rounded-2xl shadow-md shadow-emerald-950/5 ring-1 ring-black/5 transition text-sm sm:text-base"
+        >
+          <UserPlus className="h-4 w-4" />
+          {language === 'tr' ? 'Çocuğumu/çocuklarımı kaydettirmek istiyorum' : 'Ik wil mijn kind(eren) inschrijven'}
+        </button>
       </div>
     </div>
   );

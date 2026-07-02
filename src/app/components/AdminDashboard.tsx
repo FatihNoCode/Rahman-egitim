@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { Pencil, Moon, LogOut } from 'lucide-react';
+import { Pencil, LogOut } from 'lucide-react';
+import booksLogo from '../../imports/books__1_.png';
 import ClassSelectionView from './ClassSelectionView';
 import StudentListView from './StudentListView';
 import ManageEntitiesView from './ManageEntitiesView';
@@ -432,7 +433,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
           <div className="flex items-center gap-3">
             <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl p-2 sm:p-2.5 shadow-md shadow-emerald-900/10">
-              <Moon className="h-5 w-5 sm:h-6 sm:w-6 text-white" fill="currentColor" strokeWidth={0} />
+              <img src={booksLogo} alt="Ilim Yolu" className="h-5 w-5 sm:h-6 sm:w-6 object-contain" />
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 leading-tight">{t.adminDashboard}</h1>

@@ -241,7 +241,7 @@ export default function App() {
           {isRecovery ? (
             <ResetPasswordPage language={language} onDone={() => setIsRecovery(false)} />
           ) : isElifBaPage ? (
-            <ElifBaPage onBack={() => window.history.pushState({}, '', '/')} />
+            <ElifBaPage onBack={() => { window.location.href = '/'; }} />
           ) : isInschrijvingPage ? (
             <InschrijvingPage />
           ) : inviteToken ? (

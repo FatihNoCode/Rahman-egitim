@@ -19,6 +19,7 @@ interface Student {
   name: string;
   classId: string;
   className?: string;
+  schoolId?: string;
 }
 
 interface Homework {
@@ -77,6 +78,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [homeworkCompletion, setHomeworkCompletion] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState<Record<string, Class>>({});
+  const [schoolNames, setSchoolNames] = useState<Record<string, string>>({});
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [lessons, setLessons] = useState<any[]>([]);
   const [behaviorList, setBehaviorList] = useState<any[]>([]);
@@ -200,6 +202,17 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
       setStudents(studentsWithClassNames);
       setHomework(homeworkData.homework || []);
+
+      // Only relevant for parents with children at more than one school —
+      // used to disambiguate the child switcher below.
+      const schoolIds = new Set(studentsWithClassNames.map((s: Student) => s.schoolId).filter(Boolean));
+      if (schoolIds.size > 1) {
+        apiRequest('/schools/mine').then((schoolsData) => {
+          const names: Record<string, string> = {};
+          (schoolsData.schools || []).forEach((s: any) => { names[s.id] = s.name; });
+          setSchoolNames(names);
+        }).catch(() => {});
+      }
 
       // Default the child switcher to the first child
       if (studentsWithClassNames.length > 0) {
@@ -422,7 +435,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                         : 'bg-white text-gray-600 hover:bg-emerald-50 ring-1 ring-black/5'
                     }`}
                   >
-                    {child.name}
+                    {child.schoolId && schoolNames[child.schoolId] ? `${child.name} (${schoolNames[child.schoolId]})` : child.name}
                   </button>
                 ))}
               </div>
@@ -433,7 +446,10 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-4 sm:p-6 mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">{selectedChild.name}</h2>
-                  <p className="text-sm text-gray-500">{t.class}: {selectedChild.className || '-'}</p>
+                  <p className="text-sm text-gray-500">
+                    {t.class}: {selectedChild.className || '-'}
+                    {selectedChild.schoolId && schoolNames[selectedChild.schoolId] ? ` · ${schoolNames[selectedChild.schoolId]}` : ''}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button

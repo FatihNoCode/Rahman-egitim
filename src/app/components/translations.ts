@@ -133,6 +133,19 @@ export const translations = {
     average: 'Orta',
     poor: 'Geliştirilmeli',
     veryPoor: 'Desteğe İhtiyacı Var',
+
+    // Superadmin
+    superadmin: 'Süper Yönetici',
+    superAdminDashboard: 'Süper Yönetici Paneli',
+    schools: 'Okullar',
+    schoolName: 'Okul Adı',
+    createSchool: 'Okul Oluştur',
+    enterAsAdmin: 'Yönetici Olarak Gir',
+    backToSuperadmin: 'Süper Yöneticiye Dön',
+    activeSchool: 'Aktif',
+    inactiveSchool: 'Pasif',
+    actingAsAdminFor: 'Şu an yönetici olarak işlem yapılıyor:',
+    noSchoolsYet: 'Henüz okul oluşturulmadı',
   },
   nl: {
     // Auth
@@ -268,6 +281,19 @@ export const translations = {
     average: 'Gemiddeld',
     poor: 'Kan Beter',
     veryPoor: 'Heeft Hulp Nodig',
+
+    // Superadmin
+    superadmin: 'Superbeheerder',
+    superAdminDashboard: 'Superbeheerderspaneel',
+    schools: 'Scholen',
+    schoolName: 'Schoolnaam',
+    createSchool: 'School Aanmaken',
+    enterAsAdmin: 'Ga Naar Beheerder',
+    backToSuperadmin: 'Terug naar Superbeheerder',
+    activeSchool: 'Actief',
+    inactiveSchool: 'Inactief',
+    actingAsAdminFor: 'U handelt nu als beheerder voor:',
+    noSchoolsYet: 'Nog geen scholen aangemaakt',
   },
 };
 

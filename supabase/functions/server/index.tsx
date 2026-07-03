@@ -14,7 +14,7 @@ app.use(
   "/*",
   cors({
     origin: "*",
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", "X-School-Id"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,
@@ -91,11 +91,17 @@ function emailWrapper(titleNl: string, bodyHtml: string) {
 }
 
 // Shared access check for anything scoped to a class (attendance, lessons,
-// conferences): admins can see everything, teachers only their own assigned
-// classes, parents only classes one of their children is enrolled in.
+// conferences): admins can see classes in their own school, superadmins can
+// see everything, teachers only their own assigned classes, parents only
+// classes one of their children is enrolled in.
 async function userHasClassAccess(userId: string, userData: any, classId: string): Promise<boolean> {
   if (!userData) return false;
-  if (userData.role === 'admin') return true;
+  if (userData.role === 'superadmin') return true;
+  if (userData.role === 'admin') {
+    if (!userData.schoolId) return false;
+    const cls = await kv.get(`class:${classId}`);
+    return !!cls && (!cls.schoolId || cls.schoolId === userData.schoolId);
+  }
   if (userData.role === 'teacher') {
     const teacherClassIds: string[] = await kv.get(`teacher_classes:${userId}`) || [];
     return teacherClassIds.includes(classId);
@@ -106,6 +112,73 @@ async function userHasClassAccess(userId: string, userData: any, classId: string
     return children.some((s: any) => s && s.classId === classId);
   }
   return false;
+}
+
+// Derives the set of schoolIds a teacher/parent belongs to, from their
+// classes/children rather than any explicit membership record. Used to
+// scope cross-school resources (like oudergesprekken) that aren't tied to
+// a single classId.
+async function getUserSchoolIds(userId: string, userData: any): Promise<Set<string>> {
+  if (!userData) return new Set();
+  if (userData.role === 'superadmin') {
+    const ids: string[] = await kv.get('school_ids') || [];
+    return new Set(ids);
+  }
+  if (userData.role === 'admin') {
+    return userData.schoolId ? new Set([userData.schoolId]) : new Set();
+  }
+  if (userData.role === 'teacher') {
+    const classIds: string[] = await kv.get(`teacher_classes:${userId}`) || [];
+    const classes = await kv.mget(classIds.map((id: string) => `class:${id}`));
+    return new Set(classes.filter((cl: any) => cl && cl.schoolId).map((cl: any) => cl.schoolId));
+  }
+  if (userData.role === 'parent') {
+    const childrenIds: string[] = await kv.get(`parent_children:${userId}`) || [];
+    const children = await kv.mget(childrenIds.map((id: string) => `student:${id}`));
+    return new Set(children.filter((s: any) => s && s.schoolId).map((s: any) => s.schoolId));
+  }
+  return new Set();
+}
+
+// Gets (or lazily initializes) the current school year for a given school.
+// Per-school replacement for the old single global `school_year:current` key.
+async function getCurrentSchoolYear(schoolId: string) {
+  let currentYear = await kv.get(`school_year:current:${schoolId}`);
+  if (!currentYear) {
+    const yearId = crypto.randomUUID();
+    currentYear = {
+      id: yearId,
+      schoolId,
+      name: '2026-2027',
+      startDate: new Date().toISOString(),
+      endDate: null,
+      active: true,
+      notificationDeadlineHours: 24,
+    };
+    await kv.set(`school_year:current:${schoolId}`, currentYear);
+    await kv.set(`school_year:${yearId}`, currentYear);
+  }
+  return currentYear;
+}
+
+// Resolves which school a request should operate against. Real admins are
+// pinned to the school on their own user record (never trust client input
+// for them); superadmins pick a school via the X-School-Id header, since
+// they aren't tied to any single school.
+async function resolveSchoolContext(c: any, userData: any): Promise<{ schoolId?: string; error?: string }> {
+  if (!userData) return { error: 'Unauthorized' };
+  if (userData.role === 'admin') {
+    if (!userData.schoolId) return { error: 'Admin has no school assigned' };
+    return { schoolId: userData.schoolId };
+  }
+  if (userData.role === 'superadmin') {
+    const schoolId = c.req.header('X-School-Id');
+    if (!schoolId) return { error: 'X-School-Id header required for superadmin' };
+    const school = await kv.get(`school:${schoolId}`);
+    if (!school) return { error: 'Invalid school' };
+    return { schoolId };
+  }
+  return { error: 'Unauthorized' };
 }
 
 // Health check endpoint
@@ -238,6 +311,236 @@ app.get("/make-server-6679cacd/session", async (c) => {
   }
 });
 
+// ============= SCHOOL ROUTES (multi-tenancy) =============
+
+app.post("/make-server-6679cacd/schools", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'superadmin') return c.json({ error: 'Only superadmins can create schools' }, 403);
+
+    const { name } = await c.req.json();
+    if (!name || !name.trim()) return c.json({ error: 'name is required' }, 400);
+
+    const id = crypto.randomUUID();
+    const school = { id, name: name.trim(), active: true, createdAt: new Date().toISOString() };
+    await kv.set(`school:${id}`, school);
+    const ids: string[] = await kv.get('school_ids') || [];
+    await kv.set('school_ids', [...ids, id]);
+
+    return c.json({ success: true, school });
+  } catch (err) {
+    console.log('Create school error:', err);
+    return c.json({ error: 'Failed to create school' }, 500);
+  }
+});
+
+app.get("/make-server-6679cacd/schools", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'superadmin') return c.json({ error: 'Only superadmins can list all schools' }, 403);
+
+    const ids: string[] = await kv.get('school_ids') || [];
+    const schools = (await kv.mget(ids.map((id: string) => `school:${id}`))).filter((s: any) => s && s.id);
+    return c.json({ schools });
+  } catch (err) {
+    console.log('List schools error:', err);
+    return c.json({ error: 'Failed to get schools' }, 500);
+  }
+});
+
+app.put("/make-server-6679cacd/schools/:schoolId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'superadmin') return c.json({ error: 'Only superadmins can update schools' }, 403);
+
+    const schoolId = c.req.param('schoolId');
+    const existing = await kv.get(`school:${schoolId}`);
+    if (!existing) return c.json({ error: 'School not found' }, 404);
+
+    const { name, active } = await c.req.json();
+    const updated = {
+      ...existing,
+      ...(name !== undefined ? { name } : {}),
+      ...(active !== undefined ? { active: !!active } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`school:${schoolId}`, updated);
+    return c.json({ success: true, school: updated });
+  } catch (err) {
+    console.log('Update school error:', err);
+    return c.json({ error: 'Failed to update school' }, 500);
+  }
+});
+
+// Public — no auth. Powers the "Ders Türü" picker on the public enrollment page.
+app.get("/make-server-6679cacd/schools/public", async (c) => {
+  try {
+    const ids: string[] = await kv.get('school_ids') || [];
+    const schools = (await kv.mget(ids.map((id: string) => `school:${id}`)))
+      .filter((s: any) => s && s.id && s.active)
+      .map((s: any) => ({ id: s.id, name: s.name }));
+    return c.json({ schools });
+  } catch (err) {
+    console.log('List public schools error:', err);
+    return c.json({ error: 'Failed to get schools' }, 500);
+  }
+});
+
+// Returns the schools the caller belongs to. Doubles as the id -> name
+// lookup used for cross-school display (class/child school badges, the
+// superadmin admin-mode banner, etc).
+app.get("/make-server-6679cacd/schools/mine", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (!userData) return c.json({ error: 'Unauthorized' }, 403);
+
+    if (userData.role === 'superadmin') {
+      const ids: string[] = await kv.get('school_ids') || [];
+      const schools = (await kv.mget(ids.map((id: string) => `school:${id}`))).filter((s: any) => s && s.id);
+      return c.json({ schools });
+    }
+
+    if (userData.role === 'admin') {
+      if (!userData.schoolId) return c.json({ schools: [] });
+      const school = await kv.get(`school:${userData.schoolId}`);
+      return c.json({ schools: school ? [school] : [] });
+    }
+
+    if (userData.role === 'teacher') {
+      const classIds: string[] = await kv.get(`teacher_classes:${user.id}`) || [];
+      const classes = await kv.mget(classIds.map((id: string) => `class:${id}`));
+      const schoolIds = [...new Set(classes.filter((cl: any) => cl && cl.schoolId).map((cl: any) => cl.schoolId))];
+      const schools = (await kv.mget(schoolIds.map((id: string) => `school:${id}`))).filter((s: any) => s && s.id);
+      return c.json({ schools });
+    }
+
+    if (userData.role === 'parent') {
+      const childrenIds: string[] = await kv.get(`parent_children:${user.id}`) || [];
+      const children = await kv.mget(childrenIds.map((id: string) => `student:${id}`));
+      const schoolIds = [...new Set(children.filter((s: any) => s && s.schoolId).map((s: any) => s.schoolId))];
+      const schools = (await kv.mget(schoolIds.map((id: string) => `school:${id}`))).filter((s: any) => s && s.id);
+      return c.json({ schools });
+    }
+
+    return c.json({ schools: [] });
+  } catch (err) {
+    console.log('Get my schools error:', err);
+    return c.json({ error: 'Failed to get schools' }, 500);
+  }
+});
+
+// ============= ONE-TIME MIGRATION (multi-tenancy bootstrap) =============
+// Idempotent — safe to call more than once. Backfills schoolId onto every
+// existing record and creates the "Haftasonu Eğitim" school for them to
+// belong to, then promotes the current sole admin to superadmin.
+//
+// Bootstrap nuance: this route is meant to be superadmin-only, but nobody
+// holds that role until this migration runs — so the auth check also
+// allows the known admin email through once. Remove this special case
+// once the migration has been run in production.
+app.post("/make-server-6679cacd/migrate/init-schools", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    const isBootstrapAdmin = userData?.email === 'fatihaltuner2004@gmail.com';
+    if (userData?.role !== 'superadmin' && !isBootstrapAdmin) {
+      return c.json({ error: 'Only superadmins can run this migration' }, 403);
+    }
+
+    const already = await kv.get('migration:init-schools:done');
+    if (already) return c.json({ success: true, alreadyDone: true, ...already });
+
+    // 1. Find or create the school
+    const existingSchools = (await kv.getByPrefix('school:')).filter((s: any) => s && s.id);
+    let school = existingSchools.find((s: any) => s.name === 'Haftasonu Eğitim');
+    if (!school) {
+      school = { id: crypto.randomUUID(), name: 'Haftasonu Eğitim', active: true, createdAt: new Date().toISOString() };
+      await kv.set(`school:${school.id}`, school);
+      const ids: string[] = await kv.get('school_ids') || [];
+      if (!ids.includes(school.id)) await kv.set('school_ids', [...ids, school.id]);
+    }
+    const schoolId = school.id;
+
+    // 2. Backfill classes
+    const classes = (await kv.getByPrefix('class:')).filter((cl: any) => cl && cl.id && !cl.schoolId);
+    for (const cl of classes) {
+      await kv.set(`class:${cl.id}`, { ...cl, schoolId });
+    }
+
+    // 3. Backfill students
+    const students = (await kv.getByPrefix('student:')).filter((s: any) => s && s.id && !s.schoolId);
+    for (const s of students) {
+      await kv.set(`student:${s.id}`, { ...s, schoolId });
+    }
+
+    // 4. Backfill oudergesprek sessions
+    const sessions = (await kv.getByPrefix('oudergesprek:')).filter((s: any) => s && s.id && !s.schoolId);
+    for (const s of sessions) {
+      await kv.set(`oudergesprek:${s.id}`, { ...s, schoolId });
+    }
+
+    // 5. Backfill inschrijving registrations
+    const registrations = (await kv.getByPrefix('inschrijving:')).filter((r: any) => r && r.id && !r.schoolId);
+    for (const r of registrations) {
+      await kv.set(`inschrijving:${r.id}`, { ...r, schoolId });
+    }
+
+    // 6. Move boekhouding settings (leave the old global key in place — harmless orphan, cheap rollback safety)
+    const globalSettings = await kv.get('boekhouding:settings');
+    if (globalSettings) {
+      await kv.set(`boekhouding:settings:${schoolId}`, globalSettings);
+    }
+
+    // 7. Move school year (same rollback-safety reasoning — old global key left in place)
+    const currentYear = await kv.get('school_year:current');
+    if (currentYear) {
+      await kv.set(`school_year:current:${schoolId}`, { ...currentYear, schoolId });
+    }
+    const years = (await kv.getByPrefix('school_year:')).filter((y: any) => y && y.id && y.name);
+    for (const y of years) {
+      if (!y.schoolId) await kv.set(`school_year:${y.id}`, { ...y, schoolId });
+    }
+
+    // 8. Promote the bootstrap admin to superadmin; stamp any other admins to this school
+    const allUsers = await kv.getByPrefix('user:');
+    for (const u of allUsers) {
+      if (!u || !u.id) continue;
+      if (u.email === 'fatihaltuner2004@gmail.com' && u.role !== 'superadmin') {
+        const { schoolId: _drop, ...rest } = u;
+        await kv.set(`user:${u.id}`, { ...rest, role: 'superadmin' });
+      } else if (u.role === 'admin' && !u.schoolId) {
+        await kv.set(`user:${u.id}`, { ...u, schoolId });
+      }
+    }
+
+    const done = { at: new Date().toISOString(), schoolId };
+    await kv.set('migration:init-schools:done', done);
+
+    return c.json({
+      success: true,
+      schoolId,
+      counts: {
+        classes: classes.length,
+        students: students.length,
+        oudergesprekken: sessions.length,
+        inschrijvingen: registrations.length,
+      },
+    });
+  } catch (err) {
+    console.log('Migration error:', err);
+    return c.json({ error: 'Migration failed' }, 500);
+  }
+});
+
 // ============= STUDENT ROUTES =============
 
 app.post("/make-server-6679cacd/students", async (c) => {
@@ -246,9 +549,8 @@ app.post("/make-server-6679cacd/students", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can create students' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const { name, parentEmail, classId } = await c.req.json();
     const studentId = crypto.randomUUID();
@@ -299,6 +601,7 @@ app.post("/make-server-6679cacd/students", async (c) => {
       parentId,
       parentEmail: parentEmail || null,
       classId,
+      schoolId,
       createdAt: new Date().toISOString()
     };
 
@@ -329,9 +632,8 @@ app.put("/make-server-6679cacd/students/:studentId", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can update students' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const studentId = c.req.param('studentId');
     const { name, parentEmail, classId } = await c.req.json();
@@ -339,6 +641,9 @@ app.put("/make-server-6679cacd/students/:studentId", async (c) => {
     const existingStudent = await kv.get(`student:${studentId}`);
     if (!existingStudent) {
       return c.json({ error: 'Student not found' }, 404);
+    }
+    if (existingStudent.schoolId && existingStudent.schoolId !== schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
     }
 
     let parentId = existingStudent.parentId;
@@ -445,9 +750,8 @@ app.post("/make-server-6679cacd/students/bulk", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can bulk create students' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const { students, classId } = await c.req.json();
     const createdStudents = [];
@@ -509,6 +813,7 @@ app.post("/make-server-6679cacd/students/bulk", async (c) => {
         parentId,
         parentEmail: studentData.parentEmail || null,
         classId,
+        schoolId,
         createdAt: new Date().toISOString()
       };
 
@@ -542,20 +847,22 @@ app.post("/make-server-6679cacd/students/move", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can move students' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const { studentIds, targetClassId } = await c.req.json();
     if (!Array.isArray(studentIds) || studentIds.length === 0) {
       return c.json({ error: 'studentIds must be a non-empty array' }, 400);
     }
 
-    // targetClassId may be null to unassign; otherwise it must exist
+    // targetClassId may be null to unassign; otherwise it must exist and belong to this school
     if (targetClassId) {
       const targetClass = await kv.get(`class:${targetClassId}`);
       if (!targetClass) {
         return c.json({ error: 'Target class not found' }, 404);
+      }
+      if (targetClass.schoolId && targetClass.schoolId !== schoolId) {
+        return c.json({ error: 'Target class is not in your school' }, 403);
       }
     }
 
@@ -564,6 +871,7 @@ app.post("/make-server-6679cacd/students/move", async (c) => {
     for (const studentId of studentIds) {
       const student = await kv.get(`student:${studentId}`);
       if (!student) continue;
+      if (student.schoolId && student.schoolId !== schoolId) continue; // not in this school
       if (student.classId === targetClassId) continue; // already there
 
       // Remove from old class roster
@@ -618,9 +926,11 @@ app.get("/make-server-6679cacd/students", async (c) => {
         allStudents = [...allStudents, ...students.filter((s: any) => s)];
       }
       return c.json({ students: allStudents });
-    } else if (userData?.role === 'admin') {
+    } else if (userData?.role === 'admin' || userData?.role === 'superadmin') {
+      const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+      if (schoolError) return c.json({ error: schoolError }, 400);
       const students = await kv.getByPrefix('student:');
-      return c.json({ students: students.filter((s: any) => s && s.id) });
+      return c.json({ students: students.filter((s: any) => s && s.id && s.schoolId === schoolId) });
     }
 
     return c.json({ error: 'Unauthorized' }, 403);
@@ -637,7 +947,7 @@ app.get("/make-server-6679cacd/students/:studentId/stats", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (!['admin', 'teacher'].includes(userData?.role)) {
+    if (!['admin', 'superadmin', 'teacher'].includes(userData?.role)) {
       return c.json({ error: 'Only admins and teachers can view student stats' }, 403);
     }
 
@@ -649,7 +959,7 @@ app.get("/make-server-6679cacd/students/:studentId/stats", async (c) => {
     }
 
     // Calculate stats for current school year
-    const currentYear = await kv.get('school_year:current');
+    const currentYear = student.schoolId ? await getCurrentSchoolYear(student.schoolId) : null;
     let startDate = new Date();
     startDate.setDate(startDate.getDate() - 30); // Default to 30 days if no school year
 
@@ -701,16 +1011,17 @@ app.get("/make-server-6679cacd/students/:studentId/stats", async (c) => {
   }
 });
 
-// Get all parents with their children
+// Get all parents with their children, scoped to this school. A parent with
+// children in multiple schools still appears, but only that school's
+// children are listed — the rest of their family stays invisible here.
 app.get("/make-server-6679cacd/parents", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can view parents' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     // Get all users
     const allUsers = await kv.getByPrefix('user:');
@@ -720,13 +1031,15 @@ app.get("/make-server-6679cacd/parents", async (c) => {
     for (const user of allUsers) {
       if (user && user.role === 'parent') {
         const childrenIds = await kv.get(`parent_children:${user.id}`) || [];
-        const children = await kv.mget(childrenIds.map((id: string) => `student:${id}`));
+        const children = (await kv.mget(childrenIds.map((id: string) => `student:${id}`)))
+          .filter((c: any) => c && c.id && c.schoolId === schoolId);
+        if (children.length === 0) continue;
 
         parents.push({
           id: user.id,
           email: user.email,
           lastCheckIn: user.lastCheckIn || null,
-          children: children.filter((c: any) => c && c.id) || [],
+          children,
         });
       }
     }
@@ -746,9 +1059,8 @@ app.post("/make-server-6679cacd/classes", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can create classes' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const { name, teacherId } = await c.req.json();
     const classId = crypto.randomUUID();
@@ -757,6 +1069,7 @@ app.post("/make-server-6679cacd/classes", async (c) => {
       id: classId,
       name,
       teacherId,
+      schoolId,
       createdAt: new Date().toISOString()
     };
 
@@ -786,10 +1099,12 @@ app.get("/make-server-6679cacd/classes", async (c) => {
       const classIds = await kv.get(`teacher_classes:${user.id}`) || [];
       const classes = await kv.mget(classIds.map((id: string) => `class:${id}`));
       return c.json({ classes });
-    } else if (userData?.role === 'admin') {
+    } else if (userData?.role === 'admin' || userData?.role === 'superadmin') {
+      const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+      if (schoolError) return c.json({ error: schoolError }, 400);
       const classes = await kv.getByPrefix('class:');
       // Filter out class_students entries by checking if the object has the expected class structure
-      const actualClasses = classes.filter((c: any) => c && c.id && c.name);
+      const actualClasses = classes.filter((c: any) => c && c.id && c.name && c.schoolId === schoolId);
       return c.json({ classes: actualClasses });
     }
 
@@ -800,14 +1115,37 @@ app.get("/make-server-6679cacd/classes", async (c) => {
   }
 });
 
+// Used by parent/teacher dashboards to build a classId -> class name map.
+// Scoped to the caller's own school(s) rather than every class globally.
 app.get("/make-server-6679cacd/classes/all", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
 
-    const classes = await kv.getByPrefix('class:');
-    const actualClasses = classes.filter((c: any) => c && c.id && c.name);
-    return c.json({ classes: actualClasses });
+    const userData = await getUserData(user.id);
+    const classes = (await kv.getByPrefix('class:')).filter((c: any) => c && c.id && c.name);
+
+    if (userData?.role === 'admin' || userData?.role === 'superadmin') {
+      const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+      if (schoolError) return c.json({ error: schoolError }, 400);
+      return c.json({ classes: classes.filter((cl: any) => cl.schoolId === schoolId) });
+    }
+
+    if (userData?.role === 'teacher') {
+      const classIds: string[] = await kv.get(`teacher_classes:${user.id}`) || [];
+      const myClasses = await kv.mget(classIds.map((id: string) => `class:${id}`));
+      const schoolIds = new Set(myClasses.filter((cl: any) => cl && cl.schoolId).map((cl: any) => cl.schoolId));
+      return c.json({ classes: classes.filter((cl: any) => schoolIds.has(cl.schoolId)) });
+    }
+
+    if (userData?.role === 'parent') {
+      const childrenIds: string[] = await kv.get(`parent_children:${user.id}`) || [];
+      const children = await kv.mget(childrenIds.map((id: string) => `student:${id}`));
+      const schoolIds = new Set(children.filter((s: any) => s && s.schoolId).map((s: any) => s.schoolId));
+      return c.json({ classes: classes.filter((cl: any) => schoolIds.has(cl.schoolId)) });
+    }
+
+    return c.json({ classes: [] });
   } catch (err) {
     console.log('Get all classes error:', err);
     return c.json({ error: 'Failed to get classes' }, 500);
@@ -856,7 +1194,8 @@ app.post("/make-server-6679cacd/attendance", async (c) => {
 
     // Notify parents whose child was marked absent today but never reported
     // it in advance via the absence-notification flow.
-    const currentYear = await kv.get('school_year:current');
+    const attendanceClass = await kv.get(`class:${classId}`);
+    const currentYear = attendanceClass?.schoolId ? await getCurrentSchoolYear(attendanceClass.schoolId) : null;
     for (const rec of records) {
       if (rec.present) continue;
       const yearKey = `student_absence_notifications:${rec.studentId}:${currentYear?.id}`;
@@ -904,7 +1243,7 @@ app.get("/make-server-6679cacd/attendance/:classId/:date", async (c) => {
     // Raw per-student attendance is a teacher/admin tool — parents get their
     // own filtered view via /lessons and /behavior instead.
     const userData = await getUserData(user.id);
-    if (!userData || (userData.role !== 'admin' && !(userData.role === 'teacher' && await userHasClassAccess(user.id, userData, classId)))) {
+    if (!userData || !['admin', 'superadmin', 'teacher'].includes(userData.role) || !(await userHasClassAccess(user.id, userData, classId))) {
       return c.json({ error: 'Unauthorized' }, 403);
     }
 
@@ -924,7 +1263,7 @@ app.get("/make-server-6679cacd/attendance/:classId/dates", async (c) => {
 
     const classId = c.req.param('classId');
     const userData = await getUserData(user.id);
-    if (!userData || (userData.role !== 'admin' && !(userData.role === 'teacher' && await userHasClassAccess(user.id, userData, classId)))) {
+    if (!userData || !['admin', 'superadmin', 'teacher'].includes(userData.role) || !(await userHasClassAccess(user.id, userData, classId))) {
       return c.json({ error: 'Unauthorized' }, 403);
     }
     console.log('Getting attendance dates for class:', classId);
@@ -1204,7 +1543,7 @@ app.post("/make-server-6679cacd/predefined-homework", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
+    if (userData?.role !== 'admin' && userData?.role !== 'superadmin') {
       return c.json({ error: 'Only admins can create predefined homework' }, 403);
     }
 
@@ -1244,7 +1583,7 @@ app.delete("/make-server-6679cacd/predefined-homework/:id", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
+    if (userData?.role !== 'admin' && userData?.role !== 'superadmin') {
       return c.json({ error: 'Only admins can delete predefined homework' }, 403);
     }
 
@@ -1266,16 +1605,19 @@ app.get("/make-server-6679cacd/metrics", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can view metrics' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const allStudents = await kv.getByPrefix('student:');
-    const validStudents = allStudents.filter((s: any) => s && s.id);
+    const validStudents = allStudents.filter((s: any) => s && s.id && s.schoolId === schoolId);
+    const studentIdsInSchool = new Set(validStudents.map((s: any) => s.id));
     const allBehavior = await kv.getByPrefix('behavior:');
-    const validBehavior = allBehavior.filter((b: any) => b && b.id);
+    const validBehavior = allBehavior.filter((b: any) => b && b.id && studentIdsInSchool.has(b.studentId));
     const allAttendance = await kv.getByPrefix('attendance:');
-    const validAttendance = allAttendance.filter((a: any) => a && a.classId);
+    const validAttendance = allAttendance.filter((a: any) => a && a.classId).map((a: any) => ({
+      ...a,
+      records: (a.records || []).filter((r: any) => studentIdsInSchool.has(r.studentId)),
+    }));
 
     // Calculate poorly behaved students (avg rating < 3)
     const behaviorByStudent = validBehavior.reduce((acc: any, b: any) => {
@@ -1337,18 +1679,28 @@ app.get("/make-server-6679cacd/metrics", async (c) => {
 
 // ============= TEACHER MANAGEMENT =============
 
+// Only teachers who have at least one class in this school are listed —
+// a teacher assigned in another school too still stays out of view here.
 app.get("/make-server-6679cacd/teachers", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can view teachers' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const allUsers = await kv.getByPrefix('user:');
-    const teachers = allUsers.filter((u: any) => u && u.role === 'teacher');
+    const allTeachers = allUsers.filter((u: any) => u && u.role === 'teacher');
+
+    const teachers = [];
+    for (const t of allTeachers) {
+      const classIds: string[] = await kv.get(`teacher_classes:${t.id}`) || [];
+      const classes = await kv.mget(classIds.map((id: string) => `class:${id}`));
+      if (classes.some((cl: any) => cl && cl.schoolId === schoolId)) {
+        teachers.push(t);
+      }
+    }
 
     return c.json({ teachers });
   } catch (err) {
@@ -1363,7 +1715,7 @@ app.post("/make-server-6679cacd/teachers", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
+    if (userData?.role !== 'admin' && userData?.role !== 'superadmin') {
       return c.json({ error: 'Only admins can create teachers' }, 403);
     }
 
@@ -1560,7 +1912,7 @@ app.post("/make-server-6679cacd/reset-password", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
+    if (userData?.role !== 'admin' && userData?.role !== 'superadmin') {
       return c.json({ error: 'Only admins can reset passwords' }, 403);
     }
 
@@ -1599,29 +1951,31 @@ app.post("/make-server-6679cacd/reset-password", async (c) => {
 
 // ============= ABSENCE NOTIFICATION SYSTEM =============
 
-// Get current school year and settings
+// Get current school year and settings. Admin/superadmin resolve via the
+// usual school context; teacher/parent (who also call this route) fall
+// back to their single school — ambiguous for multi-school accounts, same
+// known limitation as /boekhouding/settings.
 app.get("/make-server-6679cacd/school-year/current", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
 
-    let currentYear = await kv.get('school_year:current');
-
-    if (!currentYear) {
-      // Initialize first school year
-      const yearId = crypto.randomUUID();
-      currentYear = {
-        id: yearId,
-        name: '2026-2027',
-        startDate: new Date().toISOString(),
-        endDate: null,
-        active: true,
-        notificationDeadlineHours: 24, // Default 24 hours before lesson
-      };
-      await kv.set('school_year:current', currentYear);
-      await kv.set(`school_year:${yearId}`, currentYear);
+    const userData = await getUserData(user.id);
+    let schoolId: string | undefined;
+    if (userData?.role === 'admin' || userData?.role === 'superadmin') {
+      const resolved = await resolveSchoolContext(c, userData);
+      if (resolved.error) return c.json({ error: resolved.error }, 400);
+      schoolId = resolved.schoolId;
+    } else {
+      const requested = c.req.query('schoolId');
+      const mySchoolIds = await getUserSchoolIds(user.id, userData);
+      if (requested && mySchoolIds.has(requested)) schoolId = requested;
+      else if (mySchoolIds.size === 1) schoolId = [...mySchoolIds][0];
+      else if (mySchoolIds.size === 0) return c.json({ year: null });
+      else return c.json({ error: 'schoolId query param required (account spans multiple schools)' }, 400);
     }
 
+    const currentYear = await getCurrentSchoolYear(schoolId!);
     return c.json({ year: currentYear });
   } catch (err) {
     console.log('Get current school year error:', err);
@@ -1636,16 +1990,11 @@ app.put("/make-server-6679cacd/school-year/notification-deadline", async (c) => 
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can update notification deadline' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const { time } = await c.req.json();
-    const currentYear = await kv.get('school_year:current');
-
-    if (!currentYear) {
-      return c.json({ error: 'No active school year' }, 404);
-    }
+    const currentYear = await getCurrentSchoolYear(schoolId);
 
     // Validate time format (HH:mm)
     const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -1660,7 +2009,7 @@ app.put("/make-server-6679cacd/school-year/notification-deadline", async (c) => 
       notificationDeadlineHours: currentYear.notificationDeadlineHours,
     };
 
-    await kv.set('school_year:current', updated);
+    await kv.set(`school_year:current:${schoolId}`, updated);
     await kv.set(`school_year:${currentYear.id}`, updated);
 
     return c.json({ year: updated });
@@ -1695,7 +2044,7 @@ app.post("/make-server-6679cacd/absence-notification", async (c) => {
     }
 
     // Get current school year settings
-    const currentYear = await kv.get('school_year:current');
+    const currentYear = student.schoolId ? await getCurrentSchoolYear(student.schoolId) : null;
     const deadlineTime = currentYear?.notificationDeadlineTime || '09:00';
 
     // Check if notification is on time
@@ -1754,7 +2103,8 @@ app.get("/make-server-6679cacd/absence-notifications/:studentId", async (c) => {
       }
     }
 
-    const currentYear = await kv.get('school_year:current');
+    const targetStudent = await kv.get(`student:${studentId}`);
+    const currentYear = targetStudent?.schoolId ? await getCurrentSchoolYear(targetStudent.schoolId) : null;
     const yearKey = `student_absence_notifications:${studentId}:${currentYear?.id}`;
     const notificationIds = await kv.get(yearKey) || [];
 
@@ -1775,7 +2125,7 @@ app.get("/make-server-6679cacd/absence-notifications-week", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (!userData || (userData.role !== 'teacher' && userData.role !== 'admin')) {
+    if (!userData || !['teacher', 'admin', 'superadmin'].includes(userData.role)) {
       return c.json({ error: 'Unauthorized' }, 403);
     }
 
@@ -1784,18 +2134,34 @@ app.get("/make-server-6679cacd/absence-notifications-week", async (c) => {
     const to = c.req.query('to');     // YYYY-MM-DD
     if (!from || !to) return c.json({ error: 'from and to are required' }, 400);
 
-    // Get students in the class (or all students for admin without classId)
+    // Get students in the class (or all students in this school without classId)
     const allStudents: any[] = (await kv.getByPrefix('student:')).filter((s: any) => s && s.id);
-    const students = classId
-      ? allStudents.filter((s: any) => s.classId === classId)
-      : allStudents;
+    let students: any[];
+    if (userData.role === 'teacher') {
+      const teacherClassIds: string[] = await kv.get(`teacher_classes:${user.id}`) || [];
+      students = classId
+        ? (teacherClassIds.includes(classId) ? allStudents.filter((s: any) => s.classId === classId) : [])
+        : allStudents.filter((s: any) => teacherClassIds.includes(s.classId));
+    } else {
+      const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+      if (schoolError) return c.json({ error: schoolError }, 400);
+      students = allStudents.filter((s: any) => s.schoolId === schoolId && (!classId || s.classId === classId));
+    }
 
-    const currentYear = await kv.get('school_year:current');
+    // Notifications are keyed per-student by that student's own school year,
+    // so look each one up individually rather than assuming a single shared year.
+    const yearByStudent = new Map<string, any>();
+    for (const s of students) {
+      if (s.schoolId && !yearByStudent.has(s.schoolId)) {
+        yearByStudent.set(s.schoolId, await getCurrentSchoolYear(s.schoolId));
+      }
+    }
 
     // Fetch all notifications for these students and filter by date range
     const results: any[] = [];
     await Promise.all(students.map(async (student: any) => {
-      const notificationIds: string[] = await kv.get(`student_absence_notifications:${student.id}:${currentYear?.id}`) || [];
+      const studentYear = yearByStudent.get(student.schoolId);
+      const notificationIds: string[] = await kv.get(`student_absence_notifications:${student.id}:${studentYear?.id}`) || [];
       if (!notificationIds.length) return;
       const notifications = await kv.mget(notificationIds.map((id: string) => `absence_notification:${id}`));
       for (const n of notifications) {
@@ -1828,7 +2194,7 @@ app.get("/make-server-6679cacd/students/:studentId/year-stats", async (c) => {
       if (!childrenIds.includes(studentId)) {
         return c.json({ error: 'Unauthorized' }, 403);
       }
-    } else if (userData?.role !== 'teacher' && userData?.role !== 'admin') {
+    } else if (!['teacher', 'admin', 'superadmin'].includes(userData?.role)) {
       return c.json({ error: 'Unauthorized' }, 403);
     }
 
@@ -1837,7 +2203,7 @@ app.get("/make-server-6679cacd/students/:studentId/year-stats", async (c) => {
       return c.json({ error: 'Student not found' }, 404);
     }
 
-    const currentYear = await kv.get('school_year:current');
+    const currentYear = student.schoolId ? await getCurrentSchoolYear(student.schoolId) : null;
     if (!currentYear) {
       return c.json({
         totalLessons: 0,
@@ -1921,14 +2287,13 @@ app.post("/make-server-6679cacd/school-year/new", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can start new school year' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const { name } = await c.req.json();
 
     // Close current year
-    const currentYear = await kv.get('school_year:current');
+    const currentYear = await kv.get(`school_year:current:${schoolId}`);
     if (currentYear) {
       const closedYear = {
         ...currentYear,
@@ -1942,6 +2307,7 @@ app.post("/make-server-6679cacd/school-year/new", async (c) => {
     const yearId = crypto.randomUUID();
     const newYear = {
       id: yearId,
+      schoolId,
       name: name || new Date().getFullYear() + '-' + (new Date().getFullYear() + 1),
       startDate: new Date().toISOString(),
       endDate: null,
@@ -1949,7 +2315,7 @@ app.post("/make-server-6679cacd/school-year/new", async (c) => {
       notificationDeadlineHours: currentYear?.notificationDeadlineHours || 24,
     };
 
-    await kv.set('school_year:current', newYear);
+    await kv.set(`school_year:current:${schoolId}`, newYear);
     await kv.set(`school_year:${yearId}`, newYear);
 
     return c.json({ success: true, year: newYear, previousYear: currentYear });
@@ -1959,19 +2325,24 @@ app.post("/make-server-6679cacd/school-year/new", async (c) => {
   }
 });
 
-// Get all school years (admin only)
+// Get all school years for this school (admin/superadmin only). Dedupes by
+// year id since school_year:current:{schoolId} is a live alias of the same
+// record as school_year:{yearId} and the prefix scan below matches both.
 app.get("/make-server-6679cacd/school-years", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can view all school years' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const years = await kv.getByPrefix('school_year:');
-    const actualYears = years.filter((y: any) => y && y.id && y.name);
+    const byId = new Map<string, any>();
+    for (const y of years) {
+      if (y && y.id && y.name && y.schoolId === schoolId) byId.set(y.id, y);
+    }
+    const actualYears = [...byId.values()];
 
     // Sort by start date descending (newest first)
     actualYears.sort((a: any, b: any) =>
@@ -1992,13 +2363,28 @@ app.get("/make-server-6679cacd/students/:studentId/historical-stats", async (c) 
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin' && userData?.role !== 'teacher') {
+    if (!['admin', 'superadmin', 'teacher'].includes(userData?.role)) {
       return c.json({ error: 'Only admins and teachers can view historical stats' }, 403);
     }
 
     const studentId = c.req.param('studentId');
+    const targetStudent = await kv.get(`student:${studentId}`);
+    if (!targetStudent) return c.json({ error: 'Student not found' }, 404);
+    if (userData.role === 'admin' && userData.schoolId !== targetStudent.schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
+    }
+    if (userData.role === 'teacher' && !(await userHasClassAccess(user.id, userData, targetStudent.classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    // Dedupe by year id since school_year:current:{schoolId} is a live alias
+    // of the same record as school_year:{yearId}.
     const years = await kv.getByPrefix('school_year:');
-    const actualYears = years.filter((y: any) => y && y.id && y.name);
+    const byId = new Map<string, any>();
+    for (const y of years) {
+      if (y && y.id && y.name && y.schoolId === targetStudent.schoolId) byId.set(y.id, y);
+    }
+    const actualYears = [...byId.values()];
 
     const historicalStats = [];
 
@@ -2041,9 +2427,8 @@ app.put("/make-server-6679cacd/classes/:classId", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can update classes' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const classId = c.req.param('classId');
     const { name, teacherId } = await c.req.json();
@@ -2051,6 +2436,9 @@ app.put("/make-server-6679cacd/classes/:classId", async (c) => {
     const existingClass = await kv.get(`class:${classId}`);
     if (!existingClass) {
       return c.json({ error: 'Class not found' }, 404);
+    }
+    if (existingClass.schoolId && existingClass.schoolId !== schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
     }
 
     // Remove class from old teacher's list if changing teacher
@@ -2095,15 +2483,17 @@ app.delete("/make-server-6679cacd/classes/:classId", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can delete classes' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const classId = c.req.param('classId');
     const existingClass = await kv.get(`class:${classId}`);
 
     if (!existingClass) {
       return c.json({ error: 'Class not found' }, 404);
+    }
+    if (existingClass.schoolId && existingClass.schoolId !== schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
     }
 
     // Remove class from teacher's list if assigned
@@ -2137,15 +2527,17 @@ app.delete("/make-server-6679cacd/students/:studentId", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can delete students' }, 403);
-    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const studentId = c.req.param('studentId');
     const existingStudent = await kv.get(`student:${studentId}`);
 
     if (!existingStudent) {
       return c.json({ error: 'Student not found' }, 404);
+    }
+    if (existingStudent.schoolId && existingStudent.schoolId !== schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
     }
 
     // Remove student from parent's children list if assigned
@@ -2356,15 +2748,21 @@ app.get("/make-server-6679cacd/parents/by-email", async (c) => {
 app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
   try {
     const body = await c.req.json();
-    const { geslacht, voornaam, achternaam, leeftijd, contactNaam, contactTelefoon, contactEmail, opmerkingen, contact2Naam, contact2Telefoon, contact2Email, vraag } = body;
+    const { schoolId, geslacht, voornaam, achternaam, leeftijd, contactNaam, contactTelefoon, contactEmail, opmerkingen, contact2Naam, contact2Telefoon, contact2Email, vraag } = body;
 
-    if (!geslacht || !voornaam || !achternaam || !leeftijd || !contactNaam || !contactTelefoon || !contactEmail) {
+    if (!schoolId || !geslacht || !voornaam || !achternaam || !leeftijd || !contactNaam || !contactTelefoon || !contactEmail) {
       return c.json({ error: 'Alle verplichte velden moeten ingevuld zijn' }, 400);
+    }
+
+    const school = await kv.get(`school:${schoolId}`);
+    if (!school || !school.active) {
+      return c.json({ error: 'Invalid school' }, 400);
     }
 
     const id = crypto.randomUUID();
     const record = {
       id,
+      schoolId,
       geslacht,
       voornaam,
       achternaam,
@@ -2415,7 +2813,7 @@ app.post("/make-server-6679cacd/send-reminder", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can send reminders' }, 403);
+    if (userData?.role !== 'admin' && userData?.role !== 'superadmin') return c.json({ error: 'Only admins can send reminders' }, 403);
 
     const { teacherIds, subject, message } = await c.req.json();
     if (!teacherIds?.length || !subject || !message) {
@@ -2477,13 +2875,14 @@ app.get("/make-server-6679cacd/inschrijvingen", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can view registrations' }, 403);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const ids = await kv.get('inschrijving_ids') || [];
     const registrations = [];
     for (const id of ids) {
       const rec = await kv.get(`inschrijving:${id}`);
-      if (rec) registrations.push(rec);
+      if (rec && rec.schoolId === schoolId) registrations.push(rec);
     }
     registrations.sort((a: any, b: any) => new Date(b.ingediendOp).getTime() - new Date(a.ingediendOp).getTime());
     return c.json({ registrations });
@@ -2499,12 +2898,16 @@ app.patch("/make-server-6679cacd/inschrijvingen/:id", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can update registrations' }, 403);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const id = c.req.param('id');
     const { status } = await c.req.json();
     const rec = await kv.get(`inschrijving:${id}`);
     if (!rec) return c.json({ error: 'Not found' }, 404);
+    if (rec.schoolId && rec.schoolId !== schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
+    }
     await kv.set(`inschrijving:${id}`, { ...rec, status });
 
     const statusLabelsNl: Record<string, string> = {
@@ -2556,11 +2959,32 @@ const DEFAULT_BOEKHOUDING_SETTINGS = {
   temel: 10,
 };
 
+// GET below resolves the schoolId for teacher/parent callers from the
+// explicit ?schoolId= query param if given, else their single school —
+// callers spanning more than one school must pass it explicitly (a known
+// limitation until a school-aware billing UI exists).
 app.get("/make-server-6679cacd/boekhouding/settings", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
-    const settings = await kv.get('boekhouding:settings') || DEFAULT_BOEKHOUDING_SETTINGS;
+    const userData = await getUserData(user.id);
+    const mySchoolIds = await getUserSchoolIds(user.id, userData);
+    const requested = c.req.query('schoolId');
+    let schoolId: string | undefined;
+    if (userData?.role === 'admin' || userData?.role === 'superadmin') {
+      const resolved = await resolveSchoolContext(c, userData);
+      if (resolved.error) return c.json({ error: resolved.error }, 400);
+      schoolId = resolved.schoolId;
+    } else if (requested && mySchoolIds.has(requested)) {
+      schoolId = requested;
+    } else if (mySchoolIds.size === 1) {
+      schoolId = [...mySchoolIds][0];
+    } else if (mySchoolIds.size === 0) {
+      return c.json({ settings: DEFAULT_BOEKHOUDING_SETTINGS });
+    } else {
+      return c.json({ error: 'schoolId query param required (account spans multiple schools)' }, 400);
+    }
+    const settings = await kv.get(`boekhouding:settings:${schoolId}`) || DEFAULT_BOEKHOUDING_SETTINGS;
     return c.json({ settings });
   } catch (err) {
     console.log('Get boekhouding settings error:', err);
@@ -2573,9 +2997,10 @@ app.put("/make-server-6679cacd/boekhouding/settings", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can update settings' }, 403);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
     const settings = await c.req.json();
-    await kv.set('boekhouding:settings', settings);
+    await kv.set(`boekhouding:settings:${schoolId}`, settings);
     return c.json({ success: true });
   } catch (err) {
     console.log('Update boekhouding settings error:', err);
@@ -2615,8 +3040,13 @@ app.put("/make-server-6679cacd/boekhouding/student/:studentId", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can update student records' }, 403);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
     const studentId = c.req.param('studentId');
+    const targetStudent = await kv.get(`student:${studentId}`);
+    if (targetStudent?.schoolId && targetStudent.schoolId !== schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
+    }
     const body = await c.req.json();
     const existing = await kv.get(`boekhouding:student:${studentId}`) || defaultBoekhoudingRecord(studentId);
     const updated = {
@@ -2688,7 +3118,8 @@ app.post("/make-server-6679cacd/boekhouding/payments", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can log payments' }, 403);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const { studentId, date, category, amount, note } = await c.req.json();
     if (!studentId || !date || !category || amount === undefined) {
@@ -2700,6 +3131,9 @@ app.post("/make-server-6679cacd/boekhouding/payments", async (c) => {
     }
     const student = await kv.get(`student:${studentId}`);
     if (!student) return c.json({ error: 'Student not found' }, 404);
+    if (student.schoolId && student.schoolId !== schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
+    }
 
     const id = crypto.randomUUID();
     const entry = {
@@ -2721,7 +3155,7 @@ app.post("/make-server-6679cacd/boekhouding/payments", async (c) => {
     // notify the parent — but only on the payment that crosses the
     // threshold, not on every payment after it's already been reached.
     if (category === 'schoolgeld') {
-      const settings = await kv.get('boekhouding:settings') || DEFAULT_BOEKHOUDING_SETTINGS;
+      const settings = await kv.get(`boekhouding:settings:${schoolId}`) || DEFAULT_BOEKHOUDING_SETTINGS;
       const tiers = settings.schoolgeld || DEFAULT_BOEKHOUDING_SETTINGS.schoolgeld;
       const required = record.isMember
         ? (record.hasSibling ? tiers.memberWithSibling : tiers.memberNoSibling)
@@ -2759,15 +3193,18 @@ app.post("/make-server-6679cacd/boekhouding/payments", async (c) => {
   }
 });
 
-// Admin: list every logged payment (for the internal log tab)
+// Admin: list every logged payment for this school (for the internal log tab)
 app.get("/make-server-6679cacd/boekhouding/payments", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can view the payment log' }, 403);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
-    const entries = await kv.getByPrefix('boekhouding_payment:');
+    const allStudents = await kv.getByPrefix('student:');
+    const studentIdsInSchool = new Set(allStudents.filter((s: any) => s && s.id && s.schoolId === schoolId).map((s: any) => s.id));
+    const entries = (await kv.getByPrefix('boekhouding_payment:')).filter((e: any) => e && studentIdsInSchool.has(e.studentId));
     entries.sort((a: any, b: any) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
     return c.json({ entries });
   } catch (err) {
@@ -2805,11 +3242,16 @@ app.put("/make-server-6679cacd/boekhouding/payments/:id", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can edit payment log entries' }, 403);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const id = c.req.param('id');
     const existing = await kv.get(`boekhouding_payment:${id}`);
     if (!existing) return c.json({ error: 'Payment not found' }, 404);
+    const existingStudent = await kv.get(`student:${existing.studentId}`);
+    if (existingStudent?.schoolId && existingStudent.schoolId !== schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
+    }
 
     const { studentId, date, category, amount, note } = await c.req.json();
     if (!studentId || !date || !category || amount === undefined) {
@@ -2819,9 +3261,10 @@ app.put("/make-server-6679cacd/boekhouding/payments/:id", async (c) => {
     if (!validCategories.includes(category)) {
       return c.json({ error: 'Invalid category' }, 400);
     }
-    if (studentId !== existing.studentId) {
-      const student = await kv.get(`student:${studentId}`);
-      if (!student) return c.json({ error: 'Student not found' }, 404);
+    const student = await kv.get(`student:${studentId}`);
+    if (!student) return c.json({ error: 'Student not found' }, 404);
+    if (student.schoolId && student.schoolId !== schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
     }
 
     const updatedEntry = {
@@ -2853,10 +3296,17 @@ app.delete("/make-server-6679cacd/boekhouding/payments/:id", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can delete payment log entries' }, 403);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const id = c.req.param('id');
     const entry = await kv.get(`boekhouding_payment:${id}`);
+    if (entry?.studentId) {
+      const entryStudent = await kv.get(`student:${entry.studentId}`);
+      if (entryStudent?.schoolId && entryStudent.schoolId !== schoolId) {
+        return c.json({ error: 'Not your school' }, 403);
+      }
+    }
     await kv.del(`boekhouding_payment:${id}`);
     if (entry?.studentId) await recomputeStudentBoekhouding(entry.studentId);
     return c.json({ success: true });
@@ -2874,11 +3324,12 @@ app.post("/make-server-6679cacd/boekhouding/send-schoolgeld-reminders", async (c
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can send reminders' }, 403);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
-    const settings = await kv.get('boekhouding:settings') || DEFAULT_BOEKHOUDING_SETTINGS;
+    const settings = await kv.get(`boekhouding:settings:${schoolId}`) || DEFAULT_BOEKHOUDING_SETTINGS;
     const tiers = settings.schoolgeld || DEFAULT_BOEKHOUDING_SETTINGS.schoolgeld;
-    const allStudents: any[] = (await kv.getByPrefix('student:')).filter((s: any) => s && s.id);
+    const allStudents: any[] = (await kv.getByPrefix('student:')).filter((s: any) => s && s.id && s.schoolId === schoolId);
 
     // Group outstanding children by parent so each parent gets one email
     // listing every child they still owe for, instead of one email per child.
@@ -2942,15 +3393,16 @@ app.post("/make-server-6679cacd/oudergesprekken", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can create conferences' }, 403);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const { date, startTime, endTime, minutesPerSlot } = await c.req.json();
     if (!date || !startTime || !endTime || !minutesPerSlot) {
       return c.json({ error: 'date, startTime, endTime, minutesPerSlot are required' }, 400);
     }
 
-    // A conference spans every class — count all enrolled students, not just one class's.
-    const allStudents: any[] = (await kv.getByPrefix('student:')).filter((s: any) => s && s.id);
+    // A conference spans every class in this school — count all enrolled students, not just one class's.
+    const allStudents: any[] = (await kv.getByPrefix('student:')).filter((s: any) => s && s.id && s.schoolId === schoolId);
     const studentCount = allStudents.length;
     const totalMinutesNeeded = studentCount * minutesPerSlot;
 
@@ -2980,6 +3432,7 @@ app.post("/make-server-6679cacd/oudergesprekken", async (c) => {
       id,
       classId: null,
       className: null,
+      schoolId,
       date,
       startTime,
       endTime,
@@ -3047,19 +3500,20 @@ app.post("/make-server-6679cacd/oudergesprekken", async (c) => {
   }
 });
 
-// List all conference sessions
+// List all conference sessions for the caller's school(s)
 app.get("/make-server-6679cacd/oudergesprekken", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
 
+    const userData = await getUserData(user.id);
+    const mySchoolIds = await getUserSchoolIds(user.id, userData);
+
     const ids: string[] = await kv.get('oudergesprek_ids') || [];
     if (ids.length === 0) return c.json({ sessions: [] });
 
     const allSessions = await kv.mget(ids.map((id: string) => `oudergesprek:${id}`));
-    // Conferences now span every class, so no per-class filtering is needed —
-    // every admin/teacher/parent sees the same list.
-    let sessions = allSessions.filter((s: any) => s && s.id);
+    let sessions = allSessions.filter((s: any) => s && s.id && (!s.schoolId || mySchoolIds.has(s.schoolId)));
 
     sessions.sort((a: any, b: any) => b.date.localeCompare(a.date));
     return c.json({ sessions });
@@ -3079,10 +3533,12 @@ app.get("/make-server-6679cacd/oudergesprekken/:id", async (c) => {
     const session = await kv.get(`oudergesprek:${id}`);
     if (!session) return c.json({ error: 'Not found' }, 404);
 
-    // Conferences span every class — any authenticated admin/teacher/parent
-    // may view a session (only classId-scoped resources need userHasClassAccess).
     const userData = await getUserData(user.id);
     if (!userData) return c.json({ error: 'Unauthorized' }, 403);
+    if (session.schoolId) {
+      const mySchoolIds = await getUserSchoolIds(user.id, userData);
+      if (!mySchoolIds.has(session.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+    }
 
     return c.json({ session });
   } catch (err) {
@@ -3118,6 +3574,9 @@ app.post("/make-server-6679cacd/oudergesprekken/:id/book", async (c) => {
 
     const student = await kv.get(`student:${studentId}`);
     if (!student) return c.json({ error: 'Student not found' }, 404);
+    if (session.schoolId && student.schoolId && student.schoolId !== session.schoolId) {
+      return c.json({ error: 'Student is not in this conference\'s school' }, 403);
+    }
 
     // Check if slot is still available
     if (session.slots[slotIndex].bookedBy) {
@@ -3156,9 +3615,14 @@ app.delete("/make-server-6679cacd/oudergesprekken/:id", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (userData?.role !== 'admin') return c.json({ error: 'Only admins can delete conferences' }, 403);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const id = c.req.param('id');
+    const existing = await kv.get(`oudergesprek:${id}`);
+    if (existing?.schoolId && existing.schoolId !== schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
+    }
     await kv.del(`oudergesprek:${id}`);
     const ids: string[] = await kv.get('oudergesprek_ids') || [];
     await kv.set('oudergesprek_ids', ids.filter((i: string) => i !== id));

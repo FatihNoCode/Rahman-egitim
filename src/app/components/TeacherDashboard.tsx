@@ -11,6 +11,7 @@ import AbsenceOverviewView from './AbsenceOverviewView';
 interface Class {
   id: string;
   name: string;
+  schoolId?: string;
 }
 
 interface Student {
@@ -27,6 +28,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const { language, setLanguage, apiRequest } = useApp();
   const t = translations[language];
   const [classes, setClasses] = useState<Class[]>([]);
+  const [schoolNames, setSchoolNames] = useState<Record<string, string>>({});
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [students, setStudents] = useState<Student[]>([]);
   const [studentsWithStats, setStudentsWithStats] = useState<any[]>([]);
@@ -99,6 +101,15 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       setClasses(classesData.classes || []);
       if (classesData.classes?.length > 0) {
         setSelectedClass(classesData.classes[0].id);
+      }
+      // Only relevant for accounts that teach classes across more than one
+      // school — used to disambiguate the class picker below.
+      const schoolIds = new Set((classesData.classes || []).map((c: Class) => c.schoolId).filter(Boolean));
+      if (schoolIds.size > 1) {
+        const schoolsData = await apiRequest('/schools/mine');
+        const names: Record<string, string> = {};
+        (schoolsData.schools || []).forEach((s: any) => { names[s.id] = s.name; });
+        setSchoolNames(names);
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -497,7 +508,9 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                         className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       >
                         {classes.map((cls) => (
-                          <option key={cls.id} value={cls.id}>{cls.name}</option>
+                          <option key={cls.id} value={cls.id}>
+                            {cls.schoolId && schoolNames[cls.schoolId] ? `${cls.name} (${schoolNames[cls.schoolId]})` : cls.name}
+                          </option>
                         ))}
                       </select>
                     </div>

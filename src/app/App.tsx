@@ -9,6 +9,7 @@ import faviconUrl from '../imports/books__1_.png';
 const ParentDashboard = lazy(() => import('./components/ParentDashboard'));
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const SuperAdminDashboard = lazy(() => import('./components/SuperAdminDashboard'));
 const InvitePage = lazy(() => import('./components/InvitePage'));
 const InschrijvingPage = lazy(() => import('./components/InschrijvingPage'));
 const ResetPasswordPage = lazy(() => import('./components/ResetPasswordPage'));
@@ -24,7 +25,7 @@ interface User {
   id: string;
   email: string;
   name: string;
-  role: 'parent' | 'teacher' | 'admin';
+  role: 'parent' | 'teacher' | 'admin' | 'superadmin';
   lastCheckIn?: string;
 }
 
@@ -49,6 +50,10 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Superadmins act on a specific school by selecting it; actingSchoolId is
+  // sent as X-School-Id on every request so the backend can scope data.
+  const [actingSchoolId, setActingSchoolId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'superadmin' | 'admin'>('superadmin');
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [isRecovery, setIsRecovery] = useState(false);
   const pathSegments = window.location.pathname.split('/');
@@ -76,6 +81,7 @@ export default function App() {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
+        ...(actingSchoolId ? { 'X-School-Id': actingSchoolId } : {}),
         ...options.headers,
       },
     });
@@ -181,6 +187,18 @@ export default function App() {
     await supabase.auth.signOut();
     setUser(null);
     setAccessToken(null);
+    setActingSchoolId(null);
+    setViewMode('superadmin');
+  };
+
+  const handleEnterSchool = (schoolId: string) => {
+    setActingSchoolId(schoolId);
+    setViewMode('admin');
+  };
+
+  const handleExitAdminMode = () => {
+    setActingSchoolId(null);
+    setViewMode('superadmin');
   };
 
   if (loading) {
@@ -228,8 +246,13 @@ export default function App() {
             <ParentDashboard onLogout={handleLogout} />
           ) : user.role === 'teacher' ? (
             <TeacherDashboard onLogout={handleLogout} />
+          ) : user.role === 'superadmin' && viewMode === 'superadmin' ? (
+            <SuperAdminDashboard onLogout={handleLogout} onEnterSchool={handleEnterSchool} />
           ) : (
-            <AdminDashboard onLogout={handleLogout} />
+            <AdminDashboard
+              onLogout={handleLogout}
+              onExitAdminMode={user.role === 'superadmin' ? handleExitAdminMode : undefined}
+            />
           )}
         </Suspense>
       </div>

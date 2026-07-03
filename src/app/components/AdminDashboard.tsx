@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { Pencil, LogOut } from 'lucide-react';
+import { Pencil, LogOut, ArrowLeft } from 'lucide-react';
 import booksLogo from '../../imports/books__1_.png';
 import ClassSelectionView from './ClassSelectionView';
 import StudentListView from './StudentListView';
@@ -59,9 +59,10 @@ interface StudentWithStats extends Student {
 
 interface AdminDashboardProps {
   onLogout: () => void;
+  onExitAdminMode?: () => void;
 }
 
-export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
+export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashboardProps) {
   const { language, setLanguage, apiRequest } = useApp();
   const t = translations[language];
   const [activeTab, setActiveTab] = useHashTab<'metrics' | 'entities' | 'teachers' | 'meldingen' | 'settings' | 'boekhouding' | 'inschrijvingen' | 'oudergesprekken'>(
@@ -462,6 +463,16 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             </button>
           </div>
         </div>
+
+        {onExitAdminMode && (
+          <button
+            onClick={onExitAdminMode}
+            className="flex items-center gap-1.5 mb-4 sm:mb-6 px-3 sm:px-4 py-1.5 sm:py-2 bg-emerald-800 text-white rounded-full hover:bg-emerald-900 text-xs sm:text-sm font-semibold shadow-sm transition"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            {t.backToSuperadmin}
+          </button>
+        )}
 
         <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
           <div className="flex gap-1 sm:gap-1.5 mb-4 sm:mb-6 bg-gray-100 rounded-xl p-1 overflow-x-auto">

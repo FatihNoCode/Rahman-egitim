@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import faviconUrl from '../../imports/books__1_.png';
 import { ChevronDown, Plus, X, Mail } from 'lucide-react';
@@ -182,7 +182,9 @@ export default function InschrijvingPage() {
   const t = T[language];
   const faqs = FAQS[language];
 
+  const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState({
+    schoolId: '',
     geslacht: '',
     voornaam: '',
     achternaam: '',
@@ -207,13 +209,22 @@ export default function InschrijvingPage() {
   const [serverError, setServerError] = useState('');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
+  useEffect(() => {
+    fetch(`${API_BASE}/schools/public`, {
+      headers: { 'Authorization': `Bearer ${publicAnonKey}` },
+    })
+      .then(res => res.json())
+      .then(data => setSchools(data.schools || []))
+      .catch(err => console.error('Error loading schools:', err));
+  }, []);
+
   const set = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: false }));
   };
 
   const validate = () => {
-    const required = ['geslacht', 'voornaam', 'achternaam', 'leeftijd', 'contactNaam', 'contactTelefoon', 'contactEmail'];
+    const required = ['schoolId', 'geslacht', 'voornaam', 'achternaam', 'leeftijd', 'contactNaam', 'contactTelefoon', 'contactEmail'];
     const newErrors: Record<string, boolean> = {};
     let ok = true;
     for (const f of required) {
@@ -256,7 +267,7 @@ export default function InschrijvingPage() {
   };
 
   const reset = () => {
-    setForm({ geslacht: '', voornaam: '', achternaam: '', leeftijd: '', contactNaam: '', contactTelefoon: '', contactEmail: '', contact2Naam: '', contact2Telefoon: '', contact2Email: '', opmerkingen: '', vraag: '' });
+    setForm({ schoolId: '', geslacht: '', voornaam: '', achternaam: '', leeftijd: '', contactNaam: '', contactTelefoon: '', contactEmail: '', contact2Naam: '', contact2Telefoon: '', contact2Email: '', opmerkingen: '', vraag: '' });
     setErrors({});
     setSubmitted(false);
     setSentQuestion(false);
@@ -327,6 +338,26 @@ export default function InschrijvingPage() {
                 </div>
 
                 <form onSubmit={handleSubmit} noValidate className="space-y-5">
+                  {/* Lesson type / school */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Ders Türü <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={form.schoolId}
+                      onChange={e => set('schoolId', e.target.value)}
+                      className={`w-full px-4 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition bg-white ${
+                        errors.schoolId ? 'border-red-400 bg-red-50' : 'border-gray-300'
+                      }`}
+                    >
+                      <option value="">{language === 'nl' ? 'Selecteer...' : 'Seçiniz...'}</option>
+                      {schools.map(school => (
+                        <option key={school.id} value={school.id}>{school.name}</option>
+                      ))}
+                    </select>
+                    {errors.schoolId && <p className="text-red-500 text-xs mt-1">{t.required}</p>}
+                  </div>
+
                   {/* Sex */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import faviconUrl from '../../imports/books__1_.png';
-import { ChevronDown, Plus, X, Mail } from 'lucide-react';
+import { ChevronDown, Plus, X, Mail, Info } from 'lucide-react';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
 
@@ -11,6 +11,8 @@ const T = {
   nl: {
     title: 'Inschrijving Kind',
     subtitle: 'Schrijf uw kind in voor onze lessen',
+    lessonType: 'Soort les',
+    lessonTypeInfo: 'Meer informatie over de soorten lessen',
     sex: 'Geslacht kind',
     boy: 'Jongen',
     girl: 'Meisje',
@@ -48,6 +50,8 @@ const T = {
   tr: {
     title: 'Çocuk Kayıt Formu',
     subtitle: 'Çocuğunuzu derslerimize kayıt ettirin',
+    lessonType: 'Ders Türü',
+    lessonTypeInfo: 'Ders türleri hakkında daha fazla bilgi',
     sex: 'Çocuğun cinsiyeti',
     boy: 'Erkek',
     girl: 'Kız',
@@ -84,11 +88,14 @@ const T = {
   },
 };
 
+// The first FAQ entry in each language ("which lesson types are there") is
+// generated dynamically from the live schools list further down, so its `a`
+// here is just a fallback while schools are still loading.
 const FAQS = {
   nl: [
     {
       q: 'Welke soorten lessen zijn er?',
-      a: 'Wij bieden twee lesprogramma\'s aan: <strong>Darul Furkan</strong> en <strong>Haftasonu Eğitim</strong>. Beide programma\'s zijn inhoudelijk gelijkwaardig en bieden uw kind een stevige islamitische opvoeding.',
+      a: 'Een moment geduld...',
     },
     {
       q: 'Wat is het verschil tussen Darul Furkan en Haftasonu Eğitim?',
@@ -116,7 +123,7 @@ const FAQS = {
   tr: [
     {
       q: 'Hangi ders türleri mevcut?',
-      a: 'İki ders programı sunuyoruz: <strong>Darul Furkan</strong> ve <strong>Haftasonu Eğitim</strong>. Her iki program da içerik olarak eşdeğerdir ve çocuğunuza sağlam bir İslami eğitim sunar.',
+      a: 'Bir dakika lütfen...',
     },
     {
       q: 'Darul Furkan ile Haftasonu Eğitim arasındaki fark nedir?',
@@ -180,7 +187,6 @@ function Field({ label, field, type = 'text', placeholder = '', optional = false
 export default function InschrijvingPage() {
   const [language, setLanguage] = useState<Language>('nl');
   const t = T[language];
-  const faqs = FAQS[language];
 
   const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState({
@@ -208,6 +214,30 @@ export default function InschrijvingPage() {
   const [sentQuestion, setSentQuestion] = useState(false);
   const [serverError, setServerError] = useState('');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+  // The "which lesson types are there" FAQ answer is generated from the live
+  // schools list, so a newly created school shows up here automatically.
+  const faqs = useMemo(() => {
+    const base = FAQS[language];
+    const names = schools.map(s => `<strong>${s.name}</strong>`);
+    let lessonTypesAnswer: string;
+    if (names.length === 0) {
+      lessonTypesAnswer = language === 'nl'
+        ? 'Binnenkort meer informatie over onze lesprogramma\'s.'
+        : 'Ders programlarımız hakkında yakında daha fazla bilgi.';
+    } else if (names.length === 1) {
+      lessonTypesAnswer = language === 'nl'
+        ? `Wij bieden op dit moment één lesprogramma aan: ${names[0]}.`
+        : `Şu anda bir ders programı sunuyoruz: ${names[0]}.`;
+    } else {
+      const and = language === 'nl' ? 'en' : 've';
+      const list = `${names.slice(0, -1).join(', ')} ${and} ${names[names.length - 1]}`;
+      lessonTypesAnswer = language === 'nl'
+        ? `Wij bieden verschillende lesprogramma's aan: ${list}. Alle programma's zijn inhoudelijk gelijkwaardig en bieden uw kind een stevige islamitische opvoeding.`
+        : `Farklı ders programları sunuyoruz: ${list}. Tüm programlar içerik olarak eşdeğerdir ve çocuğunuza sağlam bir İslami eğitim sunar.`;
+    }
+    return base.map((faq, i) => i === 0 ? { ...faq, a: lessonTypesAnswer } : faq);
+  }, [language, schools]);
 
   useEffect(() => {
     fetch(`${API_BASE}/schools/public`, {
@@ -280,6 +310,11 @@ export default function InschrijvingPage() {
     document.getElementById('inschrijven-faq')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const openLessonTypeFaq = () => {
+    setOpenFaq(0);
+    scrollToFaq();
+  };
+
   // NOTE: this is a render helper that must be CALLED — e.g. {renderField({...})}
   // — never used as a JSX component (<renderField />). Using it as a component
   // would make it a new component type each render, remounting the <input> and
@@ -341,7 +376,17 @@ export default function InschrijvingPage() {
                   {/* Lesson type / school */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Ders Türü <span className="text-red-500">*</span>
+                      {t.lessonType} <span className="text-red-500">*</span>
+                      <sup>
+                        <button
+                          type="button"
+                          onClick={openLessonTypeFaq}
+                          aria-label={t.lessonTypeInfo}
+                          className="ml-0.5 inline-flex align-top text-emerald-600 hover:text-emerald-800"
+                        >
+                          <Info className="w-3 h-3" />
+                        </button>
+                      </sup>
                     </label>
                     <select
                       value={form.schoolId}

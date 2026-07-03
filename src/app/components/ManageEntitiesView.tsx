@@ -29,6 +29,7 @@ interface ManageEntitiesViewProps {
   classes: Class[];
   teachers: Teacher[];
   students: StudentWithStats[];
+  parentNamesByEmail?: Record<string, string>;
   language: 'tr' | 'nl';
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
   onDataChange: () => void;
@@ -38,6 +39,7 @@ export default function ManageEntitiesView({
   classes,
   teachers,
   students,
+  parentNamesByEmail,
   language,
   apiRequest,
   onDataChange,
@@ -968,7 +970,7 @@ export default function ManageEntitiesView({
                           onClick={() => loadParentDetails(student.parentEmail!)}
                           className="text-blue-600 hover:text-blue-800 hover:underline"
                         >
-                          {student.parentEmail}
+                          {parentNamesByEmail?.[student.parentEmail] || student.parentEmail}
                         </button>
                       ) : (
                         classEditMode ? (

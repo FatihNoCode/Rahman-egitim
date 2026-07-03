@@ -840,6 +840,152 @@ app.post("/make-server-6679cacd/students/bulk", async (c) => {
   }
 });
 
+app.post("/make-server-6679cacd/users/import/bulk", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const userData = await getUserData(user.id);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
+
+    const { rows } = await c.req.json();
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return c.json({ error: 'rows must be a non-empty array' }, 400);
+    }
+    if (rows.length > 500) {
+      return c.json({ error: 'Maximum 500 rows per import' }, 400);
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+
+    const allUsers = await kv.getByPrefix('user:');
+    const allClasses = (await kv.getByPrefix('class:')).filter((cl: any) => cl && cl.id && cl.schoolId === schoolId);
+
+    const classStudentsToAdd = new Map<string, string[]>();
+    const parentChildrenToAdd = new Map<string, string[]>();
+    const results: { row: number; status: 'success' | 'error'; studentId?: string; error?: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i] || {};
+      try {
+        const studentFirstName = String(row.studentFirstName || '').trim();
+        const studentLastName = String(row.studentLastName || '').trim();
+        const parentFirstName = String(row.parentFirstName || '').trim();
+        const parentLastName = String(row.parentLastName || '').trim();
+        const parentEmail = String(row.parentEmail || '').trim();
+        const parentPhone = String(row.parentPhone || '').trim();
+        const className = String(row.className || '').trim();
+
+        if (!studentFirstName || !studentLastName) {
+          results.push({ row: i + 1, status: 'error', error: 'Student first and last name are required' });
+          continue;
+        }
+        if (!className) {
+          results.push({ row: i + 1, status: 'error', error: 'Class name is required' });
+          continue;
+        }
+        if ((parentFirstName || parentLastName || parentPhone) && !parentEmail) {
+          results.push({ row: i + 1, status: 'error', error: 'Parent email is required if any parent info is provided' });
+          continue;
+        }
+
+        let cls = allClasses.find((cl: any) => cl.name.toLowerCase() === className.toLowerCase());
+        if (!cls) {
+          const classId = crypto.randomUUID();
+          cls = { id: classId, name: className, teacherId: null, schoolId, createdAt: new Date().toISOString() };
+          await kv.set(`class:${classId}`, cls);
+          await kv.set(`class_students:${classId}`, []);
+          allClasses.push(cls);
+        }
+
+        let parentId: string | null = null;
+        if (parentEmail) {
+          const existingParent = allUsers.find((u: any) => u && u.email === parentEmail && u.role === 'parent');
+          if (existingParent) {
+            parentId = existingParent.id;
+            if (!existingParent.name && (parentFirstName || parentLastName)) {
+              const name = `${parentFirstName} ${parentLastName}`.trim();
+              await kv.set(`user:${parentId}`, { ...existingParent, name, phone: existingParent.phone || parentPhone || null });
+              existingParent.name = name;
+            }
+          } else {
+            const tempPassword = crypto.randomUUID();
+            const { data: parentData, error: createError } = await supabase.auth.admin.createUser({
+              email: parentEmail,
+              password: tempPassword,
+              user_metadata: { name: `${parentFirstName} ${parentLastName}`.trim() || 'Parent', role: 'parent' },
+              email_confirm: true,
+            });
+            if (createError || !parentData) {
+              results.push({ row: i + 1, status: 'error', error: createError?.message || 'Failed to create parent account' });
+              continue;
+            }
+            parentId = parentData.user.id;
+            const newParent = {
+              id: parentId,
+              email: parentEmail,
+              name: `${parentFirstName} ${parentLastName}`.trim() || 'Parent',
+              phone: parentPhone || null,
+              role: 'parent',
+              lastCheckIn: null,
+              createdAt: new Date().toISOString(),
+            };
+            await kv.set(`user:${parentId}`, newParent);
+            allUsers.push(newParent);
+          }
+        }
+
+        const studentId = crypto.randomUUID();
+        const student = {
+          id: studentId,
+          name: `${studentFirstName} ${studentLastName}`.trim(),
+          parentId,
+          parentEmail: parentEmail || null,
+          classId: cls.id,
+          schoolId,
+          createdAt: new Date().toISOString(),
+        };
+        await kv.set(`student:${studentId}`, student);
+
+        if (!classStudentsToAdd.has(cls.id)) classStudentsToAdd.set(cls.id, []);
+        classStudentsToAdd.get(cls.id)!.push(studentId);
+
+        if (parentId) {
+          if (!parentChildrenToAdd.has(parentId)) parentChildrenToAdd.set(parentId, []);
+          parentChildrenToAdd.get(parentId)!.push(studentId);
+        }
+
+        results.push({ row: i + 1, status: 'success', studentId });
+      } catch (rowErr) {
+        console.log(`Import row ${i + 1} error:`, rowErr);
+        results.push({ row: i + 1, status: 'error', error: 'Unexpected error processing this row' });
+      }
+    }
+
+    for (const [classId, studentIds] of classStudentsToAdd) {
+      const existing = await kv.get(`class_students:${classId}`) || [];
+      await kv.set(`class_students:${classId}`, [...existing, ...studentIds]);
+    }
+    for (const [parentId, studentIds] of parentChildrenToAdd) {
+      const existing = await kv.get(`parent_children:${parentId}`) || [];
+      await kv.set(`parent_children:${parentId}`, [...existing, ...studentIds]);
+    }
+
+    const succeeded = results.filter(r => r.status === 'success').length;
+    return c.json({
+      results,
+      summary: { total: rows.length, succeeded, failed: rows.length - succeeded },
+    });
+  } catch (err) {
+    console.log('Bulk import error:', err);
+    return c.json({ error: 'Failed to import' }, 500);
+  }
+});
+
 // Move one or more students to a different class (admin only)
 app.post("/make-server-6679cacd/students/move", async (c) => {
   try {
@@ -1048,6 +1194,209 @@ app.get("/make-server-6679cacd/parents", async (c) => {
   } catch (err) {
     console.log('Get parents error:', err);
     return c.json({ error: 'Failed to get parents' }, 500);
+  }
+});
+
+// ============= UNIFIED USER MANAGEMENT =============
+
+app.get("/make-server-6679cacd/users", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const userData = await getUserData(user.id);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
+
+    const allUsers = await kv.getByPrefix('user:');
+    const users: any[] = [];
+
+    for (const u of allUsers) {
+      if (!u || !u.id || !u.role) continue;
+
+      if (u.role === 'admin') {
+        if (u.schoolId !== schoolId) continue;
+        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt });
+      } else if (u.role === 'superadmin') {
+        // Only visible to real superadmins — a regular admin has no actionable use
+        // for cross-tenant superadmin accounts.
+        if (userData.role !== 'superadmin') continue;
+        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt });
+      } else if (u.role === 'teacher') {
+        const classIds: string[] = await kv.get(`teacher_classes:${u.id}`) || [];
+        const classes = await kv.mget(classIds.map((id: string) => `class:${id}`));
+        const inSchool = classes.filter((cl: any) => cl && cl.schoolId === schoolId);
+        if (inSchool.length === 0) continue;
+        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, classCount: inSchool.length });
+      } else if (u.role === 'parent') {
+        const childrenIds: string[] = await kv.get(`parent_children:${u.id}`) || [];
+        const children = (await kv.mget(childrenIds.map((id: string) => `student:${id}`))).filter((s: any) => s && s.id);
+        const inSchool = children.filter((s: any) => s.schoolId === schoolId);
+        // Parentless parents are still shown — the whole point of this page is
+        // to manage not-yet-assigned accounts, unlike the older /parents route.
+        if (children.length > 0 && inSchool.length === 0) continue;
+        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, childrenIds: inSchool.map((s: any) => s.id) });
+      }
+    }
+
+    return c.json({ users });
+  } catch (err) {
+    console.log('Get users error:', err);
+    return c.json({ error: 'Failed to get users' }, 500);
+  }
+});
+
+app.put("/make-server-6679cacd/users/:userId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const userData = await getUserData(user.id);
+    if (!userData || (userData.role !== 'admin' && userData.role !== 'superadmin')) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
+
+    const targetUserId = c.req.param('userId');
+    const { name, phone, role } = await c.req.json();
+
+    const target = await kv.get(`user:${targetUserId}`);
+    if (!target) return c.json({ error: 'User not found' }, 404);
+
+    if (role && targetUserId === user.id) {
+      return c.json({ error: 'Cannot change your own role' }, 400);
+    }
+
+    const isRealSuperadmin = userData.role === 'superadmin';
+    const touchesPrivilegedTier = target.role === 'admin' || target.role === 'superadmin' || role === 'admin' || role === 'superadmin';
+    if (touchesPrivilegedTier && !isRealSuperadmin) {
+      return c.json({ error: 'Only superadmins can manage admin or superadmin accounts' }, 403);
+    }
+
+    if (!isRealSuperadmin) {
+      // Regular admin: target must have a real connection to this school, or
+      // none at all yet (a freshly-created, not-yet-assigned parent/teacher).
+      const targetSchools = await getUserSchoolIds(targetUserId, target);
+      if (targetSchools.size > 0 && !targetSchools.has(schoolId)) {
+        return c.json({ error: 'Not your school' }, 403);
+      }
+    }
+
+    const updated: any = { ...target };
+
+    if (role && role !== target.role) {
+      if (!['parent', 'teacher', 'admin', 'superadmin'].includes(role)) {
+        return c.json({ error: 'Invalid role' }, 400);
+      }
+
+      // Clean up side-effects of leaving the old role
+      if (target.role === 'parent') {
+        const childrenIds: string[] = await kv.get(`parent_children:${targetUserId}`) || [];
+        for (const studentId of childrenIds) {
+          const student = await kv.get(`student:${studentId}`);
+          if (student) await kv.set(`student:${studentId}`, { ...student, parentId: null, parentEmail: null });
+        }
+        await kv.set(`parent_children:${targetUserId}`, []);
+      } else if (target.role === 'teacher') {
+        const classIds: string[] = await kv.get(`teacher_classes:${targetUserId}`) || [];
+        for (const classId of classIds) {
+          const cls = await kv.get(`class:${classId}`);
+          if (cls) await kv.set(`class:${classId}`, { ...cls, teacherId: null });
+        }
+        await kv.set(`teacher_classes:${targetUserId}`, []);
+      }
+
+      // Set up the new role
+      if (role === 'admin') {
+        updated.schoolId = schoolId;
+      } else {
+        delete updated.schoolId;
+        if (role === 'parent' && !(await kv.get(`parent_children:${targetUserId}`))) {
+          await kv.set(`parent_children:${targetUserId}`, []);
+        }
+        if (role === 'teacher' && !(await kv.get(`teacher_classes:${targetUserId}`))) {
+          await kv.set(`teacher_classes:${targetUserId}`, []);
+        }
+      }
+
+      updated.role = role;
+    }
+
+    if (name !== undefined) updated.name = name;
+    if (phone !== undefined) updated.phone = phone;
+    updated.updatedAt = new Date().toISOString();
+
+    await kv.set(`user:${targetUserId}`, updated);
+
+    return c.json({ user: updated });
+  } catch (err) {
+    console.log('Update user error:', err);
+    return c.json({ error: 'Failed to update user' }, 500);
+  }
+});
+
+app.put("/make-server-6679cacd/users/:userId/students", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const userData = await getUserData(user.id);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
+
+    const targetUserId = c.req.param('userId');
+    const { studentIds } = await c.req.json();
+    if (!Array.isArray(studentIds)) {
+      return c.json({ error: 'studentIds must be an array' }, 400);
+    }
+
+    const target = await kv.get(`user:${targetUserId}`);
+    if (!target || target.role !== 'parent') {
+      return c.json({ error: 'Target user is not a parent' }, 400);
+    }
+
+    const currentIds: string[] = await kv.get(`parent_children:${targetUserId}`) || [];
+    const toAdd = studentIds.filter((id: string) => !currentIds.includes(id));
+    const toRemove = currentIds.filter((id: string) => !studentIds.includes(id));
+    const finalIds: string[] = [...currentIds];
+    const errors: { studentId: string; reason: string }[] = [];
+
+    for (const studentId of toRemove) {
+      const student = await kv.get(`student:${studentId}`);
+      if (student) await kv.set(`student:${studentId}`, { ...student, parentId: null, parentEmail: null });
+      const idx = finalIds.indexOf(studentId);
+      if (idx !== -1) finalIds.splice(idx, 1);
+    }
+
+    for (const studentId of toAdd) {
+      const student = await kv.get(`student:${studentId}`);
+      if (!student) {
+        errors.push({ studentId, reason: 'Student not found' });
+        continue;
+      }
+      if (student.schoolId && student.schoolId !== schoolId) {
+        errors.push({ studentId, reason: 'Not your school' });
+        continue;
+      }
+
+      // Steal from a different existing parent, matching PUT /students/:id's
+      // existing silent-reassignment behavior.
+      if (student.parentId && student.parentId !== targetUserId) {
+        const oldChildren = await kv.get(`parent_children:${student.parentId}`) || [];
+        await kv.set(`parent_children:${student.parentId}`, oldChildren.filter((id: string) => id !== studentId));
+      }
+
+      await kv.set(`student:${studentId}`, { ...student, parentId: targetUserId, parentEmail: target.email });
+      finalIds.push(studentId);
+    }
+
+    await kv.set(`parent_children:${targetUserId}`, finalIds);
+
+    return c.json({ studentIds: finalIds, errors });
+  } catch (err) {
+    console.log('Assign students to parent error:', err);
+    return c.json({ error: 'Failed to assign students' }, 500);
   }
 });
 

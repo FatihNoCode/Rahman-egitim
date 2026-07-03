@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Check, X, Users as UsersIcon, Search } from 'lucide-react';
+import { Pencil, Check, X, Users as UsersIcon, Search, Trash2 } from 'lucide-react';
 
 interface Class {
   id: string;
@@ -61,6 +61,10 @@ export default function UsersView({
   const [assignSelected, setAssignSelected] = useState<string[]>([]);
   const [assignSaving, setAssignSaving] = useState(false);
 
+  // Delete-user confirmation
+  const [deletingUser, setDeletingUser] = useState<AppUser | null>(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
+
   const t = {
     tr: {
       title: 'Kullanıcılar',
@@ -90,6 +94,11 @@ export default function UsersView({
       selectStudentsFor: 'için öğrenci seçin',
       noClass: 'Sınıfsız',
       genericError: 'Hata oluştu!',
+      deleteUser: 'Kullanıcıyı Sil',
+      confirmDeleteTitle: 'Kullanıcıyı tamamen sil',
+      confirmDeleteBody: (name: string) => `${name} kalıcı olarak silinecek ve bir daha giriş yapamayacak. Bu işlem geri alınamaz. Devam etmek istiyor musunuz?`,
+      delete: 'Sil',
+      sending: 'Gönderiliyor...',
     },
     nl: {
       title: 'Gebruikers',
@@ -119,6 +128,11 @@ export default function UsersView({
       selectStudentsFor: 'selecteer leerlingen voor',
       noClass: 'Geen klas',
       genericError: 'Er is een fout opgetreden!',
+      deleteUser: 'Gebruiker Verwijderen',
+      confirmDeleteTitle: 'Gebruiker permanent verwijderen',
+      confirmDeleteBody: (name: string) => `${name} wordt permanent verwijderd en kan niet meer inloggen. Deze actie kan niet ongedaan worden gemaakt. Wilt u doorgaan?`,
+      delete: 'Verwijderen',
+      sending: 'Verzenden...',
     },
   };
   const text = t[language];
@@ -204,6 +218,21 @@ export default function UsersView({
       alert(error.message || text.genericError);
     } finally {
       setAssignSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingUser) return;
+    setDeleteSaving(true);
+    try {
+      await apiRequest(`/users/${deletingUser.id}`, { method: 'DELETE' });
+      setDeletingUser(null);
+      await loadUsers();
+      onDataChange();
+    } catch (error: any) {
+      alert(error.message || text.genericError);
+    } finally {
+      setDeleteSaving(false);
     }
   };
 
@@ -352,6 +381,15 @@ export default function UsersView({
                               {text.studentCount((u.childrenIds || []).length)}
                             </button>
                           )}
+                          {isRealSuperadmin && !isSelf && (
+                            <button
+                              onClick={() => setDeletingUser(u)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded transition"
+                              title={text.deleteUser}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -410,6 +448,34 @@ export default function UsersView({
               <button
                 onClick={() => setAssigningParent(null)}
                 className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2.5 rounded-lg transition"
+              >
+                {text.cancel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete user confirmation */}
+      {deletingUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-red-700 mb-3">{text.confirmDeleteTitle}</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              {text.confirmDeleteBody(deletingUser.name || deletingUser.email)}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmDelete}
+                disabled={deleteSaving}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-lg transition disabled:opacity-50"
+              >
+                {deleteSaving ? text.sending : text.delete}
+              </button>
+              <button
+                onClick={() => setDeletingUser(null)}
+                disabled={deleteSaving}
+                className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2.5 rounded-lg transition disabled:opacity-50"
               >
                 {text.cancel}
               </button>

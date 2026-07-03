@@ -382,7 +382,7 @@ export default function InschrijvingPage() {
                           type="button"
                           onClick={openLessonTypeFaq}
                           aria-label={t.lessonTypeInfo}
-                          className="ml-0.5 inline-flex align-top text-emerald-600 hover:text-emerald-800"
+                          className="ml-0.5 inline-flex align-top translate-y-1 text-emerald-600 hover:text-emerald-800"
                         >
                           <Info className="w-3 h-3" />
                         </button>

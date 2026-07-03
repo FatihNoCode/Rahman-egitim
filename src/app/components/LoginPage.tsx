@@ -373,9 +373,9 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
         {/* Elif-Ba learning game — no login needed */}
         <button
           onClick={() => { window.location.href = '/elif-ba'; }}
-          className="w-full flex items-center justify-center gap-2 mt-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold py-4 rounded-2xl shadow-lg transition text-sm sm:text-base"
+          className="w-full flex items-center justify-center gap-2 mt-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold py-3 rounded-2xl shadow-lg transition text-sm sm:text-base"
         >
-          <span style={{ fontFamily: 'serif', fontSize: 20 }}>أ ب</span>
+          <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', fontSize: 20 }}>أ ب</span>
           {language === 'tr' ? 'Elif-Be Öğren 🌟' : 'Elif-Ba leren 🌟'}
         </button>
 

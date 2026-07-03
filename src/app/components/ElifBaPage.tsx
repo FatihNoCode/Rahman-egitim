@@ -16,12 +16,12 @@ export const LETTERS: ArabicLetter[] = [
   { id: 'ta (neutral)',arabic:'ت', nameNl: 'Ta',     nameTr: 'Te',     forms: { isolated: 'ت', initial: 'تـ', medial: 'ـتـ', final: 'ـت' } },
   { id: 'tha',        arabic: 'ث', nameNl: 'Tha',    nameTr: 'Se',     forms: { isolated: 'ث', initial: 'ثـ', medial: 'ـثـ', final: 'ـث' } },
   { id: 'jim',        arabic: 'ج', nameNl: 'Jim',    nameTr: 'Cim',    forms: { isolated: 'ج', initial: 'جـ', medial: 'ـجـ', final: 'ـج' } },
-  { id: 'ha early',   arabic: 'ح', nameNl: 'Ha',     nameTr: 'Ha',     forms: { isolated: 'ح', initial: 'حـ', medial: 'ـحـ', final: 'ـح' } },
+  { id: 'ha early',   arabic: 'ح', nameNl: 'Ḥā',    nameTr: 'Ha',     forms: { isolated: 'ح', initial: 'حـ', medial: 'ـحـ', final: 'ـح' } },
   { id: 'kha',        arabic: 'خ', nameNl: 'Kha',    nameTr: 'Hı',     forms: { isolated: 'خ', initial: 'خـ', medial: 'ـخـ', final: 'ـخ' } },
   { id: 'dal',        arabic: 'د', nameNl: 'Dal',    nameTr: 'Dal',    forms: { isolated: 'د', initial: 'د', medial: 'ـد', final: 'ـد' } },
   { id: 'dhal',       arabic: 'ذ', nameNl: 'Dhal',   nameTr: 'Zel',    forms: { isolated: 'ذ', initial: 'ذ', medial: 'ـذ', final: 'ـذ' } },
   { id: 'ra',         arabic: 'ر', nameNl: 'Ra',     nameTr: 'Ra',     forms: { isolated: 'ر', initial: 'ر', medial: 'ـر', final: 'ـر' } },
-  { id: 'za',         arabic: 'ز', nameNl: 'Za',     nameTr: 'Zay',    forms: { isolated: 'ز', initial: 'ز', medial: 'ـز', final: 'ـز' } },
+  { id: 'za',         arabic: 'ز', nameNl: 'Za',     nameTr: 'Ze',     forms: { isolated: 'ز', initial: 'ز', medial: 'ـز', final: 'ـز' } },
   { id: 'sin',        arabic: 'س', nameNl: 'Sin',    nameTr: 'Sin',    forms: { isolated: 'س', initial: 'سـ', medial: 'ـسـ', final: 'ـس' } },
   { id: 'shin',       arabic: 'ش', nameNl: 'Shin',   nameTr: 'Şın',    forms: { isolated: 'ش', initial: 'شـ', medial: 'ـشـ', final: 'ـش' } },
   { id: 'sad',        arabic: 'ص', nameNl: 'Sad',    nameTr: 'Sad',    forms: { isolated: 'ص', initial: 'صـ', medial: 'ـصـ', final: 'ـص' } },
@@ -36,7 +36,7 @@ export const LETTERS: ArabicLetter[] = [
   { id: 'lam',        arabic: 'ل', nameNl: 'Lam',    nameTr: 'Lam',    forms: { isolated: 'ل', initial: 'لـ', medial: 'ـلـ', final: 'ـل' } },
   { id: 'mim',        arabic: 'م', nameNl: 'Mim',    nameTr: 'Mim',    forms: { isolated: 'م', initial: 'مـ', medial: 'ـمـ', final: 'ـم' } },
   { id: 'nun',        arabic: 'ن', nameNl: 'Nun',    nameTr: 'Nun',    forms: { isolated: 'ن', initial: 'نـ', medial: 'ـنـ', final: 'ـن' } },
-  { id: 'ha later',   arabic: 'ه', nameNl: 'Ha (eind)', nameTr: 'He',  forms: { isolated: 'ه', initial: 'هـ', medial: 'ـهـ', final: 'ـه' } },
+  { id: 'ha later',   arabic: 'ه', nameNl: 'Hā',    nameTr: 'He',     forms: { isolated: 'ه', initial: 'هـ', medial: 'ـهـ', final: 'ـه' } },
   { id: 'waw',        arabic: 'و', nameNl: 'Waw',    nameTr: 'Vav',    forms: { isolated: 'و', initial: 'و', medial: 'ـو', final: 'ـو' } },
   { id: 'ya',         arabic: 'ي', nameNl: 'Ya',     nameTr: 'Ye',     forms: { isolated: 'ي', initial: 'يـ', medial: 'ـيـ', final: 'ـي' } },
 ];
@@ -49,10 +49,10 @@ const HARAKATS = [
 
 // Letters grouped into 4 "worlds"
 const WORLDS = [
-  { id: 1, letters: LETTERS.slice(0, 7),  title: 'Wereld 1', titleTr: 'Dünya 1', emoji: '🌱', bg: 'from-green-400 to-emerald-600' },
-  { id: 2, letters: LETTERS.slice(7, 14), title: 'Wereld 2', titleTr: 'Dünya 2', emoji: '🌊', bg: 'from-blue-400 to-cyan-600' },
-  { id: 3, letters: LETTERS.slice(14, 21),title: 'Wereld 3', titleTr: 'Dünya 3', emoji: '🔥', bg: 'from-orange-400 to-red-600' },
-  { id: 4, letters: LETTERS.slice(21),    title: 'Wereld 4', titleTr: 'Dünya 4', emoji: '⭐', bg: 'from-purple-400 to-pink-600' },
+  { id: 1, letters: LETTERS.slice(0, 7),  title: 'Wereld 1', titleTr: 'Dünya 1', emoji: '🌱', bg: 'from-emerald-400 to-emerald-600' },
+  { id: 2, letters: LETTERS.slice(7, 14), title: 'Wereld 2', titleTr: 'Dünya 2', emoji: '🌊', bg: 'from-sky-400 to-sky-600' },
+  { id: 3, letters: LETTERS.slice(14, 21),title: 'Wereld 3', titleTr: 'Dünya 3', emoji: '🌸', bg: 'from-amber-400 to-orange-500' },
+  { id: 4, letters: LETTERS.slice(21),    title: 'Wereld 4', titleTr: 'Dünya 4', emoji: '⭐', bg: 'from-violet-400 to-violet-600' },
 ];
 
 function audioPath(letterId: string, harakat?: string) {
@@ -164,7 +164,7 @@ function LetterCard({ letter, size = 'md', onClick, glow }: {
         ${sizes[size]}
       `}
     >
-      <span style={{ fontFamily: 'serif', lineHeight: 1 }} className={sizes[size].split(' ')[0]}>
+      <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', lineHeight: 1 }} className={sizes[size].split(' ')[0]}>
         {letter.arabic}
       </span>
       <span className="text-xs font-bold text-gray-500">{letter.nameNl}</span>
@@ -204,7 +204,7 @@ function LearnGame({ letters, onComplete, lang }: {
         onClick={tap}
         className="w-52 h-52 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center gap-3 hover:scale-105 active:scale-95 transition-all duration-150 relative"
       >
-        <span style={{ fontFamily: 'serif', fontSize: 100, lineHeight: 1 }}>{letter.arabic}</span>
+        <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', fontSize: 100, lineHeight: 1 }}>{letter.arabic}</span>
         {tapped.has(idx) && <span className="absolute top-3 right-3 text-green-500 text-xl">✓</span>}
         <span className="absolute bottom-4 text-3xl animate-bounce">🔊</span>
       </button>
@@ -312,7 +312,7 @@ function ListenPickGame({ letters, allLetters, onComplete, lang }: {
           return (
             <button key={ch.id} onClick={() => choose(ch)}
               className={`${bg} rounded-2xl p-4 flex flex-col items-center shadow-md hover:scale-105 active:scale-95 transition-all duration-150`}>
-              <span style={{ fontFamily: 'serif', fontSize: 52, lineHeight: 1 }}>{ch.arabic}</span>
+              <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', fontSize: 52, lineHeight: 1 }}>{ch.arabic}</span>
               <span className="text-xs font-bold text-gray-500 mt-1">{lang === 'tr' ? ch.nameTr : ch.nameNl}</span>
             </button>
           );
@@ -388,7 +388,7 @@ function NameMatchGame({ letters, allLetters, onComplete, lang }: {
 
       <div className="w-64 h-40 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:scale-105 transition"
         onClick={() => play(audioPath(current.id))}>
-        <span style={{ fontFamily: 'serif', fontSize: 88, lineHeight: 1 }}>{current.arabic}</span>
+        <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', fontSize: 88, lineHeight: 1 }}>{current.arabic}</span>
       </div>
       <p className="text-white/80 text-sm">Wat is de naam van deze letter?</p>
 
@@ -464,7 +464,7 @@ function DragSortGame({ letters, onComplete }: {
               ${submitted && letter.id === target[i].id ? 'ring-2 ring-green-400' : ''}
               ${submitted && !correct && letter.id !== target[i].id ? 'ring-2 ring-red-400' : ''}
             `}>
-            <span style={{ fontFamily: 'serif', fontSize: 36 }}>{letter.arabic}</span>
+            <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', fontSize: 36 }}>{letter.arabic}</span>
             <span className="text-xs text-gray-500">{letter.nameNl}</span>
           </div>
         ))}
@@ -544,7 +544,7 @@ function MemoryGame({ letters, onComplete }: {
               `}>
               {isFlipped ? (
                 card.type === 'arabic'
-                  ? <span style={{ fontFamily: 'serif', fontSize: 36 }}>{card.letter.arabic}</span>
+                  ? <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', fontSize: 36 }}>{card.letter.arabic}</span>
                   : <span className="text-xs text-center px-1">{card.letter.nameNl}</span>
               ) : '?'}
             </button>
@@ -594,7 +594,7 @@ function HarakatLearnGame({ letters, onComplete }: {
 
       <button onClick={tap}
         className="w-52 h-52 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center hover:scale-105 active:scale-95 transition-all duration-150 relative">
-        <span style={{ fontFamily: 'serif', fontSize: 90, lineHeight: 1 }}>
+        <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', fontSize: 90, lineHeight: 1 }}>
           {harakatIdx === 0 ? `${letter.arabic}َ` : harakatIdx === 1 ? `${letter.arabic}ُ` : `${letter.arabic}ِ`}
         </span>
         <span className="absolute bottom-4 text-2xl animate-pulse">🔊</span>
@@ -674,7 +674,7 @@ function HarakatQuizGame({ letters, onComplete }: {
       </button>
 
       <div className="w-32 h-28 rounded-2xl bg-white shadow-lg flex flex-col items-center justify-center">
-        <span style={{ fontFamily: 'serif', fontSize: 56 }}>{q.letter.arabic}</span>
+        <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', fontSize: 56 }}>{q.letter.arabic}</span>
         <span className="text-xs text-gray-500 font-bold">{q.letter.nameNl}</span>
       </div>
 
@@ -903,7 +903,7 @@ export default function ElifBaPage({ onBack }: { onBack?: () => void }) {
 
   if (view === 'map') {
     return (
-      <div className="min-h-full bg-gradient-to-b from-indigo-600 to-purple-800 flex flex-col">
+      <div className="min-h-full bg-slate-700 flex flex-col">
         <div className="flex items-center justify-between p-4 sticky top-0 bg-indigo-600/80 backdrop-blur z-10">
           <button onClick={() => setView('home')} className="text-white/80 hover:text-white font-bold transition">← Terug</button>
           <h1 className="text-white font-bold text-xl">🗺️ Leerkaart</h1>
@@ -929,7 +929,7 @@ export default function ElifBaPage({ onBack }: { onBack?: () => void }) {
         {/* Logo */}
         <div className="relative">
           <div className="w-36 h-36 rounded-full bg-white/20 backdrop-blur flex items-center justify-center shadow-2xl">
-            <span style={{ fontFamily: 'serif', fontSize: 72, color: 'white' }}>أ ب</span>
+            <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', fontSize: 72, color: 'white' }}>أ ب</span>
           </div>
           <div className="absolute -top-2 -right-2 w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center text-2xl shadow-lg">
             ⭐

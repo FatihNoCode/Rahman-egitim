@@ -24,6 +24,9 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'parent' | 'teacher' | 'admin'>('parent');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -60,13 +63,26 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
           return;
         }
 
+        if (!firstName.trim() || !lastName.trim() || !phone.trim()) {
+          setError(language === 'tr' ? 'Lütfen tüm alanları doldurun' : 'Vul alle velden in');
+          setLoading(false);
+          return;
+        }
+
         const response = await fetch(`${API_BASE}/signup`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${publicAnonKey}`,
           },
-          body: JSON.stringify({ email, password, role }),
+          body: JSON.stringify({
+            email,
+            password,
+            role,
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            phone: phone.trim(),
+          }),
         });
 
         const data = await response.json();
@@ -291,6 +307,49 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-4">
+            {isSignup && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+                      {t.firstName}
+                    </label>
+                    <input
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      required
+                      className="w-full px-3 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+                      {t.lastName}
+                    </label>
+                    <input
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      required
+                      className="w-full px-3 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+                    {t.phone}
+                  </label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    required
+                    placeholder="+31 6 00000000"
+                    className="w-full px-3 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
+                  />
+                </div>
+              </>
+            )}
             <div>
               <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                 {t.email}

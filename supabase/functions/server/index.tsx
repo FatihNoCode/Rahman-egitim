@@ -246,7 +246,7 @@ app.get("/make-server-6679cacd/health", (c) => {
 
 app.post("/make-server-6679cacd/signup", async (c) => {
   try {
-    const { email, password, role } = await c.req.json();
+    const { email, password, role, firstName, lastName, phone } = await c.req.json();
 
     // This endpoint is public and unauthenticated (parents self-register).
     // Teacher accounts are provisioned only via the admin invite flow
@@ -256,6 +256,12 @@ app.post("/make-server-6679cacd/signup", async (c) => {
       return c.json({ error: 'Invalid role' }, 400);
     }
 
+    if (!firstName?.trim() || !lastName?.trim() || !phone?.trim()) {
+      return c.json({ error: 'First name, last name and phone are required' }, 400);
+    }
+
+    const name = `${firstName.trim()} ${lastName.trim()}`.trim();
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -264,7 +270,7 @@ app.post("/make-server-6679cacd/signup", async (c) => {
     const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
-      user_metadata: { role },
+      user_metadata: { role, name, phone: phone.trim() },
       // Automatically confirm the user's email since an email server hasn't been configured.
       email_confirm: true
     });
@@ -278,7 +284,10 @@ app.post("/make-server-6679cacd/signup", async (c) => {
     await kv.set(`user:${data.user.id}`, {
       id: data.user.id,
       email,
+      name,
+      phone: phone.trim(),
       role,
+      hasAccount: true,
       lastCheckIn: null,
       createdAt: new Date().toISOString()
     });
@@ -643,6 +652,7 @@ app.post("/make-server-6679cacd/students", async (c) => {
             email: parentEmail,
             name: 'Parent',
             role: 'parent',
+            hasAccount: true,
             lastCheckIn: null,
             createdAt: new Date().toISOString()
           });
@@ -734,6 +744,7 @@ app.put("/make-server-6679cacd/students/:studentId", async (c) => {
             email: parentEmail,
             name: 'Parent',
             role: 'parent',
+            hasAccount: true,
             lastCheckIn: null,
             createdAt: new Date().toISOString()
           });
@@ -848,6 +859,7 @@ app.post("/make-server-6679cacd/students/bulk", async (c) => {
               email: studentData.parentEmail,
               name: 'Parent',
               role: 'parent',
+              hasAccount: true,
               lastCheckIn: null,
               createdAt: new Date().toISOString()
             });
@@ -1285,13 +1297,22 @@ app.get("/make-server-6679cacd/users", async (c) => {
         if (inSchool.length === 0) continue;
         users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, classCount: inSchool.length });
       } else if (u.role === 'parent') {
+        // Shadow parent records created from a public child signup ("inschrijving")
+        // before any real login account exists. They carry their own schoolId
+        // since they have no children/classes yet to derive it from.
+        if (u.hasAccount === false) {
+          if (u.schoolId && u.schoolId !== schoolId) continue;
+          users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, hasAccount: false });
+          continue;
+        }
+
         const childrenIds: string[] = await kv.get(`parent_children:${u.id}`) || [];
         const children = (await kv.mget(childrenIds.map((id: string) => `student:${id}`))).filter((s: any) => s && s.id);
         const inSchool = children.filter((s: any) => s.schoolId === schoolId);
         // Parentless parents are still shown — the whole point of this page is
         // to manage not-yet-assigned accounts, unlike the older /parents route.
         if (children.length > 0 && inSchool.length === 0) continue;
-        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, childrenIds: inSchool.map((s: any) => s.id) });
+        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, childrenIds: inSchool.map((s: any) => s.id), hasAccount: true });
       }
     }
 
@@ -1432,14 +1453,18 @@ app.delete("/make-server-6679cacd/users/:userId", async (c) => {
 
     await kv.del(`user:${targetUserId}`);
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
-    const { error: authError } = await supabase.auth.admin.deleteUser(targetUserId);
-    if (authError) {
-      console.log('Delete auth user error:', authError);
-      return c.json({ error: authError.message }, 500);
+    // Shadow parent records (from a public child signup, not yet a real login
+    // account) have no corresponding auth.users row to delete.
+    if (target.hasAccount !== false) {
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      );
+      const { error: authError } = await supabase.auth.admin.deleteUser(targetUserId);
+      if (authError) {
+        console.log('Delete auth user error:', authError);
+        return c.json({ error: authError.message }, 500);
+      }
     }
 
     return c.json({ success: true });
@@ -3210,9 +3235,9 @@ app.get("/make-server-6679cacd/parents/by-email", async (c) => {
 app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
   try {
     const body = await c.req.json();
-    const { schoolId, geslacht, voornaam, achternaam, leeftijd, contactNaam, contactTelefoon, contactEmail, opmerkingen, contact2Naam, contact2Telefoon, contact2Email, vraag } = body;
+    const { schoolId, geslacht, voornaam, achternaam, leeftijd, contactVoornaam, contactAchternaam, contactTelefoon, contactEmail, opmerkingen, contact2Naam, contact2Telefoon, contact2Email, vraag } = body;
 
-    if (!schoolId || !geslacht || !voornaam || !achternaam || !leeftijd || !contactNaam || !contactTelefoon || !contactEmail) {
+    if (!schoolId || !geslacht || !voornaam || !achternaam || !leeftijd || !contactVoornaam || !contactAchternaam || !contactTelefoon || !contactEmail) {
       return c.json({ error: 'Alle verplichte velden moeten ingevuld zijn' }, 400);
     }
 
@@ -3220,6 +3245,8 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
     if (!school || !school.active) {
       return c.json({ error: 'Invalid school' }, 400);
     }
+
+    const contactNaam = `${contactVoornaam} ${contactAchternaam}`.trim();
 
     const id = crypto.randomUUID();
     const record = {
@@ -3229,6 +3256,8 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
       voornaam,
       achternaam,
       leeftijd,
+      contactVoornaam,
+      contactAchternaam,
       contactNaam,
       contactTelefoon,
       contactEmail,
@@ -3240,6 +3269,27 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
       ingediendOp: new Date().toISOString(),
       status: 'nieuw',
     };
+
+    // If this contact isn't already a known user (real account or a previous
+    // shadow record from an earlier signup), add them to the users list now so
+    // admins can see/manage them right away — flagged as not having an account
+    // yet, since a signup only ever creates the registration, not a login.
+    const allUsers = await kv.getByPrefix('user:');
+    const existingUser = allUsers.find((u: any) => u && u.email === contactEmail);
+    if (!existingUser) {
+      const shadowId = `pending-${crypto.randomUUID()}`;
+      await kv.set(`user:${shadowId}`, {
+        id: shadowId,
+        email: contactEmail,
+        name: contactNaam,
+        phone: contactTelefoon,
+        role: 'parent',
+        schoolId,
+        hasAccount: false,
+        lastCheckIn: null,
+        createdAt: new Date().toISOString(),
+      });
+    }
 
     // Save to global index + individual record
     const ids = await kv.get('inschrijving_ids') || [];

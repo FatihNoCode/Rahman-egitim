@@ -23,6 +23,7 @@ interface AppUser {
   createdAt: string;
   classCount?: number;
   childrenIds?: string[];
+  hasAccount?: boolean;
 }
 
 interface UsersViewProps {
@@ -80,6 +81,7 @@ export default function UsersView({
       teacher: 'Öğretmen',
       admin: 'Yönetici',
       superadmin: 'Süper Yönetici',
+      noAccount: 'Hesabı yok',
       privilegedBadgeHint: 'Sadece süper yöneticiler değiştirebilir',
       selfHint: 'Kendi rolünüzü değiştiremezsiniz',
       assignedStudents: 'Atanmış öğrenciler',
@@ -114,6 +116,7 @@ export default function UsersView({
       teacher: 'Leraar',
       admin: 'Beheerder',
       superadmin: 'Superbeheerder',
+      noAccount: 'Nog geen account',
       privilegedBadgeHint: 'Alleen superbeheerders kunnen dit wijzigen',
       selfHint: 'U kunt uw eigen rol niet wijzigen',
       assignedStudents: 'Toegewezen leerlingen',
@@ -300,7 +303,14 @@ export default function UsersView({
                             className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
                           />
                         ) : (
-                          <span className={u.name ? '' : 'text-gray-400 italic'}>{u.name || text.noName}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={u.name ? '' : 'text-gray-400 italic'}>{u.name || text.noName}</span>
+                            {u.hasAccount === false && (
+                              <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700">
+                                {text.noAccount}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-3 py-2 text-sm text-gray-600">{u.email}</td>

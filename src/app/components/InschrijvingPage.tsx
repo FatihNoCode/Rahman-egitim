@@ -21,6 +21,8 @@ const T = {
     age: 'Leeftijd na de zomervakantie',
     agePlaceholder: 'bijv. 8',
     contactSection: 'Contactgegevens',
+    contactFirstName: 'Voornaam ouder',
+    contactLastName: 'Achternaam ouder',
     contactName: 'Naam contactpersoon',
     contactPhone: 'Telefoonnummer',
     contactEmail: 'E-mailadres',
@@ -60,6 +62,8 @@ const T = {
     age: 'Yaz tatilinden sonraki yaş',
     agePlaceholder: 'örn. 8',
     contactSection: 'İletişim Bilgileri',
+    contactFirstName: 'Velinin adı',
+    contactLastName: 'Velinin soyadı',
     contactName: 'İletişim kişisinin adı',
     contactPhone: 'Telefon numarası',
     contactEmail: 'E-posta adresi',
@@ -195,7 +199,8 @@ export default function InschrijvingPage() {
     voornaam: '',
     achternaam: '',
     leeftijd: '',
-    contactNaam: '',
+    contactVoornaam: '',
+    contactAchternaam: '',
     contactTelefoon: '',
     contactEmail: '',
     contact2Naam: '',
@@ -254,7 +259,7 @@ export default function InschrijvingPage() {
   };
 
   const validate = () => {
-    const required = ['schoolId', 'geslacht', 'voornaam', 'achternaam', 'leeftijd', 'contactNaam', 'contactTelefoon', 'contactEmail'];
+    const required = ['schoolId', 'geslacht', 'voornaam', 'achternaam', 'leeftijd', 'contactVoornaam', 'contactAchternaam', 'contactTelefoon', 'contactEmail'];
     const newErrors: Record<string, boolean> = {};
     let ok = true;
     for (const f of required) {
@@ -297,7 +302,7 @@ export default function InschrijvingPage() {
   };
 
   const reset = () => {
-    setForm({ schoolId: '', geslacht: '', voornaam: '', achternaam: '', leeftijd: '', contactNaam: '', contactTelefoon: '', contactEmail: '', contact2Naam: '', contact2Telefoon: '', contact2Email: '', opmerkingen: '', vraag: '' });
+    setForm({ schoolId: '', geslacht: '', voornaam: '', achternaam: '', leeftijd: '', contactVoornaam: '', contactAchternaam: '', contactTelefoon: '', contactEmail: '', contact2Naam: '', contact2Telefoon: '', contact2Email: '', opmerkingen: '', vraag: '' });
     setErrors({});
     setSubmitted(false);
     setSentQuestion(false);
@@ -444,7 +449,10 @@ export default function InschrijvingPage() {
                       {t.contactSection}
                     </p>
                     <div className="space-y-4">
-                      {renderField({ label: t.contactName, field: 'contactNaam', placeholder: language === 'nl' ? 'Voor- en achternaam' : 'Ad ve soyad' })}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {renderField({ label: t.contactFirstName, field: 'contactVoornaam' })}
+                        {renderField({ label: t.contactLastName, field: 'contactAchternaam' })}
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {renderField({ label: t.contactPhone, field: 'contactTelefoon', type: 'tel', placeholder: '+31 6 00000000' })}
                         {renderField({ label: t.contactEmail, field: 'contactEmail', type: 'email', placeholder: 'naam@email.com' })}

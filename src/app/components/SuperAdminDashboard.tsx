@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
-import { LogOut, Plus, School, ArrowRight, RefreshCw } from 'lucide-react';
+import { Plus, School, ArrowRight, RefreshCw } from 'lucide-react';
+import UserMenu from './UserMenu';
 import booksLogo from '../../imports/books__1_.png';
 
 interface SchoolRecord {
@@ -100,13 +101,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                 NL
               </button>
             </div>
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-red-600 rounded-full hover:bg-red-50 text-xs sm:text-sm font-semibold shadow-sm transition"
-            >
-              <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              {t.logout}
-            </button>
+            <UserMenu onLogout={onLogout} />
           </div>
         </div>
 

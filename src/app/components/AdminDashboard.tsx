@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { LogOut, ArrowLeft } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
+import UserMenu from './UserMenu';
 import booksLogo from '../../imports/books__1_.png';
 import ManageEntitiesView from './ManageEntitiesView';
 import BoekhoudingView from './BoekhoudingView';
@@ -12,6 +13,7 @@ import OudergesprekkenView from './OudergesprekkenView';
 import UsersView from './UsersView';
 import ImportView from './ImportView';
 import AgendaView from './AgendaView';
+import CommunicationView from './CommunicationView';
 
 interface Metrics {
   totalStudents: number;
@@ -66,9 +68,9 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashboardProps) {
   const { language, setLanguage, apiRequest, user: currentUser } = useApp();
   const t = translations[language];
-  const [activeTab, setActiveTab] = useHashTab<'metrics' | 'entities' | 'users' | 'import' | 'meldingen' | 'settings' | 'boekhouding' | 'inschrijvingen' | 'oudergesprekken' | 'agenda'>(
+  const [activeTab, setActiveTab] = useHashTab<'metrics' | 'entities' | 'users' | 'import' | 'meldingen' | 'settings' | 'boekhouding' | 'inschrijvingen' | 'oudergesprekken' | 'agenda' | 'communicatie'>(
     'entities',
-    ['entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'oudergesprekken', 'agenda', 'settings'] as const,
+    ['entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'oudergesprekken', 'agenda', 'communicatie', 'settings'] as const,
   );
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -290,13 +292,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
                 NL
               </button>
             </div>
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-red-600 rounded-full hover:bg-red-50 text-xs sm:text-sm font-semibold shadow-sm transition"
-            >
-              <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              {t.logout}
-            </button>
+            <UserMenu onLogout={onLogout} />
           </div>
         </div>
 
@@ -320,6 +316,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
             <TabButton tab="inschrijvingen">{language === 'tr' ? 'Kayıtlar' : 'Inschrijvingen'}</TabButton>
             <TabButton tab="oudergesprekken">{language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken'}</TabButton>
             <TabButton tab="agenda">{language === 'tr' ? 'Ajanda' : 'Agenda'}</TabButton>
+            <TabButton tab="communicatie">{language === 'tr' ? 'İletişim' : 'Communicatie'}</TabButton>
             <TabButton tab="settings">{language === 'tr' ? 'Ayarlar' : 'Instellingen'}</TabButton>
           </div>
 
@@ -385,6 +382,10 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
               apiRequest={apiRequest}
               onDataChange={loadData}
             />
+          )}
+
+          {activeTab === 'communicatie' && (
+            <CommunicationView language={language} apiRequest={apiRequest} />
           )}
 
           {activeTab === 'settings' && (

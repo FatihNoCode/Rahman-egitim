@@ -47,6 +47,38 @@ async function getUserData(userId: string) {
   return userData;
 }
 
+// Creates an in-app notification for a user (shown in their UserMenu bell).
+// Bilingual title/body are stored together since notifications are cheap and
+// this avoids re-deriving text from a `type` on the frontend.
+async function createNotification(userId: string, opts: {
+  type: string;
+  titleNl: string;
+  titleTr: string;
+  bodyNl: string;
+  bodyTr: string;
+  link?: string;
+}) {
+  const id = crypto.randomUUID();
+  const notification = {
+    id,
+    userId,
+    type: opts.type,
+    titleNl: opts.titleNl,
+    titleTr: opts.titleTr,
+    bodyNl: opts.bodyNl,
+    bodyTr: opts.bodyTr,
+    link: opts.link || null,
+    read: false,
+    createdAt: new Date().toISOString(),
+  };
+  await kv.set(`notification:${id}`, notification);
+  const ids: string[] = await kv.get(`user_notifications:${userId}`) || [];
+  ids.unshift(id);
+  if (ids.length > 100) ids.length = 100; // cap per-user history
+  await kv.set(`user_notifications:${userId}`, ids);
+  return notification;
+}
+
 // Shared helper for sending transactional emails via Resend. Every
 // notification flow (signup, payments, inschrijvingen, status changes,
 // absence alerts) routes through this so the from-address and error
@@ -373,6 +405,85 @@ app.get("/make-server-6679cacd/session", async (c) => {
   } catch (err) {
     console.log('Session error:', err);
     return c.json({ error: 'Failed to get session' }, 500);
+  }
+});
+
+// ============= SELF-SERVICE PROFILE =============
+
+// Any authenticated user can update their own name/phone from the UserMenu.
+app.put("/make-server-6679cacd/me", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const userData = await getUserData(user.id);
+    if (!userData) return c.json({ error: 'User not found' }, 404);
+
+    const { name, phone } = await c.req.json();
+    const updated = { ...userData };
+    if (name !== undefined) updated.name = name;
+    if (phone !== undefined) updated.phone = phone;
+    updated.updatedAt = new Date().toISOString();
+
+    await kv.set(`user:${user.id}`, updated);
+    return c.json({ user: { ...updated, id: user.id } });
+  } catch (err) {
+    console.log('Update own profile error:', err);
+    return c.json({ error: 'Failed to update profile' }, 500);
+  }
+});
+
+// ============= NOTIFICATIONS =============
+
+app.get("/make-server-6679cacd/notifications", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const ids: string[] = await kv.get(`user_notifications:${user.id}`) || [];
+    const notifications = (await kv.mget(ids.map((id: string) => `notification:${id}`))).filter((n: any) => n);
+    const unreadCount = notifications.filter((n: any) => !n.read).length;
+    return c.json({ notifications, unreadCount });
+  } catch (err) {
+    console.log('Get notifications error:', err);
+    return c.json({ error: 'Failed to get notifications' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/notifications/:id/read", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const id = c.req.param('id');
+    const notification = await kv.get(`notification:${id}`);
+    if (!notification || notification.userId !== user.id) {
+      return c.json({ error: 'Not found' }, 404);
+    }
+    await kv.set(`notification:${id}`, { ...notification, read: true });
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Mark notification read error:', err);
+    return c.json({ error: 'Failed to update notification' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/notifications/read-all", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const ids: string[] = await kv.get(`user_notifications:${user.id}`) || [];
+    const notifications = await kv.mget(ids.map((id: string) => `notification:${id}`));
+    for (let i = 0; i < ids.length; i++) {
+      if (notifications[i] && !notifications[i].read) {
+        await kv.set(`notification:${ids[i]}`, { ...notifications[i], read: true });
+      }
+    }
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Mark all notifications read error:', err);
+    return c.json({ error: 'Failed to update notifications' }, 500);
   }
 });
 
@@ -3318,6 +3429,107 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
   }
 });
 
+// ============= COMMUNICATION (admin/superadmin compose email) =============
+// Every message goes out through the same emailWrapper template as every
+// other transactional email — only the inner content and recipients vary.
+
+app.post("/make-server-6679cacd/communication/send", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (!userData || (userData.role !== 'admin' && userData.role !== 'superadmin')) {
+      return c.json({ error: 'Only admins can send communications' }, 403);
+    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
+
+    const { recipientIds, subject, content, attachments } = await c.req.json();
+    if (!Array.isArray(recipientIds) || recipientIds.length === 0 || !subject?.trim() || !content?.trim()) {
+      return c.json({ error: 'recipientIds, subject and content are required' }, 400);
+    }
+    const validAttachments = (attachments || []) as { filename: string; contentBase64: string }[];
+    if (validAttachments.length > 5) {
+      return c.json({ error: 'Maximum 5 attachments' }, 400);
+    }
+    const totalSize = validAttachments.reduce((sum, a) => sum + (a.contentBase64?.length || 0), 0);
+    if (totalSize > 15_000_000) { // ~11MB actual, base64 has ~33% overhead
+      return c.json({ error: 'Attachments are too large (max ~10MB total)' }, 400);
+    }
+
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+    if (!RESEND_API_KEY) return c.json({ error: 'RESEND_API_KEY not configured' }, 500);
+
+    const recipients = (await kv.mget(recipientIds.map((id: string) => `user:${id}`))).filter((u: any) => u && u.email);
+    if (recipients.length === 0) return c.json({ error: 'No valid recipients' }, 400);
+
+    const html = emailWrapper('', `<div style="white-space:pre-wrap;color:#374151;line-height:1.6">${content.replace(/</g, '&lt;')}</div>`);
+
+    const results: { userId: string; email: string; success: boolean }[] = [];
+    for (const r of recipients) {
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Ilim Yolu <info@ilimyolu.com>',
+            to: [r.email],
+            subject,
+            html,
+            attachments: validAttachments.map(a => ({ filename: a.filename, content: a.contentBase64 })),
+          }),
+        });
+        results.push({ userId: r.id, email: r.email, success: res.ok });
+        if (!res.ok) console.log(`Communication send error for ${r.email}:`, await res.text());
+      } catch (sendErr) {
+        console.log(`Failed to send communication to ${r.email}:`, sendErr);
+        results.push({ userId: r.id, email: r.email, success: false });
+      }
+    }
+
+    const logId = crypto.randomUUID();
+    const log = {
+      id: logId,
+      schoolId,
+      sentBy: user.id,
+      sentByName: userData.name || userData.email,
+      subject,
+      content,
+      attachmentNames: validAttachments.map(a => a.filename),
+      recipients: results,
+      sentAt: new Date().toISOString(),
+    };
+    await kv.set(`email_log:${logId}`, log);
+    const ids: string[] = await kv.get(`email_log_ids:${schoolId}`) || [];
+    await kv.set(`email_log_ids:${schoolId}`, [logId, ...ids]);
+
+    return c.json({ success: true, sent: results.filter(r => r.success).length, total: results.length, log });
+  } catch (err) {
+    console.log('Send communication error:', err);
+    return c.json({ error: 'Failed to send communication' }, 500);
+  }
+});
+
+app.get("/make-server-6679cacd/communication/sent", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (!userData || (userData.role !== 'admin' && userData.role !== 'superadmin')) {
+      return c.json({ error: 'Only admins can view sent communications' }, 403);
+    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
+
+    const ids: string[] = await kv.get(`email_log_ids:${schoolId}`) || [];
+    const logs = (await kv.mget(ids.map((id: string) => `email_log:${id}`))).filter((l: any) => l);
+    return c.json({ logs });
+  } catch (err) {
+    console.log('Get sent communications error:', err);
+    return c.json({ error: 'Failed to get sent communications' }, 500);
+  }
+});
+
 // ============= EMAIL REMINDERS =============
 
 app.post("/make-server-6679cacd/send-reminder", async (c) => {
@@ -4320,6 +4532,57 @@ app.delete("/make-server-6679cacd/oudergesprekken/:id", async (c) => {
   }
 });
 
+// Admin nudge — emails every parent (one child in this session's class) who
+// hasn't booked a slot yet. One email per parent even with multiple children.
+app.post("/make-server-6679cacd/oudergesprekken/:id/remind-unbooked", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
+
+    const id = c.req.param('id');
+    const session = await kv.get(`oudergesprek:${id}`);
+    if (!session) return c.json({ error: 'Not found' }, 404);
+    if (session.schoolId && session.schoolId !== schoolId) {
+      return c.json({ error: 'Not your school' }, 403);
+    }
+
+    const classStudents: any[] = (await kv.getByPrefix('student:')).filter((s: any) => s && s.id && s.classId === session.classId);
+    const bookedStudentIds = new Set((session.slots || []).filter((s: any) => s.studentId).map((s: any) => s.studentId));
+    const unbookedStudents = classStudents.filter((s: any) => !bookedStudentIds.has(s.id) && s.parentId);
+
+    let sent = 0;
+    const seenParents = new Set<string>();
+    for (const student of unbookedStudents) {
+      if (seenParents.has(student.parentId)) continue;
+      seenParents.add(student.parentId);
+      const parentData = await getUserData(student.parentId);
+      if (!parentData?.email) continue;
+
+      const ok = await sendEmail(
+        parentData.email,
+        `Herinnering: kies uw tijdslot oudergesprek | Hatırlatma: Görüşme saatinizi seçin - Ilim Yolu`,
+        emailWrapper('Herinnering oudergesprek', `
+          <p style="color:#374151;line-height:1.6">Beste ouder,</p>
+          <p style="color:#374151;line-height:1.6">U heeft nog geen tijdslot gekozen voor het oudergesprek van <strong>${session.className}</strong> op <strong>${session.date}</strong>. Log in op het ouderportaal om een tijdslot te kiezen.</p>
+          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+          <p style="color:#374151;line-height:1.6">Sayın veli,</p>
+          <p style="color:#374151;line-height:1.6"><strong>${session.className}</strong> sınıfının <strong>${session.date}</strong> tarihindeki veli görüşmesi için henüz bir zaman dilimi seçmediniz. Zaman dilimi seçmek için veli portalına giriş yapın.</p>
+        `)
+      );
+      if (ok) sent++;
+    }
+
+    return c.json({ success: true, sent, totalUnbooked: unbookedStudents.length });
+  } catch (err) {
+    console.log('Remind unbooked oudergesprek error:', err);
+    return c.json({ error: 'Failed to send reminders' }, 500);
+  }
+});
+
 // ─── Agenda (lesson structure, vacation days, events) ───
 
 // Save / update the lesson-day structure for a school
@@ -4523,6 +4786,177 @@ app.delete("/make-server-6679cacd/agenda/events/:id", async (c) => {
   } catch (err) {
     console.log('Delete event error:', err);
     return c.json({ error: 'Failed to delete event' }, 500);
+  }
+});
+
+// ============= SCHEDULED REMINDERS (pg_cron -> this endpoint every ~10min) =============
+// Protected by a shared secret header (not a user JWT) since it's called by
+// the database, not a logged-in user. Every check below is deduplicated via
+// a one-time `reminder_sent:...` KV flag so re-running this often is safe.
+app.post("/make-server-6679cacd/cron/tick", async (c) => {
+  try {
+    const secret = c.req.header('X-Cron-Secret');
+    if (!secret || secret !== Deno.env.get('CRON_SECRET')) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const dayOfWeek = now.getDay();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const month = now.getMonth() + 1;
+    const date = now.getDate();
+    const yearNum = now.getFullYear();
+
+    const schools = (await kv.getByPrefix('school:')).filter((s: any) => s && s.id && s.active);
+    const allUsers = await kv.getByPrefix('user:');
+    const adminsBySchool = new Map<string, any[]>();
+    for (const u of allUsers) {
+      if (u && u.role === 'admin' && u.schoolId) {
+        if (!adminsBySchool.has(u.schoolId)) adminsBySchool.set(u.schoolId, []);
+        adminsBySchool.get(u.schoolId)!.push(u);
+      }
+    }
+
+    let teacherReminders = 0;
+    let quarterlyReminders = 0;
+    let oudergesprekReminders = 0;
+    let newYearReminders = 0;
+
+    for (const school of schools) {
+      const admins = adminsBySchool.get(school.id) || [];
+
+      // ── 1. Teacher attendance reminders ──
+      // Once a class's lesson-day ends within 20 minutes (or has already
+      // ended) and attendance for today hasn't been recorded, nudge the
+      // teacher once (email + notification).
+      const settings = await kv.get(`agenda_settings:${school.id}`);
+      if (settings && (settings.lessonDays || []).includes(dayOfWeek)) {
+        const [endH, endM] = settings.endTime.split(':').map(Number);
+        const lessonEndMinutes = endH * 60 + endM;
+        if (nowMinutes >= lessonEndMinutes - 20) {
+          const classes = (await kv.getByPrefix('class:')).filter((cl: any) => cl && cl.id && cl.schoolId === school.id && cl.teacherId);
+          for (const cls of classes) {
+            const attendance = await kv.get(`attendance:${cls.id}:${todayStr}`);
+            if (attendance) continue;
+            const flagKey = `reminder_sent:attendance:${cls.id}:${todayStr}`;
+            if (await kv.get(flagKey)) continue;
+            await kv.set(flagKey, true);
+
+            const teacherData = await getUserData(cls.teacherId);
+            if (!teacherData) continue;
+
+            await createNotification(cls.teacherId, {
+              type: 'attendance_reminder',
+              titleNl: 'Aanwezigheid nog niet ingevuld',
+              titleTr: 'Devamsızlık henüz girilmedi',
+              bodyNl: `Vergeet niet de aanwezigheid voor ${cls.name} van vandaag in te vullen.`,
+              bodyTr: `${cls.name} sınıfının bugünkü devamsızlığını girmeyi unutmayın.`,
+              link: '#entities',
+            });
+            teacherReminders++;
+
+            if (teacherData.email) {
+              await sendEmail(
+                teacherData.email,
+                'Aanwezigheid nog niet ingevuld | Devamsızlık Henüz Girilmedi - Ilim Yolu',
+                emailWrapper('Aanwezigheid', `
+                  <p style="color:#374151;line-height:1.6">Beste leerkracht,</p>
+                  <p style="color:#374151;line-height:1.6">De les van <strong>${cls.name}</strong> loopt bijna af (of is voorbij) en de aanwezigheid van vandaag is nog niet ingevuld. Wilt u dit zo spoedig mogelijk doen?</p>
+                  <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+                  <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+                  <p style="color:#374151;line-height:1.6">Sayın öğretmen,</p>
+                  <p style="color:#374151;line-height:1.6"><strong>${cls.name}</strong> sınıfının dersi bitmek üzere (veya bitti) ve bugünkü devamsızlık henüz girilmedi. En kısa sürede girmenizi rica ederiz.</p>
+                `)
+              );
+            }
+          }
+        }
+      }
+
+      // ── 2. Quarterly payment reminder nudge (school year runs roughly
+      // first week of September to last week of June) ──
+      const quarterTriggers = [
+        { m: 10, d: 1, idx: 1 },
+        { m: 12, d: 15, idx: 2 },
+        { m: 3, d: 1, idx: 3 },
+        { m: 5, d: 15, idx: 4 },
+      ];
+      for (const qt of quarterTriggers) {
+        if (month !== qt.m || date !== qt.d) continue;
+        const flagKey = `reminder_sent:quarterly_payment:${school.id}:${yearNum}:${qt.idx}`;
+        if (await kv.get(flagKey)) continue;
+        await kv.set(flagKey, true);
+        for (const admin of admins) {
+          await createNotification(admin.id, {
+            type: 'quarterly_payment_reminder',
+            titleNl: 'Stuur schoolgeld herinneringen',
+            titleTr: 'Okul ücreti hatırlatması gönderin',
+            bodyNl: `Tijd om ouders van ${school.name} te herinneren aan openstaand schoolgeld.`,
+            bodyTr: `${school.name} velilerine ödenmemiş okul ücretini hatırlatma zamanı.`,
+            link: '#boekhouding',
+          });
+          quarterlyReminders++;
+        }
+      }
+
+      // ── 4. Nudge to start a new school year (once, at the start of July) ──
+      if (month === 7 && date === 1) {
+        const flagKey = `reminder_sent:new_school_year:${school.id}:${yearNum}`;
+        if (!(await kv.get(flagKey))) {
+          await kv.set(flagKey, true);
+          for (const admin of admins) {
+            await createNotification(admin.id, {
+              type: 'start_new_year',
+              titleNl: 'Nieuw schooljaar starten',
+              titleTr: 'Yeni okul yılını başlatın',
+              bodyNl: `Vergeet niet een nieuw schooljaar te starten voor ${school.name} zodra het nieuwe jaar begint.`,
+              bodyTr: `Yeni yıl başladığında ${school.name} için yeni okul yılını başlatmayı unutmayın.`,
+              link: '#settings',
+            });
+            newYearReminders++;
+          }
+        }
+      }
+    }
+
+    // ── 3. Oudergesprekken: nudge admins about sessions within 3 days that
+    // still have unbooked slots (dedup per session, not per day) ──
+    const allSessions = (await kv.getByPrefix('oudergesprek:')).filter((s: any) => s && s.id && s.date);
+    for (const session of allSessions) {
+      const sessionDate = new Date(session.date);
+      const daysUntil = Math.ceil((sessionDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysUntil < 0 || daysUntil > 3) continue;
+      const unbooked = (session.slots || []).filter((s: any) => !s.bookedBy).length;
+      if (unbooked === 0) continue;
+      const flagKey = `reminder_sent:oudergesprek_unbooked:${session.id}`;
+      if (await kv.get(flagKey)) continue;
+      await kv.set(flagKey, true);
+
+      const admins = adminsBySchool.get(session.schoolId) || [];
+      for (const admin of admins) {
+        await createNotification(admin.id, {
+          type: 'oudergesprek_unbooked',
+          titleNl: 'Niet-geboekte tijdslots',
+          titleTr: 'Rezerve edilmemiş zaman dilimleri',
+          bodyNl: `${unbooked} tijdslot(en) voor ${session.className} op ${session.date} zijn nog niet geboekt.`,
+          bodyTr: `${session.className} sınıfının ${session.date} tarihli görüşmesinde ${unbooked} zaman dilimi hala boş.`,
+          link: '#oudergesprekken',
+        });
+        oudergesprekReminders++;
+      }
+    }
+
+    return c.json({
+      success: true,
+      teacherReminders,
+      quarterlyReminders,
+      oudergesprekReminders,
+      newYearReminders,
+    });
+  } catch (err) {
+    console.log('Cron tick error:', err);
+    return c.json({ error: 'Cron tick failed' }, 500);
   }
 });
 

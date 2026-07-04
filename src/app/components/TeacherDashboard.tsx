@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LogOut, Moon } from 'lucide-react';
+import { Moon } from 'lucide-react';
 import booksLogo from '../../imports/books__1_.png';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
@@ -7,6 +7,7 @@ import { translations } from './translations';
 import { quranChapters } from '../../utils/quranData';
 import TeacherManageView from './TeacherManageView';
 import AbsenceOverviewView from './AbsenceOverviewView';
+import UserMenu from './UserMenu';
 
 interface Class {
   id: string;
@@ -479,13 +480,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                 NL
               </button>
             </div>
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-red-600 rounded-full hover:bg-red-50 text-xs sm:text-sm font-semibold shadow-sm transition"
-            >
-              <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              {t.logout}
-            </button>
+            <UserMenu onLogout={onLogout} />
           </div>
         </div>
 

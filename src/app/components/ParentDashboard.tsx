@@ -3,8 +3,9 @@ import { useApp } from '../App';
 import { translations } from './translations';
 import { Calendar } from './ui/calendar';
 import { useHashTab } from '../useHashTab';
-import { Euro, LogOut, Moon } from 'lucide-react';
+import { Euro, Moon } from 'lucide-react';
 import booksLogo from '../../imports/books__1_.png';
+import UserMenu from './UserMenu';
 
 // Local-time date helpers (avoid UTC parsing shifting the day)
 const toYMD = (d: Date) =>
@@ -452,13 +453,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                 NL
               </button>
             </div>
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-red-600 rounded-full hover:bg-red-50 text-xs sm:text-sm font-semibold shadow-sm transition"
-            >
-              <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              {t.logout}
-            </button>
+            <UserMenu onLogout={onLogout} />
           </div>
         </div>
 

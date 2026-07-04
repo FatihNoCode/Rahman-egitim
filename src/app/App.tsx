@@ -26,6 +26,7 @@ interface User {
   id: string;
   email: string;
   name: string;
+  phone?: string;
   role: 'parent' | 'teacher' | 'admin' | 'superadmin';
   lastCheckIn?: string;
 }

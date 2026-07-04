@@ -91,6 +91,23 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
     }
   };
 
+  const [reminding, setReminding] = useState<string | null>(null);
+  const remindUnbooked = async (id: string) => {
+    setReminding(id);
+    try {
+      const result = await apiRequest(`/oudergesprekken/${id}/remind-unbooked`, { method: 'POST' });
+      alert(
+        language === 'tr'
+          ? `${result.sent} veliye hatırlatma gönderildi (${result.totalUnbooked} rezerve edilmemiş öğrenci).`
+          : `Herinnering verstuurd naar ${result.sent} ouders (${result.totalUnbooked} niet-geboekte leerlingen).`
+      );
+    } catch (err: any) {
+      alert(err.message || 'Error');
+    } finally {
+      setReminding(null);
+    }
+  };
+
   // Calculate a preview of how many slots would be generated
   const previewSlotCount = (() => {
     if (!startTime || !endTime || !minutesPerSlot) return 0;
@@ -236,6 +253,17 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
                       }`}>
                         {booked}/{total} {language === 'tr' ? 'dolu' : 'geboekt'}
                       </span>
+                      {booked < total && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); remindUnbooked(session.id); }}
+                          disabled={reminding === session.id}
+                          className="text-amber-600 hover:text-amber-800 text-sm font-medium disabled:opacity-50"
+                        >
+                          {reminding === session.id
+                            ? (language === 'tr' ? 'Gönderiliyor...' : 'Versturen...')
+                            : (language === 'tr' ? 'Hatırlat' : 'Herinneren')}
+                        </button>
+                      )}
                       <button
                         onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
                         className="text-red-500 hover:text-red-700 text-sm"

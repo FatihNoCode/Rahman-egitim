@@ -139,14 +139,12 @@ async function verifyResendWebhook(request: Request, rawBody: string): Promise<b
   return receivedSigs.includes(expectedSig);
 }
 
-// Builds a minimal .ics calendar file (as a data: URI) plus a Google Calendar
-// link for a single conference slot, so parents can add it to any calendar
-// app straight from the confirmation email.
-function buildCalendarLinks(dateStr: string, startTime: string, endTime: string, title: string, description: string) {
+// Builds the raw .ics content for a single conference slot.
+function buildIcsContent(dateStr: string, startTime: string, endTime: string, title: string, description: string) {
   const toIcsDate = (time: string) => `${dateStr.replace(/-/g, '')}T${time.replace(':', '')}00`;
   const dtStart = toIcsDate(startTime);
   const dtEnd = toIcsDate(endTime);
-  const ics = [
+  return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Ilim Yolu//Oudergesprek//NL',
@@ -160,20 +158,48 @@ function buildCalendarLinks(dateStr: string, startTime: string, endTime: string,
     'END:VEVENT',
     'END:VCALENDAR',
   ].join('\r\n');
-  const icsDataUri = `data:text/calendar;charset=utf8,${encodeURIComponent(ics)}`;
+}
+
+// Builds a hosted .ics download link (many mail clients strip `data:` URIs
+// from links, which made the Apple/Outlook button silently non-functional)
+// plus a Google Calendar link for a single conference slot.
+function buildCalendarLinks(dateStr: string, startTime: string, endTime: string, title: string, description: string) {
+  const toIcsDate = (time: string) => `${dateStr.replace(/-/g, '')}T${time.replace(':', '')}00`;
+  const dtStart = toIcsDate(startTime);
+  const dtEnd = toIcsDate(endTime);
+
+  const icsParams = new URLSearchParams({ date: dateStr, start: startTime, end: endTime, title, description });
+  const icsLink = `${Deno.env.get('SUPABASE_URL')}/functions/v1/make-server-6679cacd/ics?${icsParams.toString()}`;
 
   const googleDates = `${dtStart}/${dtEnd}`;
   const googleLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${googleDates}&details=${encodeURIComponent(description)}`;
 
-  return { icsDataUri, googleLink };
+  return { icsLink, googleLink };
 }
+
+// Public endpoint the "Toevoegen aan Apple/Outlook Agenda" email button
+// links to — serves the .ics file over https so mail clients that strip
+// `data:` URIs (which silently broke the old version of this button) can
+// still open/download it.
+app.get("/make-server-6679cacd/ics", (c) => {
+  const { date, start, end, title, description } = c.req.query();
+  if (!date || !start || !end || !title) {
+    return c.json({ error: 'Missing required fields' }, 400);
+  }
+  const sanitize = (s: string) => s.replace(/[\r\n]+/g, ' ');
+  const ics = buildIcsContent(date, start, end, sanitize(title), sanitize(description || ''));
+  return c.body(ics, 200, {
+    'Content-Type': 'text/calendar; charset=utf-8',
+    'Content-Disposition': 'attachment; filename="oudergesprek.ics"',
+  });
+});
 
 // Sends (or re-sends, on reschedule) the oudergesprek booking confirmation
 // email with "add to calendar" links for the specific slot.
 async function sendConferenceConfirmationEmail(to: string, session: any, slot: any, studentName: string) {
   const title = `Oudergesprek ${studentName} | Veli Görüşmesi`;
   const description = `Oudergesprek voor ${studentName} bij Ilim Yolu.`;
-  const { icsDataUri, googleLink } = buildCalendarLinks(session.date, slot.start, slot.end, title, description);
+  const { icsLink, googleLink } = buildCalendarLinks(session.date, slot.start, slot.end, title, description);
 
   return sendEmail(
     to,
@@ -189,7 +215,7 @@ async function sendConferenceConfirmationEmail(to: string, session: any, slot: a
         </tr>
         <tr>
           <td>
-            <a href="${icsDataUri}" download="oudergesprek.ics" style="display:block;background:#111827;color:white;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;text-align:center">Toevoegen aan Apple/Outlook Agenda</a>
+            <a href="${icsLink}" style="display:block;background:#111827;color:white;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;text-align:center">Toevoegen aan Apple/Outlook Agenda</a>
           </td>
         </tr>
       </table>
@@ -4577,10 +4603,7 @@ app.post("/make-server-6679cacd/oudergesprekken/:id/book", async (c) => {
   }
 });
 
-const MAX_RESCHEDULES = 3;
-
-// Parent reschedules their already-booked slot to a different open slot,
-// up to MAX_RESCHEDULES times.
+// Parent reschedules their already-booked slot to a different open slot.
 app.post("/make-server-6679cacd/oudergesprekken/:id/reschedule", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
@@ -4612,9 +4635,6 @@ app.post("/make-server-6679cacd/oudergesprekken/:id/reschedule", async (c) => {
     }
 
     const rescheduleCount = fromSlot.rescheduleCount || 0;
-    if (rescheduleCount >= MAX_RESCHEDULES) {
-      return c.json({ error: `You can only reschedule up to ${MAX_RESCHEDULES} times` }, 400);
-    }
 
     if (session.slots[toSlotIndex].bookedBy) {
       return c.json({ error: 'Slot already booked' }, 409);
@@ -4648,7 +4668,7 @@ app.post("/make-server-6679cacd/oudergesprekken/:id/reschedule", async (c) => {
       await sendConferenceConfirmationEmail(parentData.email, session, slot, student.name);
     }
 
-    return c.json({ success: true, slot, remainingReschedules: MAX_RESCHEDULES - slot.rescheduleCount });
+    return c.json({ success: true, slot });
   } catch (err) {
     console.log('Reschedule oudergesprek slot error:', err);
     return c.json({ error: 'Failed to reschedule slot' }, 500);

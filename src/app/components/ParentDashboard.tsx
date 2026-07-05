@@ -386,8 +386,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       const msg = err.message || '';
       if (msg.includes('already booked') || msg.includes('Already booked')) {
         alert(language === 'tr' ? 'Bu zaman dilimi zaten dolu.' : 'Dit tijdslot is al bezet.');
-      } else if (msg.includes('reschedule up to')) {
-        alert(language === 'tr' ? 'En fazla 3 kez değiştirebilirsiniz.' : 'U kunt maximaal 3 keer wijzigen.');
       } else {
         alert(msg || 'Error');
       }
@@ -785,8 +783,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                 .map((session: any) => {
                   const myBookingIndex = session.slots.findIndex((s: any) => s.studentId === selectedChild.id);
                   const myBooking = myBookingIndex >= 0 ? session.slots[myBookingIndex] : null;
-                  const reschedulesUsed = myBooking?.rescheduleCount || 0;
-                  const canReschedule = reschedulesUsed < 3;
                   const isExpanded = bookingSessionId === session.id;
                   return (
                     <div key={session.id} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -804,20 +800,12 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                             <span className="text-sm font-medium px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700">
                               ✓ {myBooking.start} - {myBooking.end}
                             </span>
-                            {canReschedule ? (
-                              <button
-                                onClick={() => setBookingSessionId(isExpanded ? null : session.id)}
-                                className="px-3 py-1.5 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 text-xs font-semibold"
-                              >
-                                {language === 'tr'
-                                  ? `Değiştir (${3 - reschedulesUsed} hakkınız var)`
-                                  : `Wijzigen (${3 - reschedulesUsed} over)`}
-                              </button>
-                            ) : (
-                              <span className="text-xs text-gray-400">
-                                {language === 'tr' ? 'Değiştirme hakkınız kalmadı' : 'Geen wijzigingen meer over'}
-                              </span>
-                            )}
+                            <button
+                              onClick={() => setBookingSessionId(isExpanded ? null : session.id)}
+                              className="px-3 py-1.5 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 text-xs font-semibold"
+                            >
+                              {language === 'tr' ? 'Değiştir' : 'Wijzigen'}
+                            </button>
                           </div>
                         ) : (
                           <button
@@ -828,7 +816,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                           </button>
                         )}
                       </div>
-                      {isExpanded && (!myBooking || canReschedule) && (
+                      {isExpanded && (
                         <div className="border-t border-gray-200 p-4 bg-gray-50">
                           <p className="text-sm text-gray-600 mb-3">
                             {language === 'tr' ? 'Boş bir zaman dilimi seçin:' : 'Kies een vrij tijdslot:'}

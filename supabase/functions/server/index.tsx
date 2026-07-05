@@ -3752,7 +3752,7 @@ app.patch("/make-server-6679cacd/inschrijvingen/:id", async (c) => {
     if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const id = c.req.param('id');
-    const { status, klasId } = await c.req.json();
+    const { status, klasId, afwijzingsreden } = await c.req.json();
     const rec = await kv.get(`inschrijving:${id}`);
     if (!rec) return c.json({ error: 'Not found' }, 404);
     if (rec.schoolId && rec.schoolId !== schoolId) {
@@ -3763,6 +3763,12 @@ app.patch("/make-server-6679cacd/inschrijvingen/:id", async (c) => {
     const effectiveKlasId = klasId || rec.klasId;
     if (status === 'geaccepteerd' && !effectiveKlasId) {
       return c.json({ error: 'Selecteer eerst een klas voordat u accepteert' }, 400);
+    }
+
+    // A reason must be provided before a registration can be rejected.
+    const effectiveReason = (typeof afwijzingsreden === 'string' ? afwijzingsreden.trim() : '') || rec.afwijzingsreden;
+    if (status === 'afgewezen' && !effectiveReason) {
+      return c.json({ error: 'Vul eerst een reden voor afwijzing in' }, 400);
     }
 
     let studentId = rec.studentId || null;
@@ -3821,7 +3827,7 @@ app.patch("/make-server-6679cacd/inschrijvingen/:id", async (c) => {
       await kv.set(`class_students:${effectiveKlasId}`, [...classStudents, studentId]);
     }
 
-    await kv.set(`inschrijving:${id}`, { ...rec, status, klasId: effectiveKlasId, studentId });
+    await kv.set(`inschrijving:${id}`, { ...rec, status, klasId: effectiveKlasId, studentId, afwijzingsreden: effectiveReason || rec.afwijzingsreden });
 
     const statusLabelsNl: Record<string, string> = {
       nieuw: 'Nieuw',
@@ -3836,16 +3842,24 @@ app.patch("/make-server-6679cacd/inschrijvingen/:id", async (c) => {
       afgewezen: 'Reddedildi',
     };
     if (status && status !== rec.status && rec.contactEmail) {
+      const rejectionBlockNl = status === 'afgewezen' && effectiveReason
+        ? `<p style="color:#374151;line-height:1.6"><strong>Reden:</strong> ${effectiveReason}</p>`
+        : '';
+      const rejectionBlockTr = status === 'afgewezen' && effectiveReason
+        ? `<p style="color:#374151;line-height:1.6"><strong>Neden:</strong> ${effectiveReason}</p>`
+        : '';
       await sendEmail(
         rec.contactEmail,
         `Update inschrijving ${rec.voornaam} ${rec.achternaam} | Kayıt Güncellemesi - Ilim Yolu`,
         emailWrapper('Status inschrijving bijgewerkt', `
           <p style="color:#374151;line-height:1.6">Beste ${rec.contactNaam},</p>
           <p style="color:#374151;line-height:1.6">De status van de inschrijving van <strong>${rec.voornaam} ${rec.achternaam}</strong> is bijgewerkt naar: <strong>${statusLabelsNl[status] || status}</strong>.</p>
+          ${rejectionBlockNl}
           <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
           <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
           <p style="color:#374151;line-height:1.6">Sayın ${rec.contactNaam},</p>
           <p style="color:#374151;line-height:1.6"><strong>${rec.voornaam} ${rec.achternaam}</strong> kaydının durumu güncellendi: <strong>${statusLabelsTr[status] || status}</strong>.</p>
+          ${rejectionBlockTr}
         `)
       );
     }

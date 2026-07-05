@@ -15,6 +15,7 @@ interface Registration {
   ingediendOp: string;
   status: 'nieuw' | 'gezien' | 'geaccepteerd' | 'afgewezen';
   klasId?: string;
+  afwijzingsreden?: string;
 }
 
 interface Klas {
@@ -46,6 +47,7 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
   const [view, setView] = useState<'actief' | 'archief'>('actief');
   const [filter, setFilter] = useState<'all' | Registration['status']>('all');
   const [selectedKlas, setSelectedKlas] = useState<Record<string, string>>({});
+  const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
 
   const nl = (dutch: string, tr: string) => language === 'tr' ? tr : dutch;
 
@@ -76,13 +78,18 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
       alert(nl('Selecteer eerst een klas voordat u accepteert.', 'Kabul etmeden önce bir sınıf seçin.'));
       return;
     }
+    const reason = status === 'afgewezen' ? (rejectReason[id] || '').trim() : undefined;
+    if (status === 'afgewezen' && !reason) {
+      alert(nl('Vul eerst een reden voor afwijzing in.', 'Önce bir ret nedeni girin.'));
+      return;
+    }
     setUpdatingId(id);
     try {
       await apiRequest(`/inschrijvingen/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status, klasId: selectedKlas[id] }),
+        body: JSON.stringify({ status, klasId: selectedKlas[id], afwijzingsreden: reason }),
       });
-      setRegistrations(prev => prev.map(r => r.id === id ? { ...r, status, klasId: selectedKlas[id] || r.klasId } : r));
+      setRegistrations(prev => prev.map(r => r.id === id ? { ...r, status, klasId: selectedKlas[id] || r.klasId, afwijzingsreden: reason ?? r.afwijzingsreden } : r));
     } catch (e: any) {
       alert(e.message || nl('Bijwerken mislukt.', 'Güncelleme başarısız.'));
       console.error('Error updating status:', e);
@@ -325,8 +332,8 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
                     {view === 'actief' ? (
                       <div>
                         <p className="text-xs text-gray-400 font-semibold mb-2">{nl('Status bijwerken', 'Durumu güncelle')}</p>
-                        <div className="flex flex-wrap gap-2">
-                          {(['nieuw', 'gezien', 'geaccepteerd', 'afgewezen'] as const).map(s => {
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {(['nieuw', 'gezien', 'geaccepteerd'] as const).map(s => {
                             const info = STATUS_LABELS[s];
                             const active = reg.status === s;
                             const blockedByKlas = s === 'geaccepteerd' && !active && !selectedKlas[reg.id];
@@ -348,9 +355,34 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
                             );
                           })}
                         </div>
+
+                        {/* Reject with required reason */}
+                        <div className="border-t border-gray-100 pt-3">
+                          <p className="text-xs text-gray-400 font-semibold mb-2">{nl('Afwijzen', 'Reddet')}</p>
+                          <textarea
+                            value={rejectReason[reg.id] || ''}
+                            onChange={(e) => setRejectReason(prev => ({ ...prev, [reg.id]: e.target.value }))}
+                            placeholder={nl('Reden van afwijzing (verplicht)...', 'Ret nedeni (zorunlu)...')}
+                            rows={2}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400 mb-2"
+                          />
+                          <button
+                            onClick={() => updateStatus(reg.id, 'afgewezen')}
+                            disabled={updatingId === reg.id || !(rejectReason[reg.id] || '').trim()}
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-200 text-red-600 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {nl('Afwijzen', 'Reddet')}
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div>
+                        {reg.status === 'afgewezen' && reg.afwijzingsreden && (
+                          <div className="mb-3 bg-red-50 border border-red-100 rounded-lg p-3">
+                            <p className="text-xs text-red-700 font-semibold mb-1">{nl('Reden van afwijzing', 'Ret nedeni')}</p>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{reg.afwijzingsreden}</p>
+                          </div>
+                        )}
                         <p className="text-xs text-gray-400 font-semibold mb-2">{nl('Terugzetten', 'Geri al')}</p>
                         <button
                           onClick={() => updateStatus(reg.id, 'nieuw')}

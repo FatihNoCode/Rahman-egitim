@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
-import { Plus, School, ArrowRight, RefreshCw } from 'lucide-react';
+import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon } from 'lucide-react';
 import UserMenu from './UserMenu';
+import InboxView from './InboxView';
 import booksLogo from '../../imports/books__1_.png';
 
 interface SchoolRecord {
@@ -26,6 +27,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   const [newSchoolName, setNewSchoolName] = useState('');
   const [creating, setCreating] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [tab, setTab] = useState<'schools' | 'inbox'>('schools');
 
   useEffect(() => {
     loadSchools();
@@ -105,85 +107,108 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">{t.createSchool}</h2>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input
-              type="text"
-              value={newSchoolName}
-              onChange={(e) => setNewSchoolName(e.target.value)}
-              placeholder={t.schoolName}
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              onKeyDown={(e) => { if (e.key === 'Enter') createSchool(); }}
-            />
-            <button
-              onClick={createSchool}
-              disabled={creating || !newSchoolName.trim()}
-              className="flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
-            >
-              <Plus className="h-4 w-4" />
-              {t.createSchool}
-            </button>
-          </div>
+        <div className="flex gap-1.5 mb-4 sm:mb-6 bg-gray-100 rounded-xl p-1 w-fit">
+          <button
+            onClick={() => setTab('schools')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition ${tab === 'schools' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <School className="h-3.5 w-3.5" />
+            {t.schools}
+          </button>
+          <button
+            onClick={() => setTab('inbox')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition ${tab === 'inbox' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <InboxIcon className="h-3.5 w-3.5" />
+            {t.inbox}
+          </button>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-800">{t.schools}</h2>
-            <button
-              onClick={loadSchools}
-              disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition disabled:opacity-50"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-
-          {loading ? (
-            <div className="text-center py-12 text-gray-400">
-              <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
-              {t.loading}
-            </div>
-          ) : schools.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">{t.noSchoolsYet}</div>
-          ) : (
-            <div className="space-y-2">
-              {schools.map((school) => (
-                <div
-                  key={school.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 sm:p-4 rounded-xl border border-gray-100 hover:border-gray-200 transition"
+        {tab === 'schools' && (
+          <>
+            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">{t.createSchool}</h2>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={newSchoolName}
+                  onChange={(e) => setNewSchoolName(e.target.value)}
+                  placeholder={t.schoolName}
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  onKeyDown={(e) => { if (e.key === 'Enter') createSchool(); }}
+                />
+                <button
+                  onClick={createSchool}
+                  disabled={creating || !newSchoolName.trim()}
+                  className="flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
-                      <School className="h-4.5 w-4.5 text-emerald-600" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-800">{school.name}</p>
+                  <Plus className="h-4 w-4" />
+                  {t.createSchool}
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-800">{t.schools}</h2>
+                <button
+                  onClick={loadSchools}
+                  disabled={loading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+
+              {loading ? (
+                <div className="text-center py-12 text-gray-400">
+                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                  {t.loading}
+                </div>
+              ) : schools.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">{t.noSchoolsYet}</div>
+              ) : (
+                <div className="space-y-2">
+                  {schools.map((school) => (
+                    <div
+                      key={school.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 sm:p-4 rounded-xl border border-gray-100 hover:border-gray-200 transition"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                          <School className="h-4.5 w-4.5 text-emerald-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-800">{school.name}</p>
+                          <button
+                            onClick={() => toggleActive(school)}
+                            disabled={togglingId === school.id}
+                            className={`text-xs font-medium px-2 py-0.5 rounded-full mt-0.5 transition disabled:opacity-50 ${
+                              school.active
+                                ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                            }`}
+                          >
+                            {school.active ? t.activeSchool : t.inactiveSchool}
+                          </button>
+                        </div>
+                      </div>
                       <button
-                        onClick={() => toggleActive(school)}
-                        disabled={togglingId === school.id}
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full mt-0.5 transition disabled:opacity-50 ${
-                          school.active
-                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                        }`}
+                        onClick={() => onEnterSchool(school.id)}
+                        className="flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition"
                       >
-                        {school.active ? t.activeSchool : t.inactiveSchool}
+                        {t.enterAsAdmin}
+                        <ArrowRight className="h-4 w-4" />
                       </button>
                     </div>
-                  </div>
-                  <button
-                    onClick={() => onEnterSchool(school.id)}
-                    className="flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition"
-                  >
-                    {t.enterAsAdmin}
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
+
+        {tab === 'inbox' && <InboxView t={t} apiRequest={apiRequest} />}
       </div>
     </div>
   );

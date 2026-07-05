@@ -113,6 +113,32 @@ async function sendEmail(to: string, subject: string, html: string) {
   }
 }
 
+// Verifies a Resend inbound-email webhook using its svix-style signature
+// (svix-id.svix-timestamp.body signed with HMAC-SHA256 using the webhook
+// secret). Resend's webhook secrets are "whsec_<base64>" — the base64 part
+// is the actual signing key.
+async function verifyResendWebhook(request: Request, rawBody: string): Promise<boolean> {
+  const secret = Deno.env.get('RESEND_WEBHOOK_SECRET');
+  if (!secret) return false;
+
+  const svixId = request.headers.get('svix-id');
+  const svixTimestamp = request.headers.get('svix-timestamp');
+  const svixSignature = request.headers.get('svix-signature');
+  if (!svixId || !svixTimestamp || !svixSignature) return false;
+
+  const secretKey = secret.startsWith('whsec_') ? secret.slice('whsec_'.length) : secret;
+  const keyBytes = Uint8Array.from(atob(secretKey), (ch) => ch.charCodeAt(0));
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const signedContent = `${svixId}.${svixTimestamp}.${rawBody}`;
+  const sigBuffer = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(signedContent));
+  const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBuffer)));
+
+  const receivedSigs = svixSignature.split(' ').map((part) => part.split(',')[1]).filter(Boolean);
+  return receivedSigs.includes(expectedSig);
+}
+
 // Builds a minimal .ics calendar file (as a data: URI) plus a Google Calendar
 // link for a single conference slot, so parents can add it to any calendar
 // app straight from the confirmation email.
@@ -1764,6 +1790,10 @@ app.post("/make-server-6679cacd/attendance", async (c) => {
 
     const { classId, date, records, lessonSummary } = await c.req.json();
 
+    if (!(await userHasClassAccess(user.id, userData, classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
     console.log('Saving attendance for class:', classId, 'date:', date, 'records:', records.length);
 
     const attendanceData = {
@@ -1931,6 +1961,12 @@ app.post("/make-server-6679cacd/behavior", async (c) => {
     }
 
     const { studentId, date, rating, notes } = await c.req.json();
+
+    const behaviorStudent = await kv.get(`student:${studentId}`);
+    if (!behaviorStudent?.classId || !(await userHasClassAccess(user.id, userData, behaviorStudent.classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
     const behaviorId = crypto.randomUUID();
 
     await kv.set(`behavior:${behaviorId}`, {
@@ -2363,7 +2399,7 @@ app.post("/make-server-6679cacd/teachers", async (c) => {
     await kv.set(`teacher_classes:${data.user.id}`, []);
 
     // Send invite email
-    const inviteLink = `https://www.nonexistingwebsiteyet.com/invite/${inviteToken}`;
+    const inviteLink = `https://ilimyolu.com/invite/${inviteToken}`;
 
     // Email content
     const emailSubjectTr = 'Öğretmen Daveti - Cami Öğrenci Takip Sistemi';
@@ -2379,7 +2415,7 @@ ${inviteLink}
 
 Bu bağlantı 7 gün geçerlidir.
 
-Hesabınızı oluşturduktan sonra, www.nonexistingwebsiteyet.com adresinden giriş yapabilirsiniz.
+Hesabınızı oluşturduktan sonra, ilimyolu.com adresinden giriş yapabilirsiniz.
 
 Saygılarımızla,
 Cami Yönetimi
@@ -2395,7 +2431,7 @@ ${inviteLink}
 
 Deze link is 7 dagen geldig.
 
-Na het aanmaken van uw account kunt u inloggen op www.nonexistingwebsiteyet.com.
+Na het aanmaken van uw account kunt u inloggen op ilimyolu.com.
 
 Met vriendelijke groet,
 Moskee Beheer
@@ -3460,7 +3496,15 @@ app.post("/make-server-6679cacd/communication/send", async (c) => {
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
     if (!RESEND_API_KEY) return c.json({ error: 'RESEND_API_KEY not configured' }, 500);
 
-    const recipients = (await kv.mget(recipientIds.map((id: string) => `user:${id}`))).filter((u: any) => u && u.email);
+    const candidates = (await kv.mget(recipientIds.map((id: string) => `user:${id}`))).filter((u: any) => u && u.email);
+    let recipients = candidates;
+    if (userData.role !== 'superadmin') {
+      recipients = [];
+      for (const r of candidates) {
+        const recipientSchoolIds = await getUserSchoolIds(r.id, r);
+        if (recipientSchoolIds.has(schoolId)) recipients.push(r);
+      }
+    }
     if (recipients.length === 0) return c.json({ error: 'No valid recipients' }, 400);
 
     const html = emailWrapper('', `<div style="white-space:pre-wrap;color:#374151;line-height:1.6">${content.replace(/</g, '&lt;')}</div>`);
@@ -3527,6 +3571,88 @@ app.get("/make-server-6679cacd/communication/sent", async (c) => {
   } catch (err) {
     console.log('Get sent communications error:', err);
     return c.json({ error: 'Failed to get sent communications' }, 500);
+  }
+});
+
+// ============= SUPERADMIN INBOX (inbound email) =============
+// Resend delivers inbound mail (e.g. replies to info@ilimyolu.com or a
+// dedicated inbox@ address) to this webhook once inbound routing + a
+// receiving domain are configured in the Resend dashboard. Stored globally
+// (not school-scoped) since only the superadmin can read this mailbox.
+
+app.post("/make-server-6679cacd/webhooks/inbound-email", async (c) => {
+  try {
+    const rawBody = await c.req.text();
+    const verified = await verifyResendWebhook(c.req.raw, rawBody);
+    if (!verified) return c.json({ error: 'Invalid signature' }, 401);
+
+    const event = JSON.parse(rawBody);
+    if (event.type !== 'email.received') {
+      return c.json({ success: true, ignored: true });
+    }
+
+    const data = event.data || {};
+    const id = crypto.randomUUID();
+    const message = {
+      id,
+      from: data.from || '',
+      to: data.to || [],
+      subject: data.subject || '(no subject)',
+      text: data.text || '',
+      html: data.html || '',
+      attachments: (data.attachments || []).map((a: any) => ({ filename: a.filename, contentType: a.content_type })),
+      read: false,
+      receivedAt: new Date().toISOString(),
+    };
+    await kv.set(`inbox:${id}`, message);
+    const ids: string[] = await kv.get('inbox_ids') || [];
+    ids.unshift(id);
+    if (ids.length > 1000) ids.length = 1000;
+    await kv.set('inbox_ids', ids);
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Inbound email webhook error:', err);
+    return c.json({ error: 'Failed to process inbound email' }, 500);
+  }
+});
+
+app.get("/make-server-6679cacd/inbox", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (!userData || userData.role !== 'superadmin') {
+      return c.json({ error: 'Only the superadmin can view the inbox' }, 403);
+    }
+
+    const ids: string[] = await kv.get('inbox_ids') || [];
+    const messages = (await kv.mget(ids.map((id) => `inbox:${id}`))).filter((m: any) => m);
+    return c.json({ messages });
+  } catch (err) {
+    console.log('Get inbox error:', err);
+    return c.json({ error: 'Failed to get inbox' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/inbox/:id/read", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (!userData || userData.role !== 'superadmin') {
+      return c.json({ error: 'Only the superadmin can update the inbox' }, 403);
+    }
+
+    const id = c.req.param('id');
+    const message = await kv.get(`inbox:${id}`);
+    if (!message) return c.json({ error: 'Message not found' }, 404);
+    message.read = true;
+    await kv.set(`inbox:${id}`, message);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Mark inbox read error:', err);
+    return c.json({ error: 'Failed to update message' }, 500);
   }
 });
 

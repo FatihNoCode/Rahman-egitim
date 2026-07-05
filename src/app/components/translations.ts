@@ -149,6 +149,10 @@ export const translations = {
     inactiveSchool: 'Pasif',
     actingAsAdminFor: 'Şu an yönetici olarak işlem yapılıyor:',
     noSchoolsYet: 'Henüz okul oluşturulmadı',
+    inbox: 'Gelen Kutusu',
+    noInboxMessages: 'Henüz gelen e-posta yok',
+    inboxFrom: 'Kimden',
+    inboxRefresh: 'Yenile',
   },
   nl: {
     // Auth
@@ -300,6 +304,10 @@ export const translations = {
     inactiveSchool: 'Inactief',
     actingAsAdminFor: 'U handelt nu als beheerder voor:',
     noSchoolsYet: 'Nog geen scholen aangemaakt',
+    inbox: 'Postvak IN',
+    noInboxMessages: 'Nog geen inkomende e-mails',
+    inboxFrom: 'Van',
+    inboxRefresh: 'Vernieuwen',
   },
 };
 

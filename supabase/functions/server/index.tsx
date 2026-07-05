@@ -4751,10 +4751,46 @@ app.post("/make-server-6679cacd/oudergesprekken/:id/remind-unbooked", async (c) 
   }
 });
 
-// ─── Agenda (lesson structure, vacation days, events) ───
+// ─── Agenda (lesson structures, vacation days, events) ───
 
-// Save / update the lesson-day structure for a school
-app.put("/make-server-6679cacd/agenda/settings", async (c) => {
+// Two date ranges (inclusive, "YYYY-MM-DD" strings) overlap if each starts
+// on or before the other's end.
+function dateRangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string) {
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
+// Reads the list of lesstructuren for a school, transparently migrating the
+// old single `agenda_settings:{schoolId}` record (pre-dating support for
+// multiple lesstructuren) into the new list on first read.
+async function getLesstructurenForSchool(schoolId: string): Promise<any[]> {
+  const ids: string[] = await kv.get(`agenda_lesstructuur_ids:${schoolId}`) || [];
+  if (ids.length > 0) {
+    const items = await kv.mget(ids.map(i => `agenda_lesstructuur:${i}`));
+    return items.filter(Boolean).sort((a: any, b: any) => a.startDate.localeCompare(b.startDate));
+  }
+
+  const legacy = await kv.get(`agenda_settings:${schoolId}`);
+  if (!legacy) return [];
+  const migrated = {
+    id: crypto.randomUUID(),
+    schoolId,
+    startDate: legacy.startDate,
+    endDate: legacy.endDate,
+    startTime: legacy.startTime,
+    endTime: legacy.endTime,
+    lessonDays: legacy.lessonDays || [0, 1, 2, 3, 4, 5, 6],
+    createdAt: legacy.updatedAt || new Date().toISOString(),
+  };
+  await kv.set(`agenda_lesstructuur:${migrated.id}`, migrated);
+  await kv.set(`agenda_lesstructuur_ids:${schoolId}`, [migrated.id]);
+  await kv.del(`agenda_settings:${schoolId}`);
+  return [migrated];
+}
+
+// Create a new lesson-day structure for a school. Any existing lesstructuur
+// whose date range overlaps with the new one is removed, so the new
+// structuur always wins over whatever it overlaps with.
+app.post("/make-server-6679cacd/agenda/lesstructuren", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
@@ -4767,26 +4803,40 @@ app.put("/make-server-6679cacd/agenda/settings", async (c) => {
     if (!startDate || !endDate || !startTime || !endTime) {
       return c.json({ error: 'startDate, endDate, startTime, endTime required' }, 400);
     }
+    if (endDate < startDate) {
+      return c.json({ error: 'endDate must be on or after startDate' }, 400);
+    }
 
-    const settings = {
+    const existing = await getLesstructurenForSchool(schoolId);
+    const overlapping = existing.filter(ls => dateRangesOverlap(ls.startDate, ls.endDate, startDate, endDate));
+    const remaining = existing.filter(ls => !overlapping.includes(ls));
+
+    for (const ls of overlapping) {
+      await kv.del(`agenda_lesstructuur:${ls.id}`);
+    }
+
+    const lesstructuur = {
+      id: crypto.randomUUID(),
       schoolId,
       startDate,
       endDate,
       startTime,
       endTime,
-      lessonDays: lessonDays || [0, 1, 2, 3, 4, 5, 6], // default all days
-      updatedAt: new Date().toISOString(),
+      lessonDays: lessonDays || [0, 1, 2, 3, 4, 5, 6],
+      createdAt: new Date().toISOString(),
     };
-    await kv.set(`agenda_settings:${schoolId}`, settings);
-    return c.json({ success: true, settings });
+    await kv.set(`agenda_lesstructuur:${lesstructuur.id}`, lesstructuur);
+    await kv.set(`agenda_lesstructuur_ids:${schoolId}`, [...remaining.map(ls => ls.id), lesstructuur.id]);
+
+    return c.json({ success: true, lesstructuur, removedIds: overlapping.map(ls => ls.id) });
   } catch (err) {
-    console.log('Update agenda settings error:', err);
-    return c.json({ error: 'Failed to update agenda settings' }, 500);
+    console.log('Create lesstructuur error:', err);
+    return c.json({ error: 'Failed to create lesstructuur' }, 500);
   }
 });
 
-// Get agenda settings (any authenticated user of the school)
-app.get("/make-server-6679cacd/agenda/settings", async (c) => {
+// List lesstructuren (any authenticated user of the school)
+app.get("/make-server-6679cacd/agenda/lesstructuren", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
@@ -4796,18 +4846,36 @@ app.get("/make-server-6679cacd/agenda/settings", async (c) => {
     if (userData?.role === 'admin' || userData?.role === 'superadmin') {
       const result = await resolveSchoolContext(c, userData);
       schoolId = result.schoolId;
-    } else if (userData?.role === 'teacher') {
-      schoolId = userData.schoolId;
-    } else if (userData?.role === 'parent') {
+    } else if (userData?.role === 'teacher' || userData?.role === 'parent') {
       schoolId = userData.schoolId;
     }
     if (!schoolId) return c.json({ error: 'No school context' }, 400);
 
-    const settings = await kv.get(`agenda_settings:${schoolId}`);
-    return c.json({ settings: settings || null });
+    const lesstructuren = await getLesstructurenForSchool(schoolId);
+    return c.json({ lesstructuren });
   } catch (err) {
-    console.log('Get agenda settings error:', err);
-    return c.json({ error: 'Failed to get agenda settings' }, 500);
+    console.log('Get lesstructuren error:', err);
+    return c.json({ error: 'Failed to get lesstructuren' }, 500);
+  }
+});
+
+// Delete a lesstructuur
+app.delete("/make-server-6679cacd/agenda/lesstructuren/:id", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
+
+    const id = c.req.param('id');
+    await kv.del(`agenda_lesstructuur:${id}`);
+    const ids: string[] = await kv.get(`agenda_lesstructuur_ids:${schoolId}`) || [];
+    await kv.set(`agenda_lesstructuur_ids:${schoolId}`, ids.filter(i => i !== id));
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Delete lesstructuur error:', err);
+    return c.json({ error: 'Failed to delete lesstructuur' }, 500);
   }
 });
 
@@ -4998,7 +5066,8 @@ app.post("/make-server-6679cacd/cron/tick", async (c) => {
       // Once a class's lesson-day ends within 20 minutes (or has already
       // ended) and attendance for today hasn't been recorded, nudge the
       // teacher once (email + notification).
-      const settings = await kv.get(`agenda_settings:${school.id}`);
+      const lesstructuren = await getLesstructurenForSchool(school.id);
+      const settings = lesstructuren.find(ls => todayStr >= ls.startDate && todayStr <= ls.endDate);
       if (settings && (settings.lessonDays || []).includes(dayOfWeek)) {
         const [endH, endM] = settings.endTime.split(':').map(Number);
         const lessonEndMinutes = endH * 60 + endM;

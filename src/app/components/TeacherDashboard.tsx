@@ -7,6 +7,7 @@ import { translations } from './translations';
 import { quranChapters } from '../../utils/quranData';
 import TeacherManageView from './TeacherManageView';
 import AbsenceOverviewView from './AbsenceOverviewView';
+import AgendaCalendar from './AgendaCalendar';
 import UserMenu from './UserMenu';
 
 interface Class {
@@ -33,9 +34,9 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [students, setStudents] = useState<Student[]>([]);
   const [studentsWithStats, setStudentsWithStats] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useHashTab<'attendance' | 'meldingen' | 'beheer' | 'oudergesprekken'>(
+  const [activeTab, setActiveTab] = useHashTab<'attendance' | 'meldingen' | 'beheer' | 'oudergesprekken' | 'agenda'>(
     'attendance',
-    ['attendance', 'meldingen', 'beheer', 'oudergesprekken'] as const,
+    ['attendance', 'meldingen', 'beheer', 'oudergesprekken', 'agenda'] as const,
   );
   const [conferSessions, setConferSessions] = useState<any[]>([]);
   const [conferExpanded, setConferExpanded] = useState<string | null>(null);
@@ -125,13 +126,14 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
 
   const loadAgenda = async () => {
     try {
-      const [settingsRes, vacRes, evtRes] = await Promise.all([
-        apiRequest('/agenda/settings'),
+      const [lsRes, vacRes, evtRes] = await Promise.all([
+        apiRequest('/agenda/lesstructuren'),
         apiRequest('/agenda/vacations'),
         apiRequest('/agenda/events'),
       ]);
-      setAgendaSettings(settingsRes.settings || null);
       const today = new Date().toISOString().split('T')[0];
+      const activeLs = (lsRes.lesstructuren || []).find((ls: any) => ls.endDate >= today);
+      setAgendaSettings(activeLs || null);
       setAgendaVacations((vacRes.vacations || []).filter((v: any) => v.endDate >= today).sort((a: any, b: any) => a.startDate.localeCompare(b.startDate)));
       setAgendaEvents((evtRes.events || []).filter((e: any) => e.date >= today).sort((a: any, b: any) => a.date.localeCompare(b.date)));
     } catch (err) {
@@ -498,6 +500,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
               <TabButton tab="meldingen">{language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen'}</TabButton>
               <TabButton tab="beheer">Beheer</TabButton>
               <TabButton tab="oudergesprekken">{language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken'}</TabButton>
+              <TabButton tab="agenda">{language === 'tr' ? 'Ajanda' : 'Agenda'}</TabButton>
             </div>
 
             {/* Agenda info bar */}
@@ -1093,6 +1096,11 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* ─── AGENDA TAB ─── */}
+            {activeTab === 'agenda' && (
+              <AgendaCalendar language={language} apiRequest={apiRequest} />
             )}
           </div>
         )}

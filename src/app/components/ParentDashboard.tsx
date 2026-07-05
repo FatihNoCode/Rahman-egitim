@@ -6,6 +6,7 @@ import { useHashTab } from '../useHashTab';
 import { Euro, Moon } from 'lucide-react';
 import booksLogo from '../../imports/books__1_.png';
 import UserMenu from './UserMenu';
+import AgendaCalendar from './AgendaCalendar';
 
 // Local-time date helpers (avoid UTC parsing shifting the day)
 const toYMD = (d: Date) =>
@@ -101,14 +102,10 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [billingRecord, setBillingRecord] = useState<any>(null);
   const [billingPayments, setBillingPayments] = useState<PaymentLogEntry[]>([]);
   const [loadingBilling, setLoadingBilling] = useState(false);
-  const [agendaSettings, setAgendaSettings] = useState<any>(null);
-  const [agendaVacations, setAgendaVacations] = useState<any[]>([]);
-  const [agendaEvents, setAgendaEvents] = useState<any[]>([]);
 
   useEffect(() => {
     loadData();
     loadDeadlineSettings();
-    loadAgenda();
   }, []);
 
   useEffect(() => {
@@ -241,22 +238,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       setNotificationDeadlineTime(data.year.notificationDeadlineTime || '09:00');
     } catch (error) {
       console.error('Error loading deadline settings:', error);
-    }
-  };
-
-  const loadAgenda = async () => {
-    try {
-      const [settingsRes, vacRes, evtRes] = await Promise.all([
-        apiRequest('/agenda/settings'),
-        apiRequest('/agenda/vacations'),
-        apiRequest('/agenda/events'),
-      ]);
-      setAgendaSettings(settingsRes.settings || null);
-      const today = new Date().toISOString().split('T')[0];
-      setAgendaVacations((vacRes.vacations || []).filter((v: any) => v.endDate >= today).sort((a: any, b: any) => a.startDate.localeCompare(b.startDate)));
-      setAgendaEvents((evtRes.events || []).filter((e: any) => e.date >= today).sort((a: any, b: any) => a.date.localeCompare(b.date)));
-    } catch (err) {
-      console.error('Error loading agenda:', err);
     }
   };
 
@@ -855,59 +836,13 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           </div>
         )}
 
-        {/* Agenda: upcoming vacations & events */}
-        {(agendaVacations.length > 0 || agendaEvents.length > 0 || agendaSettings) && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
-            {agendaSettings && (
-              <div className="bg-white rounded-xl shadow-lg p-4 sm:p-5">
-                <h3 className="font-semibold text-emerald-800 mb-2 text-sm sm:text-base">
-                  {language === 'tr' ? 'Ders Saatleri' : 'Lestijden'}
-                </h3>
-                <p className="text-sm text-gray-600">
-                  {agendaSettings.startTime} - {agendaSettings.endTime}
-                </p>
-              </div>
-            )}
-            {agendaVacations.length > 0 && (
-              <div className="bg-white rounded-xl shadow-lg p-4 sm:p-5">
-                <h3 className="font-semibold text-orange-700 mb-2 text-sm sm:text-base">
-                  {language === 'tr' ? 'Yaklaşan Tatiller' : 'Aankomende Vakanties'}
-                </h3>
-                <div className="space-y-1.5">
-                  {agendaVacations.slice(0, 3).map((v: any) => (
-                    <div key={v.id} className="text-sm">
-                      <span className="font-medium">{v.name}</span>
-                      <span className="text-gray-500 ml-1.5 text-xs">
-                        {new Date(v.startDate + 'T00:00:00').toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', { day: 'numeric', month: 'short' })}
-                        {' - '}
-                        {new Date(v.endDate + 'T00:00:00').toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', { day: 'numeric', month: 'short' })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {agendaEvents.length > 0 && (
-              <div className="bg-white rounded-xl shadow-lg p-4 sm:p-5">
-                <h3 className="font-semibold text-blue-700 mb-2 text-sm sm:text-base">
-                  {language === 'tr' ? 'Yaklaşan Etkinlikler' : 'Aankomende Evenementen'}
-                </h3>
-                <div className="space-y-1.5">
-                  {agendaEvents.slice(0, 3).map((ev: any) => (
-                    <div key={ev.id} className="text-sm">
-                      <span className="font-medium">{ev.title}</span>
-                      <span className="text-gray-500 ml-1.5 text-xs">
-                        {new Date(ev.date + 'T00:00:00').toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        {ev.startTime && ` · ${ev.startTime}`}
-                      </span>
-                      {ev.description && <p className="text-xs text-gray-400">{ev.description}</p>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* Agenda: lesson days, vacations & events */}
+        <div className="mb-4 sm:mb-6">
+          <h2 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-3">
+            {language === 'tr' ? 'Ajanda' : 'Agenda'}
+          </h2>
+          <AgendaCalendar language={language} apiRequest={apiRequest} />
+        </div>
 
         {selectedChild && (
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Phone, User, Calendar, Tag, ChevronDown, ChevronUp, RefreshCw, MessageCircleQuestion } from 'lucide-react';
+import { Mail, Phone, User, Calendar, Tag, ChevronDown, ChevronUp, RefreshCw, MessageCircleQuestion, Archive, Undo2 } from 'lucide-react';
 
 interface Registration {
   id: string;
@@ -13,7 +13,7 @@ interface Registration {
   opmerkingen?: string;
   vraag?: string;
   ingediendOp: string;
-  status: 'nieuw' | 'gezien' | 'geaccepteerd';
+  status: 'nieuw' | 'gezien' | 'geaccepteerd' | 'afgewezen';
   klasId?: string;
 }
 
@@ -32,14 +32,19 @@ const STATUS_LABELS = {
   nieuw:        { nl: 'Nieuw',        tr: 'Yeni',       color: 'bg-blue-100 text-blue-700 border-blue-200' },
   gezien:       { nl: 'Gezien',       tr: 'Görüldü',    color: 'bg-amber-100 text-amber-700 border-amber-200' },
   geaccepteerd: { nl: 'Geaccepteerd', tr: 'Kabul edildi', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  afgewezen:    { nl: 'Afgewezen',    tr: 'Reddedildi', color: 'bg-red-100 text-red-700 border-red-200' },
 };
+
+const ACTIVE_STATUSES = ['nieuw', 'gezien'] as const;
+const ARCHIVE_STATUSES = ['geaccepteerd', 'afgewezen'] as const;
 
 export default function InschrijvingenView({ language, apiRequest, classes }: InschrijvingenViewProps) {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'nieuw' | 'gezien' | 'geaccepteerd'>('all');
+  const [view, setView] = useState<'actief' | 'archief'>('actief');
+  const [filter, setFilter] = useState<'all' | Registration['status']>('all');
   const [selectedKlas, setSelectedKlas] = useState<Record<string, string>>({});
 
   const nl = (dutch: string, tr: string) => language === 'tr' ? tr : dutch;
@@ -86,12 +91,15 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
     }
   };
 
-  const visible = filter === 'all' ? registrations : registrations.filter(r => r.status === filter);
-  const counts = {
-    all: registrations.length,
-    nieuw: registrations.filter(r => r.status === 'nieuw').length,
-    gezien: registrations.filter(r => r.status === 'gezien').length,
-    geaccepteerd: registrations.filter(r => r.status === 'geaccepteerd').length,
+  const statusesForView = view === 'actief' ? ACTIVE_STATUSES : ARCHIVE_STATUSES;
+  const inView = registrations.filter(r => (statusesForView as readonly string[]).includes(r.status));
+  const visible = filter === 'all' ? inView : inView.filter(r => r.status === filter);
+  const counts: Record<string, number> = { all: inView.length };
+  for (const s of statusesForView) counts[s] = registrations.filter(r => r.status === s).length;
+
+  const changeView = (v: 'actief' | 'archief') => {
+    setView(v);
+    setFilter('all');
   };
 
   return (
@@ -111,9 +119,36 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
         </button>
       </div>
 
+      {/* View toggle */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => changeView('actief')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border transition ${
+            view === 'actief' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+          }`}
+        >
+          {nl('Actief', 'Aktif')}
+          <span className={`text-xs rounded-full px-1.5 ${view === 'actief' ? 'bg-white/20' : 'bg-gray-100'}`}>
+            {registrations.filter(r => (ACTIVE_STATUSES as readonly string[]).includes(r.status)).length}
+          </span>
+        </button>
+        <button
+          onClick={() => changeView('archief')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border transition ${
+            view === 'archief' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+          }`}
+        >
+          <Archive className="h-4 w-4" />
+          {nl('Archief', 'Arşiv')}
+          <span className={`text-xs rounded-full px-1.5 ${view === 'archief' ? 'bg-white/20' : 'bg-gray-100'}`}>
+            {registrations.filter(r => (ARCHIVE_STATUSES as readonly string[]).includes(r.status)).length}
+          </span>
+        </button>
+      </div>
+
       {/* Summary bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-        {(['all', 'nieuw', 'gezien', 'geaccepteerd'] as const).map(key => {
+      <div className={`grid grid-cols-2 gap-3 mb-5 ${statusesForView.length + 1 >= 3 ? 'sm:grid-cols-3' : ''}`}>
+        {(['all', ...statusesForView] as const).map(key => {
           const isSelected = filter === key;
           const count = counts[key];
           const label = key === 'all'
@@ -269,7 +304,7 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
                     )}
 
                     {/* Class selection — required before accepting */}
-                    {reg.status !== 'nieuw' && (
+                    {view === 'actief' && reg.status !== 'nieuw' && (
                       <div className="mb-3">
                         <p className="text-xs text-gray-400 font-semibold mb-2">{nl('Klas', 'Sınıf')}</p>
                         <select
@@ -287,32 +322,46 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
                     )}
 
                     {/* Status buttons */}
-                    <div>
-                      <p className="text-xs text-gray-400 font-semibold mb-2">{nl('Status bijwerken', 'Durumu güncelle')}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {(['nieuw', 'gezien', 'geaccepteerd'] as const).map(s => {
-                          const info = STATUS_LABELS[s];
-                          const active = reg.status === s;
-                          const blockedByKlas = s === 'geaccepteerd' && !active && !selectedKlas[reg.id];
-                          return (
-                            <button
-                              key={s}
-                              onClick={() => updateStatus(reg.id, s)}
-                              disabled={active || updatingId === reg.id || blockedByKlas}
-                              title={blockedByKlas ? nl('Selecteer eerst een klas', 'Önce bir sınıf seçin') : undefined}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                                active
-                                  ? `${info.color} cursor-default`
-                                  : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50'
-                              }`}
-                            >
-                              {language === 'tr' ? info.tr : info.nl}
-                              {active && ' ✓'}
-                            </button>
-                          );
-                        })}
+                    {view === 'actief' ? (
+                      <div>
+                        <p className="text-xs text-gray-400 font-semibold mb-2">{nl('Status bijwerken', 'Durumu güncelle')}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {(['nieuw', 'gezien', 'geaccepteerd', 'afgewezen'] as const).map(s => {
+                            const info = STATUS_LABELS[s];
+                            const active = reg.status === s;
+                            const blockedByKlas = s === 'geaccepteerd' && !active && !selectedKlas[reg.id];
+                            return (
+                              <button
+                                key={s}
+                                onClick={() => updateStatus(reg.id, s)}
+                                disabled={active || updatingId === reg.id || blockedByKlas}
+                                title={blockedByKlas ? nl('Selecteer eerst een klas', 'Önce bir sınıf seçin') : undefined}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                                  active
+                                    ? `${info.color} cursor-default`
+                                    : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50'
+                                }`}
+                              >
+                                {language === 'tr' ? info.tr : info.nl}
+                                {active && ' ✓'}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div>
+                        <p className="text-xs text-gray-400 font-semibold mb-2">{nl('Terugzetten', 'Geri al')}</p>
+                        <button
+                          onClick={() => updateStatus(reg.id, 'nieuw')}
+                          disabled={updatingId === reg.id}
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition disabled:opacity-50"
+                        >
+                          <Undo2 className="h-3.5 w-3.5" />
+                          {nl('Terug naar actief', 'Aktife geri al')}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

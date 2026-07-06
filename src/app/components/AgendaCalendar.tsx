@@ -153,10 +153,20 @@ export default function AgendaCalendar({
     return (ymd: string) => vacations.find(v => ymd >= v.startDate && ymd <= v.endDate);
   }, [vacations]);
 
+  const eventsForDate = useMemo(() => {
+    return (ymd: string) => events.filter(e => e.date === ymd);
+  }, [events]);
+
+  // Vacations/events and lesson days are never entered overlapping on purpose,
+  // but a lesstructuur's own date range can still span a vacation or event
+  // added afterwards — in that case the vacation/event wins and the lesson
+  // day is dropped for that date.
   const lesstructuurForDate = useMemo(() => {
-    return (ymd: string, dow: number) =>
-      lesstructuren.find(ls => ymd >= ls.startDate && ymd <= ls.endDate && (ls.lessonDays || []).includes(dow));
-  }, [lesstructuren]);
+    return (ymd: string, dow: number) => {
+      if (vacationForDate(ymd) || eventsForDate(ymd).length > 0) return undefined;
+      return lesstructuren.find(ls => ymd >= ls.startDate && ymd <= ls.endDate && (ls.lessonDays || []).includes(dow));
+    };
+  }, [lesstructuren, vacationForDate, eventsForDate]);
 
   const lessonForDate = useMemo(() => {
     return (ymd: string) => (lessons || []).find(l => l.date === ymd);
@@ -167,10 +177,6 @@ export default function AgendaCalendar({
   }, [behaviorList]);
 
   const behaviorEmoji = (rating: number) => (rating <= 2 ? '😢' : rating <= 4 ? '😐' : '😊');
-
-  const eventsForDate = useMemo(() => {
-    return (ymd: string) => events.filter(e => e.date === ymd);
-  }, [events]);
 
   const homeworkForDate = useMemo(() => {
     return (ymd: string) => homework.filter(hw => hw.dueDate === ymd);
@@ -219,7 +225,8 @@ export default function AgendaCalendar({
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-2 sm:p-3 max-w-sm">
+    <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 items-start">
+    <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-2 sm:p-3 w-full lg:w-80 lg:shrink-0">
       <div className="flex items-center justify-between mb-2">
         <button onClick={goPrevMonth} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500">
           <ChevronLeft className="w-4 h-4" />
@@ -289,16 +296,28 @@ export default function AgendaCalendar({
           <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block" />{language === 'tr' ? 'Ders Özeti' : 'Lesverslag'}</span>
         )}
       </div>
+    </div>
 
-      {selected && hasSelectionData && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={() => setSelectedDate(null)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-3">
-              <h4 className="font-bold text-gray-800 capitalize text-sm sm:text-base">{formatDate(selected.ymd)}</h4>
-              <button onClick={() => setSelectedDate(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+    <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-4 sm:p-5 flex-1 min-w-0 w-full">
+      {!selected ? (
+        <div className="flex flex-col items-center justify-center text-center py-10 text-gray-400">
+          <CalendarIcon className="w-8 h-8 text-gray-300 mb-2" />
+          <p className="text-sm">{language === 'tr' ? 'Detayları görmek için bir tarih seçin' : 'Selecteer een datum om details te zien'}</p>
+        </div>
+      ) : !hasSelectionData ? (
+        <div className="flex flex-col items-center justify-center text-center py-10">
+          <CalendarIcon className="w-8 h-8 text-gray-300 mb-2" />
+          <p className="text-sm text-gray-500 capitalize mb-1">{formatDate(selected.ymd)}</p>
+          <p className="text-xs text-gray-400">{language === 'tr' ? 'Bu gün için bir şey planlanmadı' : 'Niets gepland op deze dag'}</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-start justify-between mb-3">
+            <h4 className="font-bold text-gray-800 capitalize text-sm sm:text-base">{formatDate(selected.ymd)}</h4>
+            <button onClick={() => setSelectedDate(null)} className="text-gray-400 hover:text-gray-600" title={language === 'tr' ? 'Kapat' : 'Sluiten'}>
+              <X className="w-5 h-5" />
+            </button>
+          </div>
             <div className="space-y-3">
               {selected.vacation && (
                 <div className="flex items-start gap-2 bg-yellow-50 rounded-lg p-3">
@@ -392,22 +411,9 @@ export default function AgendaCalendar({
                 );
               })}
             </div>
-          </div>
-        </div>
+        </>
       )}
-
-      {selected && !hasSelectionData && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={() => setSelectedDate(null)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5 text-center" onClick={e => e.stopPropagation()}>
-            <CalendarIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-500 capitalize mb-3">{formatDate(selected.ymd)}</p>
-            <p className="text-xs text-gray-400">{language === 'tr' ? 'Bu gün için bir şey planlanmadı' : 'Niets gepland op deze dag'}</p>
-            <button onClick={() => setSelectedDate(null)} className="mt-3 text-sm text-emerald-700 font-semibold">
-              {language === 'tr' ? 'Kapat' : 'Sluiten'}
-            </button>
-          </div>
-        </div>
-      )}
+    </div>
     </div>
   );
 }

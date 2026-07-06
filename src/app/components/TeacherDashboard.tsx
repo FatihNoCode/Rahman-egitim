@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon } from 'lucide-react';
+import { Moon, ClipboardList, BellRing, Settings, MessageSquare, CalendarDays } from 'lucide-react';
 import booksLogo from '../../imports/books__1_.png';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
@@ -9,6 +9,7 @@ import TeacherManageView from './TeacherManageView';
 import AbsenceOverviewView from './AbsenceOverviewView';
 import AgendaCalendar from './AgendaCalendar';
 import UserMenu from './UserMenu';
+import Sidebar from './Sidebar';
 
 interface Class {
   id: string;
@@ -77,14 +78,8 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState(0);
 
-  // Agenda
-  const [agendaSettings, setAgendaSettings] = useState<any>(null);
-  const [agendaVacations, setAgendaVacations] = useState<any[]>([]);
-  const [agendaEvents, setAgendaEvents] = useState<any[]>([]);
-
   useEffect(() => {
     loadData();
-    loadAgenda();
   }, []);
 
   useEffect(() => {
@@ -121,23 +116,6 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       }
     } catch (error) {
       console.error('Error loading data:', error);
-    }
-  };
-
-  const loadAgenda = async () => {
-    try {
-      const [lsRes, vacRes, evtRes] = await Promise.all([
-        apiRequest('/agenda/lesstructuren'),
-        apiRequest('/agenda/vacations'),
-        apiRequest('/agenda/events'),
-      ]);
-      const today = new Date().toISOString().split('T')[0];
-      const activeLs = (lsRes.lesstructuren || []).find((ls: any) => ls.endDate >= today);
-      setAgendaSettings(activeLs || null);
-      setAgendaVacations((vacRes.vacations || []).filter((v: any) => v.endDate >= today).sort((a: any, b: any) => a.startDate.localeCompare(b.startDate)));
-      setAgendaEvents((evtRes.events || []).filter((e: any) => e.date >= today).sort((a: any, b: any) => a.date.localeCompare(b.date)));
-    } catch (err) {
-      console.error('Error loading agenda:', err);
     }
   };
 
@@ -440,18 +418,16 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     }
   };
 
-  const TabButton = ({ tab, children }: { tab: typeof activeTab; children: React.ReactNode }) => (
-    <button
-      onClick={() => setActiveTab(tab)}
-      className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm ${
-        activeTab === tab
-          ? 'bg-white text-emerald-700 shadow-sm'
-          : 'text-gray-500 hover:text-gray-700'
-      }`}
-    >
-      {children}
-    </button>
-  );
+  // Ordered most- to least-frequently used: attendance is a daily task,
+  // agenda and absence reports are checked often, conferences and roster
+  // management are comparatively occasional.
+  const navItems = [
+    { id: 'attendance', label: language === 'tr' ? 'Les Kaydı' : 'Les Registratie', icon: ClipboardList },
+    { id: 'agenda', label: language === 'tr' ? 'Ajanda' : 'Agenda', icon: CalendarDays },
+    { id: 'meldingen', label: language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen', icon: BellRing },
+    { id: 'oudergesprekken', label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken', icon: MessageSquare },
+    { id: 'beheer', label: 'Beheer', icon: Settings },
+  ];
 
   return (
     <div className="size-full overflow-auto p-3 sm:p-4 md:p-6">
@@ -493,37 +469,17 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
-            {/* Tab navigation */}
-            <div className="flex gap-1 sm:gap-1.5 mb-4 sm:mb-6 bg-gray-100 rounded-xl p-1 overflow-x-auto">
-              <TabButton tab="attendance">{language === 'tr' ? 'Les Kaydı' : 'Les Registratie'}</TabButton>
-              <TabButton tab="meldingen">{language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen'}</TabButton>
-              <TabButton tab="beheer">Beheer</TabButton>
-              <TabButton tab="oudergesprekken">{language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken'}</TabButton>
-              <TabButton tab="agenda">{language === 'tr' ? 'Ajanda' : 'Agenda'}</TabButton>
-            </div>
+        <div className="flex gap-4 sm:gap-6 items-start">
+          <Sidebar
+            items={navItems}
+            activeId={activeTab}
+            onSelect={(id) => setActiveTab(id as typeof activeTab)}
+            storageKey="ilimyolu:teacher-sidebar-collapsed"
+            collapseLabel={language === 'tr' ? 'Daralt' : 'Inklappen'}
+            expandLabel={language === 'tr' ? 'Genişlet' : 'Uitklappen'}
+          />
 
-            {/* Agenda info bar */}
-            {(agendaSettings || agendaVacations.length > 0 || agendaEvents.length > 0) && (
-              <div className="flex flex-wrap gap-3 mb-4 text-xs sm:text-sm">
-                {agendaSettings && (
-                  <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full">
-                    {language === 'tr' ? 'Ders saatleri' : 'Lestijden'}: {agendaSettings.startTime} - {agendaSettings.endTime}
-                  </span>
-                )}
-                {agendaVacations.slice(0, 2).map((v: any) => (
-                  <span key={v.id} className="bg-orange-50 text-orange-700 px-3 py-1 rounded-full">
-                    🏖 {v.name}: {new Date(v.startDate + 'T00:00:00').toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', { day: 'numeric', month: 'short' })} - {new Date(v.endDate + 'T00:00:00').toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', { day: 'numeric', month: 'short' })}
-                  </span>
-                ))}
-                {agendaEvents.slice(0, 2).map((ev: any) => (
-                  <span key={ev.id} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full">
-                    🎉 {ev.title}: {new Date(ev.date + 'T00:00:00').toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', { day: 'numeric', month: 'short' })}
-                    {ev.startTime && ` · ${ev.startTime}`}
-                  </span>
-                ))}
-              </div>
-            )}
+          <div className="flex-1 min-w-0 bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
 
             {/* ─── COMBINED ATTENDANCE + BEHAVIOR + HOMEWORK TAB ─── */}
             {activeTab === 'attendance' && (
@@ -1103,6 +1059,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
               <AgendaCalendar language={language} apiRequest={apiRequest} role="teacher" />
             )}
           </div>
+        </div>
         )}
       </div>
     </div>

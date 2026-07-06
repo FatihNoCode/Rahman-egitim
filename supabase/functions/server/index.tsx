@@ -2605,6 +2605,21 @@ app.post("/make-server-6679cacd/reset-password", async (c) => {
       return c.json({ error: 'User not found' }, 404);
     }
 
+    // Authorization scoping: a plain admin may only reset passwords for
+    // non-privileged accounts (parents/teachers) that belong to their own
+    // school. Without this, any school admin could hijack a superadmin or an
+    // admin/parent/teacher of a different school just by knowing their email.
+    // Superadmins are unrestricted.
+    if (userData.role === 'admin') {
+      if (targetUser.role === 'admin' || targetUser.role === 'superadmin') {
+        return c.json({ error: 'Not authorized to reset this account' }, 403);
+      }
+      const targetSchoolIds = await getUserSchoolIds(targetUser.id, targetUser);
+      if (!userData.schoolId || !targetSchoolIds.has(userData.schoolId)) {
+        return c.json({ error: 'Not authorized to reset this account' }, 403);
+      }
+    }
+
     // Update password
     const { error: updateError } = await supabase.auth.admin.updateUserById(
       targetUser.id,

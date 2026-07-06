@@ -1465,7 +1465,10 @@ app.get("/make-server-6679cacd/users", async (c) => {
         const classIds: string[] = await kv.get(`teacher_classes:${u.id}`) || [];
         const classes = await kv.mget(classIds.map((id: string) => `class:${id}`));
         const inSchool = classes.filter((cl: any) => cl && cl.schoolId === schoolId);
-        if (inSchool.length === 0) continue;
+        // Not-yet-assigned teachers (e.g. right after a role change, before any
+        // class is assigned) are still shown — same as not-yet-assigned parents
+        // below — otherwise there's no way to ever assign them a class.
+        if (classIds.length > 0 && inSchool.length === 0) continue;
         users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, classCount: inSchool.length });
       } else if (u.role === 'parent') {
         // Shadow parent records created from a public child signup ("inschrijving")

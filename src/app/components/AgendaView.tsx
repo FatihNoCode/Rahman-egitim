@@ -32,6 +32,9 @@ interface AgendaViewProps {
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
 }
 
+// Display order is Monday-first; the array index is still the JS
+// Date#getDay() value (0=Sunday) that lessonDays stores and compares against.
+const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const DAY_NAMES_NL = ['Zondag', 'Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag'];
 const DAY_NAMES_TR = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 
@@ -265,14 +268,14 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
                 {language === 'tr' ? 'Ders Günleri' : 'Lesdagen'}
               </label>
               <div className="flex flex-wrap gap-2">
-                {dayNames.map((name, i) => (
+                {DAY_ORDER.map((i) => (
                   <button key={i} onClick={() => toggleDay(i)}
                     className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
                       lessonDays.includes(i)
                         ? 'bg-emerald-600 text-white'
                         : 'bg-white text-gray-500 border hover:border-emerald-300'
                     }`}>
-                    {name}
+                    {dayNames[i]}
                   </button>
                 ))}
               </div>
@@ -300,7 +303,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
                 <div>
                   <span className="font-medium text-sm">{formatDate(ls.startDate)} — {formatDate(ls.endDate)}</span>
                   <span className="text-xs text-gray-500 ml-2">
-                    {ls.startTime} - {ls.endTime} · {(ls.lessonDays || []).map(d => dayNames[d]).join(', ')}
+                    {ls.startTime} - {ls.endTime} · {DAY_ORDER.filter(d => (ls.lessonDays || []).includes(d)).map(d => dayNames[d]).join(', ')}
                   </span>
                 </div>
                 <button onClick={() => deleteLesstructuur(ls.id)} className="text-red-400 hover:text-red-600 p-1">

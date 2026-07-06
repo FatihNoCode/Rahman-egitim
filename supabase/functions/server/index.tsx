@@ -4842,17 +4842,20 @@ app.get("/make-server-6679cacd/agenda/lesstructuren", async (c) => {
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
 
-    let schoolId: string | undefined;
+    // Admins/superadmins are scoped to a single explicit school; teachers and
+    // parents don't carry a schoolId on their user record, so it's derived
+    // from their classes/children instead (see getUserSchoolIds).
+    let schoolIds: string[] = [];
     if (userData?.role === 'admin' || userData?.role === 'superadmin') {
       const result = await resolveSchoolContext(c, userData);
-      schoolId = result.schoolId;
+      if (result.schoolId) schoolIds = [result.schoolId];
     } else if (userData?.role === 'teacher' || userData?.role === 'parent') {
-      schoolId = userData.schoolId;
+      schoolIds = [...(await getUserSchoolIds(user.id, userData))];
     }
-    if (!schoolId) return c.json({ error: 'No school context' }, 400);
+    if (schoolIds.length === 0) return c.json({ error: 'No school context' }, 400);
 
-    const lesstructuren = await getLesstructurenForSchool(schoolId);
-    return c.json({ lesstructuren });
+    const lists = await Promise.all(schoolIds.map(id => getLesstructurenForSchool(id)));
+    return c.json({ lesstructuren: lists.flat() });
   } catch (err) {
     console.log('Get lesstructuren error:', err);
     return c.json({ error: 'Failed to get lesstructuren' }, 500);
@@ -4913,16 +4916,20 @@ app.get("/make-server-6679cacd/agenda/vacations", async (c) => {
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
 
-    let schoolId: string | undefined;
+    // Admins/superadmins are scoped to a single explicit school; teachers and
+    // parents don't carry a schoolId on their user record, so it's derived
+    // from their classes/children instead (see getUserSchoolIds).
+    let schoolIds: string[] = [];
     if (userData?.role === 'admin' || userData?.role === 'superadmin') {
       const result = await resolveSchoolContext(c, userData);
-      schoolId = result.schoolId;
+      if (result.schoolId) schoolIds = [result.schoolId];
     } else {
-      schoolId = userData?.schoolId;
+      schoolIds = [...(await getUserSchoolIds(user.id, userData))];
     }
-    if (!schoolId) return c.json({ error: 'No school context' }, 400);
+    if (schoolIds.length === 0) return c.json({ error: 'No school context' }, 400);
 
-    const ids: string[] = await kv.get(`agenda_vacation_ids:${schoolId}`) || [];
+    const idLists = await Promise.all(schoolIds.map(id => kv.get(`agenda_vacation_ids:${id}`)));
+    const ids: string[] = idLists.flatMap((l: string[] | null) => l || []);
     if (ids.length === 0) return c.json({ vacations: [] });
     const vacations = await kv.mget(ids.map(i => `agenda_vacation:${i}`));
     return c.json({ vacations: vacations.filter(Boolean) });
@@ -4986,16 +4993,20 @@ app.get("/make-server-6679cacd/agenda/events", async (c) => {
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
 
-    let schoolId: string | undefined;
+    // Admins/superadmins are scoped to a single explicit school; teachers and
+    // parents don't carry a schoolId on their user record, so it's derived
+    // from their classes/children instead (see getUserSchoolIds).
+    let schoolIds: string[] = [];
     if (userData?.role === 'admin' || userData?.role === 'superadmin') {
       const result = await resolveSchoolContext(c, userData);
-      schoolId = result.schoolId;
+      if (result.schoolId) schoolIds = [result.schoolId];
     } else {
-      schoolId = userData?.schoolId;
+      schoolIds = [...(await getUserSchoolIds(user.id, userData))];
     }
-    if (!schoolId) return c.json({ error: 'No school context' }, 400);
+    if (schoolIds.length === 0) return c.json({ error: 'No school context' }, 400);
 
-    const ids: string[] = await kv.get(`agenda_event_ids:${schoolId}`) || [];
+    const idLists = await Promise.all(schoolIds.map(id => kv.get(`agenda_event_ids:${id}`)));
+    const ids: string[] = idLists.flatMap((l: string[] | null) => l || []);
     if (ids.length === 0) return c.json({ events: [] });
     const events = await kv.mget(ids.map(i => `agenda_event:${i}`));
     return c.json({ events: events.filter(Boolean) });

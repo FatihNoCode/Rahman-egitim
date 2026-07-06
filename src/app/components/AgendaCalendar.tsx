@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, X, Clock, Sun, PartyPopper, Calendar as CalendarIcon, BookOpen } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Clock, Sun, PartyPopper, Calendar as CalendarIcon, BookOpen, FileText } from 'lucide-react';
 
 interface Lesstructuur {
   id: string;
@@ -34,12 +34,31 @@ interface Homework {
   dueDate: string;
 }
 
+interface LessonReport {
+  id: string;
+  date: string;
+  summary: string;
+}
+
+interface BehaviorRecord {
+  date: string;
+  rating: number;
+  notes: string;
+}
+
 interface AgendaCalendarProps {
   language: 'tr' | 'nl';
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
   refreshKey?: number;
   // Teacher/parent calendars also surface homework due-dates as a red dot.
   role?: 'admin' | 'superadmin' | 'teacher' | 'parent';
+  // Parent-only: this is the single agenda, so a selected child's lesson
+  // reports and behaviour notes surface here instead of a separate view.
+  selectedChildId?: string;
+  lessons?: LessonReport[];
+  behaviorList?: BehaviorRecord[];
+  homeworkCompletion?: Record<string, boolean>;
+  onToggleHomeworkCompletion?: (studentId: string, homeworkId: string) => void;
 }
 
 const DAY_NAMES_SHORT_NL = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
@@ -56,7 +75,10 @@ function mondayFirstIndex(dow: number) {
   return (dow + 6) % 7;
 }
 
-export default function AgendaCalendar({ language, apiRequest, refreshKey, role }: AgendaCalendarProps) {
+export default function AgendaCalendar({
+  language, apiRequest, refreshKey, role,
+  selectedChildId, lessons, behaviorList, homeworkCompletion, onToggleHomeworkCompletion,
+}: AgendaCalendarProps) {
   const showHomework = role === 'teacher' || role === 'parent';
 
   const [lesstructuren, setLesstructuren] = useState<Lesstructuur[]>([]);
@@ -136,6 +158,16 @@ export default function AgendaCalendar({ language, apiRequest, refreshKey, role 
       lesstructuren.find(ls => ymd >= ls.startDate && ymd <= ls.endDate && (ls.lessonDays || []).includes(dow));
   }, [lesstructuren]);
 
+  const lessonForDate = useMemo(() => {
+    return (ymd: string) => (lessons || []).find(l => l.date === ymd);
+  }, [lessons]);
+
+  const behaviorForDate = useMemo(() => {
+    return (ymd: string) => (behaviorList || []).find(b => b.date === ymd);
+  }, [behaviorList]);
+
+  const behaviorEmoji = (rating: number) => (rating <= 2 ? '😢' : rating <= 4 ? '😐' : '😊');
+
   const eventsForDate = useMemo(() => {
     return (ymd: string) => events.filter(e => e.date === ymd);
   }, [events]);
@@ -174,7 +206,13 @@ export default function AgendaCalendar({ language, apiRequest, refreshKey, role 
     lesstructuur: lesstructuurForDate(selectedDate, new Date(selectedDate + 'T00:00:00').getDay()),
     events: eventsForDate(selectedDate),
     homework: homeworkForDate(selectedDate),
+    lesson: lessonForDate(selectedDate),
+    behavior: behaviorForDate(selectedDate),
   } : null;
+  const hasSelectionData = !!(selected && (
+    selected.vacation || selected.lesstructuur || selected.events.length > 0 ||
+    selected.homework.length > 0 || selected.lesson || selected.behavior
+  ));
 
   if (loading) {
     return <div className="text-center py-6 text-gray-500 text-xs">{language === 'tr' ? 'Yükleniyor...' : 'Laden...'}</div>;
@@ -211,6 +249,7 @@ export default function AgendaCalendar({ language, apiRequest, refreshKey, role 
           const lesstructuur = lesstructuurForDate(ymd, dow);
           const dayEvents = eventsForDate(ymd);
           const dayHomework = showHomework ? homeworkForDate(ymd) : [];
+          const dayLesson = lessonForDate(ymd);
           const isToday = ymd === todayYmd;
           const dayNum = parseInt(ymd.split('-')[2], 10);
 
@@ -231,6 +270,9 @@ export default function AgendaCalendar({ language, apiRequest, refreshKey, role 
               {dayHomework.length > 0 && (
                 <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-red-600" />
               )}
+              {dayLesson && (
+                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-600" />
+              )}
             </button>
           );
         })}
@@ -243,9 +285,12 @@ export default function AgendaCalendar({ language, apiRequest, refreshKey, role 
         {showHomework && (
           <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-600 inline-block" />{language === 'tr' ? 'Ödev' : 'Huiswerk'}</span>
         )}
+        {lessons && (
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block" />{language === 'tr' ? 'Ders Özeti' : 'Lesverslag'}</span>
+        )}
       </div>
 
-      {selected && (selected.vacation || selected.lesstructuur || selected.events.length > 0 || selected.homework.length > 0) && (
+      {selected && hasSelectionData && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={() => setSelectedDate(null)}>
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-3">
@@ -287,15 +332,39 @@ export default function AgendaCalendar({ language, apiRequest, refreshKey, role 
                   </div>
                 </div>
               ))}
+              {selected.lesson && (
+                <div className="flex items-start gap-2 bg-blue-50 rounded-lg p-3">
+                  <FileText className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-blue-800 mb-0.5">{language === 'tr' ? 'Ders Özeti' : 'Lesverslag'}</p>
+                    <p className="text-sm text-blue-700 whitespace-pre-wrap">{selected.lesson.summary}</p>
+                  </div>
+                </div>
+              )}
+              {selected.behavior && (
+                <div className="flex items-start gap-2 bg-gray-50 rounded-lg p-3">
+                  <span className="text-xl leading-none">{behaviorEmoji(selected.behavior.rating)}</span>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 mb-0.5">{language === 'tr' ? 'Davranış' : 'Gedrag'}</p>
+                    {selected.behavior.notes?.trim() ? (
+                      <p className="text-sm text-gray-700">{selected.behavior.notes}</p>
+                    ) : (
+                      <p className="text-xs text-gray-400">{language === 'tr' ? 'Ek açıklama yok' : 'Geen toelichting'}</p>
+                    )}
+                  </div>
+                </div>
+              )}
               {selected.homework.map(hw => {
                 const parts = (hw.description || '').split(' | ');
                 const text = language === 'tr' ? parts[0] : (parts[1] || parts[0]);
                 const isWholeClass = hw.studentIds === null;
                 const namedStudents = (hw.studentIds || []).map(id => studentsById[id]).filter(Boolean);
+                const completionKey = selectedChildId ? `${selectedChildId}:${hw.id}` : null;
+                const completed = completionKey ? !!homeworkCompletion?.[completionKey] : false;
                 return (
                   <div key={hw.id} className="flex items-start gap-2 bg-red-50 rounded-lg p-3">
                     <BookOpen className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-semibold text-red-800">{text}</p>
                       {role === 'teacher' && (
                         <p className="text-xs text-red-700 mt-0.5">
@@ -306,6 +375,18 @@ export default function AgendaCalendar({ language, apiRequest, refreshKey, role 
                       {!isWholeClass && namedStudents.length > 0 && (
                         <p className="text-xs text-red-600 mt-0.5">{namedStudents.join(', ')}</p>
                       )}
+                      {role === 'parent' && selectedChildId && onToggleHomeworkCompletion && (
+                        <button
+                          onClick={() => onToggleHomeworkCompletion(selectedChildId, hw.id)}
+                          className={`mt-2 px-2.5 py-1 rounded-md text-xs font-semibold transition ${
+                            completed ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          }`}
+                        >
+                          {completed
+                            ? (language === 'tr' ? '✓ Ödev Tamamlandı' : '✓ Huiswerk Voltooid')
+                            : (language === 'tr' ? 'Tamamlandı Olarak İşaretle' : 'Markeer als Voltooid')}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -315,7 +396,7 @@ export default function AgendaCalendar({ language, apiRequest, refreshKey, role 
         </div>
       )}
 
-      {selected && !selected.vacation && !selected.lesstructuur && selected.events.length === 0 && selected.homework.length === 0 && (
+      {selected && !hasSelectionData && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={() => setSelectedDate(null)}>
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5 text-center" onClick={e => e.stopPropagation()}>
             <CalendarIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />

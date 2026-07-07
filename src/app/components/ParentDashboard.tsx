@@ -6,6 +6,7 @@ import { Euro, Moon } from 'lucide-react';
 import booksLogo from '../../imports/books__1_.png';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
+import { notify } from './ui/feedback';
 
 interface Student {
   id: string;
@@ -212,7 +213,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     } catch (error: any) {
       console.error('Error loading data:', error);
       console.error('Error details:', error.message);
-      alert(`Error loading data: ${error.message}`);
+      notify.error(`Error loading data: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -267,12 +268,12 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
   const submitAbsenceNotification = async () => {
     if (!selectedStudent || !absenceDate) {
-      alert(language === 'tr' ? 'Lütfen tüm alanları doldurun' : 'Vul alle velden in');
+      notify.error(language === 'tr' ? 'Lütfen tüm alanları doldurun' : 'Vul alle velden in');
       return;
     }
 
     if (deadlinePassed) {
-      alert(
+      notify.error(
         language === 'tr'
           ? 'Bu ders için bildirim süresi geçmiştir. Lütfen öğretmeninizle iletişime geçin.'
           : 'De meldingstermijn voor deze les is verstreken. Neem contact op met de leraar.'
@@ -291,9 +292,9 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       });
 
       if (result.onTime) {
-        alert(t.absenceReported);
+        notify.success(t.absenceReported);
       } else {
-        alert(t.absenceReportedLate);
+        notify.success(t.absenceReportedLate);
       }
 
       setShowAbsenceModal(false);
@@ -302,7 +303,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       setAbsenceReason('');
     } catch (error: any) {
       console.error('Error reporting absence:', error);
-      alert(error.message || 'Error reporting absence');
+      notify.error(error.message || 'Error reporting absence');
     }
   };
 
@@ -323,7 +324,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
         method: 'POST',
         body: JSON.stringify({ slotIndex, studentId: selectedChildId }),
       });
-      alert(language === 'tr' ? 'Zaman dilimi rezerve edildi!' : 'Tijdslot geboekt!');
+      notify.success(language === 'tr' ? 'Zaman dilimi rezerve edildi!' : 'Tijdslot geboekt!');
       setBookingSessionId(null);
       // Refresh sessions
       const conferData = await apiRequest('/oudergesprekken').catch(() => ({ sessions: [] }));
@@ -331,9 +332,9 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     } catch (err: any) {
       const msg = err.message || '';
       if (msg.includes('already booked') || msg.includes('Already booked')) {
-        alert(language === 'tr' ? 'Bu zaman dilimi zaten dolu veya zaten rezerve edilmiş.' : 'Dit tijdslot is al bezet of u heeft al geboekt.');
+        notify.error(language === 'tr' ? 'Bu zaman dilimi zaten dolu veya zaten rezerve edilmiş.' : 'Dit tijdslot is al bezet of u heeft al geboekt.');
       } else {
-        alert(msg || 'Error');
+        notify.error(msg || 'Error');
       }
     }
   };
@@ -345,16 +346,16 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
         method: 'POST',
         body: JSON.stringify({ fromSlotIndex, toSlotIndex, studentId: selectedChildId }),
       });
-      alert(language === 'tr' ? 'Zaman dilimi değiştirildi!' : 'Tijdslot gewijzigd!');
+      notify.success(language === 'tr' ? 'Zaman dilimi değiştirildi!' : 'Tijdslot gewijzigd!');
       setBookingSessionId(null);
       const conferData = await apiRequest('/oudergesprekken').catch(() => ({ sessions: [] }));
       setConferSessions(conferData.sessions || []);
     } catch (err: any) {
       const msg = err.message || '';
       if (msg.includes('already booked') || msg.includes('Already booked')) {
-        alert(language === 'tr' ? 'Bu zaman dilimi zaten dolu.' : 'Dit tijdslot is al bezet.');
+        notify.error(language === 'tr' ? 'Bu zaman dilimi zaten dolu.' : 'Dit tijdslot is al bezet.');
       } else {
-        alert(msg || 'Error');
+        notify.error(msg || 'Error');
       }
     }
   };

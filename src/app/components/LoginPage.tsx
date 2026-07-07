@@ -3,6 +3,7 @@ import { Mail, Lock, ArrowLeft, CheckCircle2, UserPlus, Eye, EyeOff } from 'luci
 import { translations } from './translations';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../../lib/supabase';
+import { validatePassword } from '../../lib/password';
 import type { Language } from '../App';
 import booksLogo from '../../imports/books__1_.png';
 
@@ -61,6 +62,13 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
         // Check password confirmation
         if (password !== confirmPassword) {
           setError(t.passwordMismatch);
+          setLoading(false);
+          return;
+        }
+
+        const pwError = validatePassword(password, language);
+        if (pwError) {
+          setError(pwError);
           setLoading(false);
           return;
         }

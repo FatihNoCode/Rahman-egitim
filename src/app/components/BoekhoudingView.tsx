@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, Settings, X, Check, ChevronDown, ChevronUp, Euro, Trash2, Plus, Pencil, Mail } from 'lucide-react';
+import { notify, confirmDialog } from './ui/feedback';
 
 interface Student {
   id: string;
@@ -153,7 +154,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
 
   const submitLogEntry = async () => {
     if (!logForm.studentId || !logForm.date || !logForm.amount) {
-      alert(nl('Lütfen tüm zorunlu alanları doldurun', 'Vul alle verplichte velden in'));
+      notify.error(nl('Lütfen tüm zorunlu alanları doldurun', 'Vul alle verplichte velden in'));
       return;
     }
     const studentId = logForm.studentId;
@@ -179,7 +180,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
       setLogStudentSearch('');
       await loadLogEntries();
     } catch (e) {
-      alert(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
+      notify.error(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
     } finally {
       setSavingLog(false);
     }
@@ -197,7 +198,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
 
   const saveEditLogEntry = async (entry: PaymentLogEntry) => {
     if (!editForm.date || !editForm.amount) {
-      alert(nl('Lütfen tüm zorunlu alanları doldurun', 'Vul alle verplichte velden in'));
+      notify.error(nl('Lütfen tüm zorunlu alanları doldurun', 'Vul alle verplichte velden in'));
       return;
     }
     setSavingEdit(true);
@@ -220,14 +221,14 @@ export default function BoekhoudingView({ classes, students, language, apiReques
       }
       cancelEditLogEntry();
     } catch (e) {
-      alert(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
+      notify.error(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
     } finally {
       setSavingEdit(false);
     }
   };
 
   const deleteLogEntry = async (id: string, studentId: string) => {
-    if (!confirm(nl('Bu kaydı silmek istediğinize emin misiniz?', 'Weet u zeker dat u dit item wilt verwijderen?'))) return;
+    if (!(await confirmDialog({ description: nl('Bu kaydı silmek istediğinize emin misiniz?', 'Weet u zeker dat u dit item wilt verwijderen?'), destructive: true }))) return;
     try {
       await apiRequest(`/boekhouding/payments/${id}`, { method: 'DELETE' });
       setLogEntries(prev => prev.filter(e => e.id !== id));
@@ -235,7 +236,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
       const res = await apiRequest(`/boekhouding/student/${studentId}`).catch(() => null);
       if (res?.record) setRecords(prev => ({ ...prev, [studentId]: res.record }));
     } catch (e) {
-      alert(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
+      notify.error(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
     }
   };
 
@@ -265,7 +266,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
       setSettings(editSettings);
       setShowSettings(false);
     } catch (e) {
-      alert(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
+      notify.error(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
     } finally { setSavingSettings(false); }
   };
 
@@ -332,12 +333,12 @@ export default function BoekhoudingView({ classes, students, language, apiReques
     try {
       const res = await apiRequest('/boekhouding/send-schoolgeld-reminders', { method: 'POST' });
       setShowReminderConfirm(false);
-      alert(nl(
+      notify.success(nl(
         `${res.sent} / ${res.totalParents} veliye hatırlatma e-postası gönderildi.`,
         `${res.sent} / ${res.totalParents} herinneringsmails verstuurd.`
       ));
     } catch (e) {
-      alert(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
+      notify.error(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
     } finally {
       setSendingReminders(false);
     }

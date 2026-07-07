@@ -33,5 +33,12 @@ export default defineConfig({
   },
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
+  // Pre-bundle the toast/dialog deps up front. Otherwise Vite discovers
+  // sonner the first time the app mounts our FeedbackHost, re-optimizes, and
+  // forces a mid-render reload that can momentarily duplicate React.
+  optimizeDeps: {
+    include: ['sonner', 'next-themes'],
+  },
+
   assetsInclude: ['**/*.svg', '**/*.csv'],
 })

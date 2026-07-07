@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Pencil, Check, X, Users as UsersIcon, Search, Trash2 } from 'lucide-react';
+import { notify } from './ui/feedback';
 
 interface Class {
   id: string;
@@ -167,7 +168,7 @@ export default function UsersView({
       await loadUsers();
       onDataChange();
     } catch (error: any) {
-      alert(error.message || text.genericError);
+      notify.error(error.message || text.genericError);
     } finally {
       setSavingId(null);
     }
@@ -189,7 +190,7 @@ export default function UsersView({
       setEditingId(null);
       await loadUsers();
     } catch (error: any) {
-      alert(error.message || text.genericError);
+      notify.error(error.message || text.genericError);
     } finally {
       setSavingId(null);
     }
@@ -218,7 +219,7 @@ export default function UsersView({
       await loadUsers();
       onDataChange();
     } catch (error: any) {
-      alert(error.message || text.genericError);
+      notify.error(error.message || text.genericError);
     } finally {
       setAssignSaving(false);
     }
@@ -233,7 +234,7 @@ export default function UsersView({
       await loadUsers();
       onDataChange();
     } catch (error: any) {
-      alert(error.message || text.genericError);
+      notify.error(error.message || text.genericError);
     } finally {
       setDeleteSaving(false);
     }

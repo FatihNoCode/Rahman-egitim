@@ -2,6 +2,8 @@ import { useState, useEffect, createContext, useContext, lazy, Suspense } from '
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../lib/supabase';
 import LoginPage from './components/LoginPage';
+import { FeedbackHost } from './components/ui/feedback';
+import { markSessionStart, clearSessionStart, isSessionExpired } from '../lib/session';
 import faviconUrl from '../imports/books__1_.png';
 
 // Role-specific dashboards and secondary pages are code-split so a user
@@ -172,6 +174,13 @@ export default function App() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
+        // Enforce the absolute session-lifetime cap before trusting the
+        // session — an old refresh token must not keep a user logged in.
+        if (isSessionExpired()) {
+          await supabase.auth.signOut();
+          clearSessionStart();
+          return;
+        }
         setAccessToken(session.access_token);
         const response = await fetch(`${API_BASE}/session`, {
           headers: {
@@ -191,17 +200,32 @@ export default function App() {
   };
 
   const handleLogin = (userData: User, token: string) => {
+    markSessionStart();
     setUser(userData);
     setAccessToken(token);
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    clearSessionStart();
     setUser(null);
     setAccessToken(null);
     setActingSchoolId(null);
     setViewMode('superadmin');
   };
+
+  // While the app is open, periodically enforce the session-lifetime cap so a
+  // long-lived tab is logged out the moment it crosses the maximum age rather
+  // than only on the next full reload.
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      if (isSessionExpired()) {
+        handleLogout();
+      }
+    }, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const handleEnterSchool = (schoolId: string) => {
     setActingSchoolId(schoolId);
@@ -231,6 +255,7 @@ export default function App() {
 
   return (
     <AppContext.Provider value={contextValue}>
+      <FeedbackHost />
       <div className="size-full bg-gradient-to-br from-emerald-50 to-teal-100">
         <Suspense
           fallback={

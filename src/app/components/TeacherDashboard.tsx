@@ -10,6 +10,7 @@ import AbsenceOverviewView from './AbsenceOverviewView';
 import AgendaCalendar from './AgendaCalendar';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
+import { notify } from './ui/feedback';
 
 interface Class {
   id: string;
@@ -262,39 +263,39 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     }));
 
     if (records.length === 0) {
-      alert(language === 'tr' ? 'Lütfen devamsızlık kayıtlarını doldurun!' : 'Vul alstublieft de aanwezigheidsgegevens in!');
+      notify.error(language === 'tr' ? 'Lütfen devamsızlık kayıtlarını doldurun!' : 'Vul alstublieft de aanwezigheidsgegevens in!');
       return;
     }
 
     // Lesson summary is mandatory
     if (!lessonSummary.trim()) {
-      alert(language === 'tr' ? 'Lütfen kısa bir ders özeti girin!' : 'Vul een korte lessamenvatting in!');
+      notify.error(language === 'tr' ? 'Lütfen kısa bir ders özeti girin!' : 'Vul een korte lessamenvatting in!');
       return;
     }
 
     // Validate homework fields if homework is being added
     if (addHomework) {
       if (!homeworkDueDate) {
-        alert(language === 'tr' ? 'Lütfen ödev bitiş tarihi seçin!' : 'Selecteer een einddatum voor het huiswerk!');
+        notify.error(language === 'tr' ? 'Lütfen ödev bitiş tarihi seçin!' : 'Selecteer een einddatum voor het huiswerk!');
         return;
       }
       if (homeworkCategory === 'custom' && (!customHomeworkTr || !customHomeworkNl)) {
-        alert(language === 'tr' ? 'Lütfen her iki dilde de ödev açıklaması girin!' : 'Voer de huiswerkomschrijving in beide talen in!');
+        notify.error(language === 'tr' ? 'Lütfen her iki dilde de ödev açıklaması girin!' : 'Voer de huiswerkomschrijving in beide talen in!');
         return;
       }
       if (homeworkCategory === 'quran' && !isWholeSurah) {
         const chapter = quranChapters.find((c) => c.number === selectedSurah);
         if (chapter && (ayatFrom > ayatTo || ayatFrom < 1 || ayatTo > chapter.ayatCount)) {
-          alert(language === 'tr' ? 'Geçersiz ayet aralığı!' : 'Ongeldig ayat-bereik!');
+          notify.error(language === 'tr' ? 'Geçersiz ayet aralığı!' : 'Ongeldig ayat-bereik!');
           return;
         }
       }
       if (homeworkCategory === 'temel' && !temelPageFrom) {
-        alert(language === 'tr' ? 'Lütfen sayfa numarası girin!' : 'Voer een paginanummer in!');
+        notify.error(language === 'tr' ? 'Lütfen sayfa numarası girin!' : 'Voer een paginanummer in!');
         return;
       }
       if (homeworkType === 'individual' && selectedStudents.length === 0) {
-        alert(language === 'tr' ? 'Lütfen en az bir öğrenci seçin!' : 'Selecteer minimaal één leerling!');
+        notify.error(language === 'tr' ? 'Lütfen en az bir öğrenci seçin!' : 'Selecteer minimaal één leerling!');
         return;
       }
     }
@@ -379,7 +380,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       const successMsg = addHomework
         ? (language === 'tr' ? 'Devamsızlık, davranış ve ödev kaydedildi!' : 'Aanwezigheid, gedrag en huiswerk opgeslagen!')
         : (language === 'tr' ? 'Devamsızlık ve davranış kaydedildi!' : 'Aanwezigheid en gedrag opgeslagen!');
-      alert(successMsg);
+      notify.success(successMsg);
 
       // Reset all fields
       setAttendanceRecords({});
@@ -392,7 +393,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       console.error('Error saving:', error);
       setIsSaving(false);
       setSaveProgress(0);
-      alert(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
+      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
     }
   };
 

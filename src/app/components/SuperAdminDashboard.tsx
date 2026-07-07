@@ -6,6 +6,7 @@ import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import InboxView from './InboxView';
 import booksLogo from '../../imports/books__1_.png';
+import { notify } from './ui/feedback';
 
 interface SchoolRecord {
   id: string;
@@ -57,7 +58,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
       setNewSchoolName('');
       await loadSchools();
     } catch (error: any) {
-      alert(error.message || 'Error creating school');
+      notify.error(error.message || 'Error creating school');
     } finally {
       setCreating(false);
     }
@@ -72,7 +73,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
       });
       await loadSchools();
     } catch (error: any) {
-      alert(error.message || 'Error updating school');
+      notify.error(error.message || 'Error updating school');
     } finally {
       setTogglingId(null);
     }

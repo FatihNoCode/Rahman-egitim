@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { notify, confirmDialog } from './ui/feedback';
 
 interface Slot {
   start: string;
@@ -57,7 +58,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
 
   const createSession = async () => {
     if (!date || !startTime || !endTime) {
-      alert(language === 'tr' ? 'Tüm alanları doldurun' : 'Vul alle velden in');
+      notify.error(language === 'tr' ? 'Tüm alanları doldurun' : 'Vul alle velden in');
       return;
     }
     setCreating(true);
@@ -67,7 +68,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
         body: JSON.stringify({ date, startTime, endTime, minutesPerSlot }),
       });
       const classCount = result.sessions?.length ?? 1;
-      alert(
+      notify.success(
         language === 'tr'
           ? `Veli görüşmesi oluşturuldu! ${classCount} sınıf için oturumlar açıldı. ${result.emailsSent} e-posta gönderildi.`
           : `Oudergesprek aangemaakt! Sessies aangemaakt voor ${classCount} klassen. ${result.emailsSent} e-mail(s) verstuurd.`
@@ -75,19 +76,19 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
       setDate('');
       loadSessions();
     } catch (err: any) {
-      alert(err.message || 'Error');
+      notify.error(err.message || 'Error');
     } finally {
       setCreating(false);
     }
   };
 
   const deleteSession = async (id: string) => {
-    if (!confirm(language === 'tr' ? 'Bu veli görüşmesini silmek istiyor musunuz?' : 'Wilt u dit oudergesprek verwijderen?')) return;
+    if (!(await confirmDialog({ description: language === 'tr' ? 'Bu veli görüşmesini silmek istiyor musunuz?' : 'Wilt u dit oudergesprek verwijderen?', destructive: true }))) return;
     try {
       await apiRequest(`/oudergesprekken/${id}`, { method: 'DELETE' });
       loadSessions();
     } catch (err: any) {
-      alert(err.message || 'Error');
+      notify.error(err.message || 'Error');
     }
   };
 
@@ -96,13 +97,13 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
     setReminding(id);
     try {
       const result = await apiRequest(`/oudergesprekken/${id}/remind-unbooked`, { method: 'POST' });
-      alert(
+      notify.success(
         language === 'tr'
           ? `${result.sent} veliye hatırlatma gönderildi (${result.totalUnbooked} rezerve edilmemiş öğrenci).`
           : `Herinnering verstuurd naar ${result.sent} ouders (${result.totalUnbooked} niet-geboekte leerlingen).`
       );
     } catch (err: any) {
-      alert(err.message || 'Error');
+      notify.error(err.message || 'Error');
     } finally {
       setReminding(null);
     }

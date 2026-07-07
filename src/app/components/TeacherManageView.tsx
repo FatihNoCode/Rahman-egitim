@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, X } from 'lucide-react';
+import { notify } from './ui/feedback';
 
 interface Class {
   id: string;
@@ -166,7 +167,7 @@ export default function TeacherManageView({
       setStudentDetails(sortedData);
     } catch (error) {
       console.error('Error loading student details:', error);
-      alert(language === 'tr' ? 'Öğrenci bilgileri yüklenemedi!' : 'Kan leerling gegevens niet laden!');
+      notify.error(language === 'tr' ? 'Öğrenci bilgileri yüklenemedi!' : 'Kan leerling gegevens niet laden!');
     } finally {
       setLoadingDetails(false);
     }
@@ -180,7 +181,7 @@ export default function TeacherManageView({
       setParentDetails(response.parent);
     } catch (error) {
       console.error('Error loading parent details:', error);
-      alert(language === 'tr' ? 'Veli bilgileri yüklenemedi!' : 'Kan ouder gegevens niet laden!');
+      notify.error(language === 'tr' ? 'Veli bilgileri yüklenemedi!' : 'Kan ouder gegevens niet laden!');
     } finally {
       setLoadingDetails(false);
     }

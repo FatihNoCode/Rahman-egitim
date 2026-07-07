@@ -15,6 +15,7 @@ import UsersView from './UsersView';
 import ImportView from './ImportView';
 import AgendaView from './AgendaView';
 import CommunicationView from './CommunicationView';
+import { notify, confirmDialog } from './ui/feedback';
 
 interface Metrics {
   totalStudents: number;
@@ -125,39 +126,40 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
         method: 'PUT',
         body: JSON.stringify({ time: notificationDeadline }),
       });
-      alert(language === 'tr' ? 'Bildirim süresi güncellendi' : 'Meldingstermijn bijgewerkt');
+      notify.success(language === 'tr' ? 'Bildirim süresi güncellendi' : 'Meldingstermijn bijgewerkt');
       loadSchoolYearSettings();
     } catch (error: any) {
       console.error('Error updating deadline:', error);
-      alert(error.message || 'Error updating deadline');
+      notify.error(error.message || 'Error updating deadline');
     }
   };
 
   const startNewYear = async () => {
     if (!newYearName) {
-      alert(language === 'tr' ? 'Lütfen yıl adı girin' : 'Voer een jaarnaam in');
+      notify.error(language === 'tr' ? 'Lütfen yıl adı girin' : 'Voer een jaarnaam in');
       return;
     }
 
-    const confirm = window.confirm(
-      language === 'tr'
+    const confirmed = await confirmDialog({
+      description: language === 'tr'
         ? 'Yeni yıl başlatmak istediğinizden emin misiniz? Mevcut yıl arşivlenecek ve istatistikler sıfırlanacak.'
-        : 'Weet u zeker dat u een nieuw jaar wilt starten? Het huidige jaar wordt gearchiveerd en statistieken worden gereset.'
-    );
+        : 'Weet u zeker dat u een nieuw jaar wilt starten? Het huidige jaar wordt gearchiveerd en statistieken worden gereset.',
+      destructive: true,
+    });
 
-    if (!confirm) return;
+    if (!confirmed) return;
 
     try {
       await apiRequest('/school-year/new', {
         method: 'POST',
         body: JSON.stringify({ name: newYearName }),
       });
-      alert(language === 'tr' ? 'Yeni yıl başlatıldı' : 'Nieuw jaar gestart');
+      notify.success(language === 'tr' ? 'Yeni yıl başlatıldı' : 'Nieuw jaar gestart');
       setNewYearName('');
       loadSchoolYearSettings();
     } catch (error: any) {
       console.error('Error starting new year:', error);
-      alert(error.message || 'Error starting new year');
+      notify.error(error.message || 'Error starting new year');
     }
   };
 
@@ -200,13 +202,13 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
         }),
       });
 
-      alert(language === 'tr' ? 'Sınıf oluşturuldu!' : 'Klas aangemaakt!');
+      notify.success(language === 'tr' ? 'Sınıf oluşturuldu!' : 'Klas aangemaakt!');
       setNewClassName('');
       setNewClassTeacherId('');
       loadData();
     } catch (error) {
       console.error('Error creating class:', error);
-      alert(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
+      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
     }
   };
 
@@ -222,12 +224,12 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
         }),
       });
 
-      alert(language === 'tr' ? 'Sınıf güncellendi!' : 'Klas bijgewerkt!');
+      notify.success(language === 'tr' ? 'Sınıf güncellendi!' : 'Klas bijgewerkt!');
       setEditingClass(null);
       loadData();
     } catch (error) {
       console.error('Error updating class:', error);
-      alert(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
+      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
     }
   };
 

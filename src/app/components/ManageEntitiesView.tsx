@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Pencil, Plus, Trash2, ArrowLeft, X } from 'lucide-react';
+import { notify, confirmDialog } from './ui/feedback';
 
 interface Class {
   id: string;
@@ -160,7 +161,7 @@ export default function ManageEntitiesView({
       onDataChange();
     } catch (error) {
       console.error('Error adding class:', error);
-      alert(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
+      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
     }
   };
 
@@ -176,12 +177,12 @@ export default function ManageEntitiesView({
       onDataChange();
     } catch (error) {
       console.error('Error updating class:', error);
-      alert(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
+      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
     }
   };
 
   const handleDeleteClass = async (classId: string) => {
-    if (!window.confirm(text.deleteClassConfirm)) return;
+    if (!(await confirmDialog({ description: text.deleteClassConfirm, destructive: true }))) return;
 
     try {
       await apiRequest(`/classes/${classId}`, { method: 'DELETE' });
@@ -191,7 +192,7 @@ export default function ManageEntitiesView({
       onDataChange();
     } catch (error) {
       console.error('Error deleting class:', error);
-      alert(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
+      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
     }
   };
 
@@ -212,7 +213,7 @@ export default function ManageEntitiesView({
       onDataChange();
     } catch (error) {
       console.error('Error adding student:', error);
-      alert(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
+      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
     }
   };
 
@@ -232,19 +233,19 @@ export default function ManageEntitiesView({
       onDataChange();
     } catch (error) {
       console.error('Error updating student:', error);
-      alert(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
+      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
     }
   };
 
   const handleDeleteStudent = async (studentId: string) => {
-    if (!window.confirm(text.deleteStudentConfirm)) return;
+    if (!(await confirmDialog({ description: text.deleteStudentConfirm, destructive: true }))) return;
 
     try {
       await apiRequest(`/students/${studentId}`, { method: 'DELETE' });
       onDataChange();
     } catch (error) {
       console.error('Error deleting student:', error);
-      alert(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
+      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
     }
   };
 
@@ -273,7 +274,7 @@ export default function ManageEntitiesView({
       onDataChange();
     } catch (error) {
       console.error('Error moving students:', error);
-      alert(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
+      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
     } finally {
       setMoving(false);
     }
@@ -295,7 +296,7 @@ export default function ManageEntitiesView({
       onDataChange();
     } catch (error) {
       console.error('Error changing teacher:', error);
-      alert(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
+      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
     }
   };
 
@@ -353,7 +354,7 @@ export default function ManageEntitiesView({
       setStudentDetails(sortedData);
     } catch (error) {
       console.error('Error loading student details:', error);
-      alert(language === 'tr' ? 'Öğrenci bilgileri yüklenemedi!' : 'Kan leerling gegevens niet laden!');
+      notify.error(language === 'tr' ? 'Öğrenci bilgileri yüklenemedi!' : 'Kan leerling gegevens niet laden!');
     } finally {
       setLoadingDetails(false);
     }
@@ -367,7 +368,7 @@ export default function ManageEntitiesView({
       setParentDetails(response.parent);
     } catch (error) {
       console.error('Error loading parent details:', error);
-      alert(language === 'tr' ? 'Veli bilgileri yüklenemedi!' : 'Kan ouder gegevens niet laden!');
+      notify.error(language === 'tr' ? 'Veli bilgileri yüklenemedi!' : 'Kan ouder gegevens niet laden!');
     } finally {
       setLoadingDetails(false);
     }

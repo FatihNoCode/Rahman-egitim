@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { getSupabaseClient } from '../../lib/supabase';
+import { validatePassword } from '../../lib/password';
 import type { Language } from '../App';
 
 const supabase = getSupabaseClient();
@@ -25,8 +26,9 @@ export default function ResetPasswordPage({ language, onDone }: ResetPasswordPag
       setError(language === 'tr' ? 'Şifreler eşleşmiyor' : 'Wachtwoorden komen niet overeen');
       return;
     }
-    if (password.length < 6) {
-      setError(language === 'tr' ? 'Şifre en az 6 karakter olmalıdır' : 'Wachtwoord moet minimaal 6 tekens zijn');
+    const pwError = validatePassword(password, language);
+    if (pwError) {
+      setError(pwError);
       return;
     }
     setLoading(true);

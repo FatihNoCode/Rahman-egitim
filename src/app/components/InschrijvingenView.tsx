@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Mail, Phone, User, Calendar, Tag, ChevronDown, ChevronUp, RefreshCw, MessageCircleQuestion, Archive, Undo2 } from 'lucide-react';
+import { notify } from './ui/feedback';
 
 interface Registration {
   id: string;
@@ -75,12 +76,12 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
 
   const updateStatus = async (id: string, status: Registration['status']) => {
     if (status === 'geaccepteerd' && !selectedKlas[id]) {
-      alert(nl('Selecteer eerst een klas voordat u accepteert.', 'Kabul etmeden önce bir sınıf seçin.'));
+      notify.error(nl('Selecteer eerst een klas voordat u accepteert.', 'Kabul etmeden önce bir sınıf seçin.'));
       return;
     }
     const reason = status === 'afgewezen' ? (rejectReason[id] || '').trim() : undefined;
     if (status === 'afgewezen' && !reason) {
-      alert(nl('Vul eerst een reden voor afwijzing in.', 'Önce bir ret nedeni girin.'));
+      notify.error(nl('Vul eerst een reden voor afwijzing in.', 'Önce bir ret nedeni girin.'));
       return;
     }
     setUpdatingId(id);
@@ -91,7 +92,7 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
       });
       setRegistrations(prev => prev.map(r => r.id === id ? { ...r, status, klasId: selectedKlas[id] || r.klasId, afwijzingsreden: reason ?? r.afwijzingsreden } : r));
     } catch (e: any) {
-      alert(e.message || nl('Bijwerken mislukt.', 'Güncelleme başarısız.'));
+      notify.error(e.message || nl('Bijwerken mislukt.', 'Güncelleme başarısız.'));
       console.error('Error updating status:', e);
     } finally {
       setUpdatingId(null);

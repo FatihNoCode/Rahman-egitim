@@ -47,6 +47,28 @@ async function getUserData(userId: string) {
   return userData;
 }
 
+// Server-side password-strength gate. Applied to every endpoint that sets a
+// password (self-signup, admin reset, invite completion) so strength is
+// enforced regardless of what the client validates. Returns an error string
+// when the password is unacceptable, or null when it passes.
+function validatePassword(password: unknown): string | null {
+  if (typeof password !== 'string') {
+    return 'Password is required';
+  }
+  if (password.length < 8) {
+    return 'Password must be at least 8 characters long';
+  }
+  if (password.length > 128) {
+    return 'Password is too long';
+  }
+  // Require at least one letter and one digit — cheap protection against the
+  // most trivial passwords without frustrating users with complex rules.
+  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    return 'Password must contain at least one letter and one number';
+  }
+  return null;
+}
+
 // Creates an in-app notification for a user (shown in their UserMenu bell).
 // Bilingual title/body are stored together since notifications are cheap and
 // this avoids re-deriving text from a `type` on the frontend.
@@ -346,6 +368,11 @@ app.post("/make-server-6679cacd/signup", async (c) => {
     // accept those roles from an anonymous signup request.
     if (role !== 'parent') {
       return c.json({ error: 'Invalid role' }, 400);
+    }
+
+    const pwError = validatePassword(password);
+    if (pwError) {
+      return c.json({ error: pwError }, 400);
     }
 
     if (!firstName?.trim() || !lastName?.trim() || !phone?.trim()) {
@@ -2538,6 +2565,11 @@ app.post("/make-server-6679cacd/invite/:token/complete", async (c) => {
     const token = c.req.param('token');
     const { password } = await c.req.json();
 
+    const pwError = validatePassword(password);
+    if (pwError) {
+      return c.json({ error: pwError }, 400);
+    }
+
     const inviteData = await kv.get(`invite_token:${token}`);
 
     if (!inviteData || inviteData.used || new Date(inviteData.expiresAt) < new Date()) {
@@ -2591,6 +2623,11 @@ app.post("/make-server-6679cacd/reset-password", async (c) => {
     }
 
     const { email, newPassword } = await c.req.json();
+
+    const pwError = validatePassword(newPassword);
+    if (pwError) {
+      return c.json({ error: pwError }, 400);
+    }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,

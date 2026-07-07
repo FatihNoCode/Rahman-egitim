@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Pencil, Calendar, Sun, PartyPopper } from 'lucide-react';
 import AgendaCalendar from './AgendaCalendar';
+import { notify, confirmDialog } from './ui/feedback';
 
 interface Lesstructuur {
   id: string;
@@ -97,7 +98,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
 
   const saveLesstructuur = async () => {
     if (!startDate || !endDate || !startTime || !endTime) {
-      alert(language === 'tr' ? 'Tüm alanları doldurun' : 'Vul alle velden in');
+      notify.error(language === 'tr' ? 'Tüm alanları doldurun' : 'Vul alle velden in');
       return;
     }
     try {
@@ -106,22 +107,22 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
         body: JSON.stringify({ startDate, endDate, startTime, endTime, lessonDays }),
       });
       if (res.removedIds?.length) {
-        alert(language === 'tr'
+        notify.error(language === 'tr'
           ? `Kaydedildi. Çakışan ${res.removedIds.length} eski ders yapısı kaldırıldı.`
           : `Opgeslagen. ${res.removedIds.length} overlappende oude lesstructuur is verwijderd.`);
       } else {
-        alert(language === 'tr' ? 'Kaydedildi' : 'Opgeslagen');
+        notify.success(language === 'tr' ? 'Kaydedildi' : 'Opgeslagen');
       }
       setStartDate(''); setEndDate(''); setStartTime('09:00'); setEndTime('12:00'); setLessonDays([0, 6]);
       setShowLsForm(false);
       refreshAll();
     } catch (err: any) {
-      alert(err.message || 'Error');
+      notify.error(err.message || 'Error');
     }
   };
 
   const deleteLesstructuur = async (id: string) => {
-    if (!confirm(language === 'tr' ? 'Bu ders yapısını silmek istediğinizden emin misiniz?' : 'Weet u zeker dat u deze lesstructuur wilt verwijderen?')) return;
+    if (!(await confirmDialog({ description: language === 'tr' ? 'Bu ders yapısını silmek istediğinizden emin misiniz?' : 'Weet u zeker dat u deze lesstructuur wilt verwijderen?', destructive: true }))) return;
     await apiRequest(`/agenda/lesstructuren/${id}`, { method: 'DELETE' });
     refreshAll();
   };
@@ -140,7 +141,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
       cancelVacationForm();
       refreshAll();
     } catch (err: any) {
-      alert(err.message || 'Error');
+      notify.error(err.message || 'Error');
     }
   };
 
@@ -159,7 +160,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
   };
 
   const deleteVacation = async (id: string) => {
-    if (!confirm(language === 'tr' ? 'Bu tatili silmek istediğinizden emin misiniz?' : 'Weet u zeker dat u deze vakantie wilt verwijderen?')) return;
+    if (!(await confirmDialog({ description: language === 'tr' ? 'Bu tatili silmek istediğinizden emin misiniz?' : 'Weet u zeker dat u deze vakantie wilt verwijderen?', destructive: true }))) return;
     await apiRequest(`/agenda/vacations/${id}`, { method: 'DELETE' });
     refreshAll();
   };
@@ -174,7 +175,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
       cancelEventForm();
       refreshAll();
     } catch (err: any) {
-      alert(err.message || 'Error');
+      notify.error(err.message || 'Error');
     }
   };
 
@@ -195,7 +196,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
   };
 
   const deleteEvent = async (id: string) => {
-    if (!confirm(language === 'tr' ? 'Bu etkinliği silmek istediğinizden emin misiniz?' : 'Weet u zeker dat u dit evenement wilt verwijderen?')) return;
+    if (!(await confirmDialog({ description: language === 'tr' ? 'Bu etkinliği silmek istediğinizden emin misiniz?' : 'Weet u zeker dat u dit evenement wilt verwijderen?', destructive: true }))) return;
     await apiRequest(`/agenda/events/${id}`, { method: 'DELETE' });
     refreshAll();
   };

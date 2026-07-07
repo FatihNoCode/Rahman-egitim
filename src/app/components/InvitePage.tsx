@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { notify } from './ui/feedback';
+import { validatePassword } from '../../lib/password';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
 
@@ -82,8 +84,9 @@ export default function InvitePage({ token, onComplete }: InvitePageProps) {
     e.preventDefault();
     setError('');
 
-    if (password.length < 6) {
-      setError(texts.passwordMinLength);
+    const pwError = validatePassword(password, language);
+    if (pwError) {
+      setError(pwError);
       return;
     }
 
@@ -107,7 +110,7 @@ export default function InvitePage({ token, onComplete }: InvitePageProps) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
 
-      alert(texts.success);
+      notify.success(texts.success);
       onComplete();
     } catch (err: any) {
       setError(err.message || 'An error occurred');

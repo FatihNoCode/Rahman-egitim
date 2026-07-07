@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Download, Upload, Plus, Trash2, Table as TableIcon, FileSpreadsheet } from 'lucide-react';
+import { notify } from './ui/feedback';
 
 interface ImportRow {
   studentFirstName: string;
@@ -213,7 +214,7 @@ export default function ImportView({ language, apiRequest, onDataChange }: Impor
       setSummary(data.summary || null);
       onDataChange();
     } catch (error: any) {
-      alert(error.message || (language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!'));
+      notify.error(error.message || (language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!'));
     } finally {
       setSubmitting(false);
     }

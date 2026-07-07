@@ -238,6 +238,10 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
   const openDiplomaWindow = () => {
     const stats = data.stats || {};
     const dateStr = new Date().toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL');
+    // Subtle geometric watermark, served from /public and referenced by an
+    // absolute URL so the print window (about:blank) can load it. Scaled with
+    // `cover` so the wide tile fills the A4 page without distortion or seams.
+    const bgUrl = `${window.location.origin}/diploma-bg.svg`;
 
     const gradeRows = moduleConfig
       .map((m) => {
@@ -264,9 +268,12 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
   @page { size: A4 landscape; margin: 0; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   html, body { margin: 0; padding: 0; font-family: Georgia, 'Times New Roman', serif; color: #1f2937; }
-  .page { width: 297mm; height: 210mm; padding: 12mm; position: relative; background: #ffffff; }
+  .page { width: 297mm; height: 210mm; padding: 12mm; position: relative;
+          background-color: #ffffff;
+          background-image: url('${bgUrl}');
+          background-size: cover; background-repeat: no-repeat; background-position: center; }
   .frame { height: 100%; border: 3px solid #047857; border-radius: 10px; padding: 10mm 14mm; position: relative;
-           background: linear-gradient(180deg,#f8fdfb 0%,#ffffff 60%); display: flex; flex-direction: column; }
+           background: rgba(255,255,255,0.55); display: flex; flex-direction: column; }
   .frame::before { content:''; position:absolute; inset:5px; border:1px solid #a7f3d0; border-radius:6px; pointer-events:none; }
   .head { text-align:center; }
   .brand { color:#047857; letter-spacing:3px; font-size:14px; text-transform:uppercase; font-weight:bold; }
@@ -301,7 +308,7 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
   <div class="noprint"><button onclick="window.print()">${text.print}</button></div>
   <div class="page"><div class="frame">
     <div class="head">
-      <div class="brand">Ilim Yolu</div>
+      <div class="brand">Rahman Eğitim</div>
       <div class="title">${text.diploma}</div>
       <div class="rule"></div>
     </div>

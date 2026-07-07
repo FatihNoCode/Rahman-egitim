@@ -253,7 +253,7 @@ app.get("/make-server-6679cacd/ics", (c) => {
 async function sendConferenceConfirmationEmail(to: string, session: any, slot: any, studentName: string) {
   const title = `Oudergesprek ${studentName} | Veli Görüşmesi`;
   const description = `Oudergesprek voor ${studentName} bij Ilim Yolu.`;
-  const { appleLink, googleLink } = buildCalendarLinks(session.date, slot.start, slot.end, title, description, to);
+  const { icsLink, googleLink } = buildCalendarLinks(session.date, slot.start, slot.end, title, description, to);
 
   return sendEmail(
     to,
@@ -269,7 +269,7 @@ async function sendConferenceConfirmationEmail(to: string, session: any, slot: a
         </tr>
         <tr>
           <td>
-            <a href="${appleLink}" style="display:block;background:#111827;color:white;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;text-align:center">Toevoegen aan Apple/Outlook Agenda</a>
+            <a href="${icsLink}" style="display:block;background:#111827;color:white;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;text-align:center">Toevoegen aan Apple/Outlook Agenda</a>
           </td>
         </tr>
       </table>

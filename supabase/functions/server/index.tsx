@@ -2988,6 +2988,85 @@ app.put("/make-server-6679cacd/diploma/config/:classId", async (c) => {
 // current school year, the lesson summaries (lesverslag) of that year, the
 // saved grades + note, and the requesting teacher's own signature so the
 // downloadable diploma can be rendered fully client-side.
+// Computes the full diploma dataset for one student (stats, lessons, module
+// config, saved grades/note, excluded flag). Shared by the single-student and
+// whole-class endpoints. Teacher name/signature are added by the caller.
+async function computeStudentDiploma(studentId: string, student: any, allAttendance: any[], allHomework: any[]) {
+  const cls = await kv.get(`class:${student.classId}`);
+  const currentYear = student.schoolId ? await getCurrentSchoolYear(student.schoolId) : null;
+  const yearStart = currentYear ? new Date(currentYear.startDate) : new Date(0);
+  const now = new Date();
+
+  let totalLessons = 0;
+  let lateCount = 0;
+  let absencesWithNotice = 0;
+  let absencesWithoutNotice = 0;
+
+  let notifiedDates = new Set<string>();
+  if (currentYear) {
+    const yearKey = `student_absence_notifications:${studentId}:${currentYear.id}`;
+    const notificationIds = await kv.get(yearKey) || [];
+    const notifications = await kv.mget(notificationIds.map((id: string) => `absence_notification:${id}`));
+    notifiedDates = new Set(notifications.filter((n: any) => n).map((n: any) => n.lessonDate));
+  }
+
+  for (const att of allAttendance) {
+    if (!att || !att.date || !att.records) continue;
+    const attDate = new Date(att.date);
+    if (attDate < yearStart || attDate > now) continue;
+    const rec = att.records.find((r: any) => r.studentId === studentId);
+    if (!rec) continue;
+    totalLessons++;
+    if (rec.present === 'late') {
+      lateCount++;
+    } else if (rec.present === false) {
+      if (notifiedDates.has(att.date)) absencesWithNotice++;
+      else absencesWithoutNotice++;
+    }
+  }
+
+  let homeworkGiven = 0;
+  let homeworkFinished = 0;
+  for (const hw of allHomework) {
+    if (!hw || !hw.id || hw.classId !== student.classId) continue;
+    const created = new Date(hw.createdAt || hw.lessonDate || 0);
+    if (created < yearStart || created > now) continue;
+    const forStudent = hw.studentIds === null || (Array.isArray(hw.studentIds) && hw.studentIds.includes(studentId));
+    if (!forStudent) continue;
+    homeworkGiven++;
+    const completion = await kv.get(`homework_completion:${studentId}:${hw.id}`);
+    if (completion?.completed) homeworkFinished++;
+  }
+
+  const lessons = (await kv.getByPrefix(`lesson:${student.classId}:`))
+    .filter((l: any) => l && l.date && l.summary)
+    .filter((l: any) => { const d = new Date(l.date); return d >= yearStart && d <= now; })
+    .sort((a: any, b: any) => b.date.localeCompare(a.date))
+    .map((l: any) => ({ date: l.date, summary: l.summary }));
+
+  const config = await kv.get(`diploma_config:${student.classId}`);
+  const record = await kv.get(`diploma:${studentId}`);
+
+  // Grades are kept per period (period1 = mid-year, period2 = end-of-year).
+  // Older records stored a single flat map — migrate those into period1.
+  const rawGrades = record?.grades || {};
+  const grades = (rawGrades.period1 || rawGrades.period2)
+    ? { period1: rawGrades.period1 || {}, period2: rawGrades.period2 || {} }
+    : { period1: rawGrades, period2: {} };
+
+  return {
+    student: { id: studentId, name: student.name },
+    className: cls?.name || '',
+    schoolYear: currentYear?.name || '',
+    stats: { totalLessons, lateCount, absencesWithNotice, absencesWithoutNotice, homeworkGiven, homeworkFinished },
+    lessons,
+    modules: config?.modules || [],
+    grades,
+    note: record?.note || '',
+    excluded: !!record?.excluded,
+  };
+}
+
 app.get("/make-server-6679cacd/diploma/student/:studentId", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
@@ -3001,89 +3080,60 @@ app.get("/make-server-6679cacd/diploma/student/:studentId", async (c) => {
       return c.json({ error: 'Unauthorized' }, 403);
     }
 
-    const cls = await kv.get(`class:${student.classId}`);
-    const currentYear = student.schoolId ? await getCurrentSchoolYear(student.schoolId) : null;
-    const yearStart = currentYear ? new Date(currentYear.startDate) : new Date(0);
-    const now = new Date();
-
-    // Attendance-derived counts
-    let totalLessons = 0;
-    let lateCount = 0;
-    let absencesWithNotice = 0;
-    let absencesWithoutNotice = 0;
-
-    // Dates the parent notified an absence for (to split with/without notice)
-    let notifiedDates = new Set<string>();
-    if (currentYear) {
-      const yearKey = `student_absence_notifications:${studentId}:${currentYear.id}`;
-      const notificationIds = await kv.get(yearKey) || [];
-      const notifications = await kv.mget(notificationIds.map((id: string) => `absence_notification:${id}`));
-      notifiedDates = new Set(notifications.filter((n: any) => n).map((n: any) => n.lessonDate));
-    }
-
-    const allAttendance = await kv.getByPrefix('attendance:');
-    for (const att of allAttendance) {
-      if (!att || !att.date || !att.records) continue;
-      const attDate = new Date(att.date);
-      if (attDate < yearStart || attDate > now) continue;
-      const rec = att.records.find((r: any) => r.studentId === studentId);
-      if (!rec) continue;
-      totalLessons++;
-      if (rec.present === 'late') {
-        lateCount++;
-      } else if (rec.present === false) {
-        if (notifiedDates.has(att.date)) absencesWithNotice++;
-        else absencesWithoutNotice++;
-      }
-    }
-
-    // Homework given / finished for this student in this class
-    let homeworkGiven = 0;
-    let homeworkFinished = 0;
-    const allHomework = await kv.getByPrefix('homework:');
-    for (const hw of allHomework) {
-      if (!hw || !hw.id || hw.classId !== student.classId) continue;
-      const created = new Date(hw.createdAt || hw.lessonDate || 0);
-      if (created < yearStart || created > now) continue;
-      const forStudent = hw.studentIds === null || (Array.isArray(hw.studentIds) && hw.studentIds.includes(studentId));
-      if (!forStudent) continue;
-      homeworkGiven++;
-      const completion = await kv.get(`homework_completion:${studentId}:${hw.id}`);
-      if (completion?.completed) homeworkFinished++;
-    }
-
-    // Lesson summaries for the year (lesverslag overview)
-    const lessons = (await kv.getByPrefix(`lesson:${student.classId}:`))
-      .filter((l: any) => l && l.date && l.summary)
-      .filter((l: any) => { const d = new Date(l.date); return d >= yearStart && d <= now; })
-      .sort((a: any, b: any) => b.date.localeCompare(a.date))
-      .map((l: any) => ({ date: l.date, summary: l.summary }));
-
-    const config = await kv.get(`diploma_config:${student.classId}`);
-    const record = await kv.get(`diploma:${studentId}`);
-
-    // Grades are kept per period (period1 = mid-year, period2 = end-of-year).
-    // Older records stored a single flat map — migrate those into period1.
-    const rawGrades = record?.grades || {};
-    const grades = (rawGrades.period1 || rawGrades.period2)
-      ? { period1: rawGrades.period1 || {}, period2: rawGrades.period2 || {} }
-      : { period1: rawGrades, period2: {} };
+    const [allAttendance, allHomework] = await Promise.all([
+      kv.getByPrefix('attendance:'),
+      kv.getByPrefix('homework:'),
+    ]);
+    const core = await computeStudentDiploma(studentId, student, allAttendance, allHomework);
 
     return c.json({
-      student: { id: studentId, name: student.name },
-      className: cls?.name || '',
-      schoolYear: currentYear?.name || '',
-      stats: { totalLessons, lateCount, absencesWithNotice, absencesWithoutNotice, homeworkGiven, homeworkFinished },
-      lessons,
-      modules: config?.modules || [],
-      grades,
-      note: record?.note || '',
+      ...core,
       teacherName: userData?.name || '',
       signature: userData?.signature || null,
     });
   } catch (err) {
     console.log('Get diploma student error:', err);
     return c.json({ error: 'Failed to get diploma data' }, 500);
+  }
+});
+
+// Whole-class diploma data — used to download every student's diploma in one
+// PDF. Returns each student's dataset (including the "excluded" flag) plus the
+// teacher's name/signature once.
+app.get("/make-server-6679cacd/diploma/class/:classId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const classId = c.req.param('classId');
+    const userData = await getUserData(user.id);
+    if (!(await userHasClassAccess(user.id, userData, classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const allStudents = await kv.getByPrefix('student:');
+    const classStudents = allStudents
+      .filter((s: any) => s && s.id && s.classId === classId)
+      .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+
+    const [allAttendance, allHomework] = await Promise.all([
+      kv.getByPrefix('attendance:'),
+      kv.getByPrefix('homework:'),
+    ]);
+
+    const students = [];
+    for (const s of classStudents) {
+      students.push(await computeStudentDiploma(s.id, s, allAttendance, allHomework));
+    }
+
+    return c.json({
+      students,
+      teacherName: userData?.name || '',
+      signature: userData?.signature || null,
+    });
+  } catch (err) {
+    console.log('Get diploma class error:', err);
+    return c.json({ error: 'Failed to get class diploma data' }, 500);
   }
 });
 
@@ -3101,7 +3151,7 @@ app.put("/make-server-6679cacd/diploma/student/:studentId", async (c) => {
       return c.json({ error: 'Unauthorized' }, 403);
     }
 
-    const { grades, note } = await c.req.json();
+    const { grades, note, excluded } = await c.req.json();
     const cleanPeriod = (obj: any): Record<string, number> => {
       const out: Record<string, number> = {};
       if (obj && typeof obj === 'object') {
@@ -3121,6 +3171,7 @@ app.put("/make-server-6679cacd/diploma/student/:studentId", async (c) => {
       studentId,
       grades: cleanGrades,
       note: typeof note === 'string' ? note.slice(0, 2000) : '',
+      excluded: !!excluded,
       updatedBy: user.id,
       updatedAt: new Date().toISOString(),
     });

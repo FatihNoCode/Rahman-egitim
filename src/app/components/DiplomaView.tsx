@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Award, Download, Star, FileText, CheckCircle2, Settings2 } from 'lucide-react';
+import { Award, Download, Star, FileText, CheckCircle2, Settings2, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 import { useApp } from '../App';
 import { notify } from './ui/feedback';
 
@@ -77,6 +77,13 @@ const T = {
     save: 'Opslaan',
     saved: 'Opgeslagen!',
     download: 'Diploma downloaden',
+    downloadAll: 'Hele klas downloaden (1 PDF)',
+    noStudentsToDownload: 'Geen leerlingen met een diploma om te downloaden.',
+    prev: 'Vorige',
+    next: 'Volgende',
+    noDiploma: 'Geen diploma (leerling gestopt)',
+    noDiplomaHint: 'Aangevinkt: deze leerling krijgt geen diploma en wordt overgeslagen bij het downloaden van de hele klas.',
+    excludedNotice: 'Deze leerling is gemarkeerd als “geen diploma”. Haal het vinkje weg om weer een diploma te kunnen maken.',
     needSignature: 'Upload eerst uw handtekening in uw accountinstellingen (Mijn gegevens) voordat u een diploma kunt downloaden.',
     diploma: 'Diploma',
     forStudent: 'Uitgereikt aan',
@@ -117,6 +124,13 @@ const T = {
     save: 'Kaydet',
     saved: 'Kaydedildi!',
     download: 'Diplomayı indir',
+    downloadAll: 'Tüm sınıfı indir (1 PDF)',
+    noStudentsToDownload: 'İndirilecek diplomalı öğrenci yok.',
+    prev: 'Önceki',
+    next: 'Sonraki',
+    noDiploma: 'Diploma yok (öğrenci ayrıldı)',
+    noDiplomaHint: 'İşaretlendiğinde: bu öğrenciye diploma verilmez ve tüm sınıf indirilirken atlanır.',
+    excludedNotice: 'Bu öğrenci “diploma yok” olarak işaretlendi. Tekrar diploma oluşturmak için işareti kaldırın.',
     needSignature: 'Diploma indirebilmek için önce hesap ayarlarınızdan (Bilgilerim) imzanızı yükleyin.',
     diploma: 'Diploma',
     forStudent: 'Verilen',
@@ -143,9 +157,19 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
   const [grades, setGrades] = useState<PeriodGrades>({ period1: {}, period2: {} });
   const [activePeriod, setActivePeriod] = useState<Period>('period1');
   const [note, setNote] = useState('');
+  const [excluded, setExcluded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [downloadingAll, setDownloadingAll] = useState(false);
+
+  const studentIndex = students.findIndex((s) => s.id === selectedStudent);
+  const goToStudent = (delta: number) => {
+    if (students.length === 0) return;
+    const base = studentIndex === -1 ? 0 : studentIndex;
+    const next = (base + delta + students.length) % students.length;
+    setSelectedStudent(students[next].id);
+  };
 
   useEffect(() => {
     if (!selectedClass) return;
@@ -189,6 +213,7 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
         period2: res.grades?.period2 || {},
       });
       setNote(res.note || '');
+      setExcluded(!!res.excluded);
       setModuleConfig(res.modules || []);
     } catch (err: any) {
       notify.error(err.message || 'Error');
@@ -229,7 +254,7 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
     try {
       await apiRequest(`/diploma/student/${selectedStudent}`, {
         method: 'PUT',
-        body: JSON.stringify({ grades, note }),
+        body: JSON.stringify({ grades, note, excluded }),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
@@ -240,26 +265,28 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
     }
   };
 
-  const download = () => {
-    if (!user?.signature) {
-      notify.error(text.needSignature);
-      return;
+  // Persist the "geen diploma" flag immediately so bulk download reflects it
+  // without needing a separate Save.
+  const toggleExcluded = async () => {
+    const next = !excluded;
+    setExcluded(next);
+    try {
+      await apiRequest(`/diploma/student/${selectedStudent}`, {
+        method: 'PUT',
+        body: JSON.stringify({ grades, note, excluded: next }),
+      });
+    } catch (err: any) {
+      notify.error(err.message || 'Error');
+      setExcluded(!next);
     }
-    if (!data) return;
-    openDiplomaWindow();
   };
 
-  const openDiplomaWindow = () => {
-    const stats = data.stats || {};
+  // Builds one A4 diploma page (inner HTML) for a diploma dataset `d`.
+  const GREEN = '#009872';
+  const renderDiplomaPage = (d: any): string => {
+    const stats = d.stats || {};
+    const g = { period1: d.grades?.period1 || {}, period2: d.grades?.period2 || {} };
     const dateStr = new Date().toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL');
-    // Subtle geometric watermark, served from /public and referenced by an
-    // absolute URL so the print window (about:blank) can load it. Scaled with
-    // `cover` so the wide tile fills the A4 page without distortion or seams.
-    const bgUrl = `${window.location.origin}/diploma-bg.svg`;
-
-    // Single brand green used everywhere on the diploma.
-    const GREEN = '#009872';
-
     const fmt = (type: ModuleType, val: number | undefined): string => {
       if (typeof val !== 'number') return '—';
       if (type === 'star') {
@@ -268,14 +295,11 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
       }
       return String(val);
     };
-
-    const gradeRows = moduleConfig
-      .map((m) => {
-        const label = moduleLabel(m.key, language);
-        return `<tr><td class="mod">${label}</td><td class="val">${fmt(m.type, grades.period1[m.key])}</td><td class="val">${fmt(m.type, grades.period2[m.key])}</td></tr>`;
-      })
+    const gradeRows = (d.modules || [])
+      .map((m: ModuleConfig) =>
+        `<tr><td class="mod">${moduleLabel(m.key, language)}</td><td class="val">${fmt(m.type, g.period1[m.key])}</td><td class="val">${fmt(m.type, g.period2[m.key])}</td></tr>`
+      )
       .join('');
-
     const statsLine = [
       [text.lessonsTotal, stats.totalLessons || 0],
       [text.late, stats.lateCount || 0],
@@ -287,7 +311,38 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
       .map(([label, value]) => `<span class="stat"><b>${value}</b> ${label}</span>`)
       .join('<span class="dot">•</span>');
 
-    const html = `<!DOCTYPE html><html lang="${language}"><head><meta charset="utf-8"><title>${text.diploma} - ${data.student.name}</title>
+    return `<div class="page"><div class="frame">
+    <div class="head">
+      <div class="brand">Rahman Eğitim</div>
+      <div class="title">${text.diploma}</div>
+      <div class="rule"></div>
+    </div>
+    <div class="sub">${text.forStudent}</div>
+    <div class="name">${escapeHtml(d.student.name)}</div>
+    <div class="meta">${text.klas}: ${escapeHtml(d.className || '')} &nbsp;•&nbsp; ${text.schoolYear}: ${escapeHtml(d.schoolYear || '')}</div>
+    <div class="body">
+      <table class="grades">
+        <thead><tr><th class="mh">${text.module}</th><th class="ph">${text.period1}</th><th class="ph">${text.period2}</th></tr></thead>
+        <tbody>${gradeRows || `<tr><td class="mod">—</td><td class="val"></td><td class="val"></td></tr>`}</tbody>
+      </table>
+      ${d.note ? `<div class="note">“${escapeHtml(d.note)}”</div>` : ''}
+      <div class="statsline">${statsLine}</div>
+    </div>
+    <div class="foot">
+      <div class="date">${text.date}: ${dateStr}</div>
+      <div class="sig">
+        ${d.signature ? `<img src="${d.signature}" alt="signature" />` : ''}
+        <div class="line"></div>
+        <div class="cap">${escapeHtml(d.teacherName || '')} — ${text.teacher}</div>
+      </div>
+    </div>
+  </div></div>`;
+  };
+
+  // Wraps one or more diploma pages in a print document and opens it.
+  const openDiplomaDoc = (pages: string[], titleName: string) => {
+    const bgUrl = `${window.location.origin}/diploma-bg.svg`;
+    const html = `<!DOCTYPE html><html lang="${language}"><head><meta charset="utf-8"><title>${text.diploma} - ${escapeHtml(titleName)}</title>
 <style>
   @page { size: A4 landscape; margin: 0; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -295,7 +350,9 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
   .page { width: 297mm; height: 210mm; padding: 12mm; position: relative;
           background-color: #ffffff;
           background-image: url('${bgUrl}');
-          background-size: cover; background-repeat: no-repeat; background-position: center; }
+          background-size: cover; background-repeat: no-repeat; background-position: center;
+          break-after: page; page-break-after: always; }
+  .page:last-of-type { break-after: auto; page-break-after: auto; }
   .frame { height: 100%; border: 3px solid ${GREEN}; border-radius: 10px; padding: 10mm 16mm; position: relative;
            background: rgba(255,255,255,0.55); display: flex; flex-direction: column; }
   .head { text-align:center; }
@@ -330,38 +387,60 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
 </style></head>
 <body>
   <div class="noprint"><button onclick="window.print()">${text.print}</button></div>
-  <div class="page"><div class="frame">
-    <div class="head">
-      <div class="brand">Rahman Eğitim</div>
-      <div class="title">${text.diploma}</div>
-      <div class="rule"></div>
-    </div>
-    <div class="sub">${text.forStudent}</div>
-    <div class="name">${escapeHtml(data.student.name)}</div>
-    <div class="meta">${text.klas}: ${escapeHtml(data.className || '')} &nbsp;•&nbsp; ${text.schoolYear}: ${escapeHtml(data.schoolYear || '')}</div>
-    <div class="body">
-      <table class="grades">
-        <thead><tr><th class="mh">${text.module}</th><th class="ph">${text.period1}</th><th class="ph">${text.period2}</th></tr></thead>
-        <tbody>${gradeRows || `<tr><td class="mod">—</td><td class="val"></td><td class="val"></td></tr>`}</tbody>
-      </table>
-      ${note ? `<div class="note">“${escapeHtml(note)}”</div>` : ''}
-      <div class="statsline">${statsLine}</div>
-    </div>
-    <div class="foot">
-      <div class="date">${text.date}: ${dateStr}</div>
-      <div class="sig">
-        <img src="${user!.signature}" alt="signature" />
-        <div class="line"></div>
-        <div class="cap">${escapeHtml(data.teacherName || '')} — ${text.teacher}</div>
-      </div>
-    </div>
-  </div></div>
+  ${pages.join('\n')}
 </body></html>`;
-
     const w = window.open('', '_blank');
     if (!w) return;
     w.document.write(html);
     w.document.close();
+  };
+
+  const download = () => {
+    if (!user?.signature) {
+      notify.error(text.needSignature);
+      return;
+    }
+    if (!data) return;
+    if (excluded) {
+      notify.error(text.excludedNotice);
+      return;
+    }
+    const liveData = {
+      student: data.student,
+      className: data.className,
+      schoolYear: data.schoolYear,
+      stats: data.stats,
+      grades,
+      note,
+      modules: moduleConfig,
+      teacherName: data.teacherName,
+      signature: user.signature,
+    };
+    openDiplomaDoc([renderDiplomaPage(liveData)], data.student.name);
+  };
+
+  const downloadClass = async () => {
+    if (!user?.signature) {
+      notify.error(text.needSignature);
+      return;
+    }
+    setDownloadingAll(true);
+    try {
+      const res = await apiRequest(`/diploma/class/${selectedClass}`);
+      const sig = res.signature || user.signature;
+      const items = (res.students || []).filter((s: any) => !s.excluded);
+      if (items.length === 0) {
+        notify.error(text.noStudentsToDownload);
+        return;
+      }
+      const pages = items.map((d: any) => renderDiplomaPage({ ...d, teacherName: res.teacherName, signature: sig }));
+      const className = classes.find((c) => c.id === selectedClass)?.name || '';
+      openDiplomaDoc(pages, className);
+    } catch (err: any) {
+      notify.error(err.message || 'Error');
+    } finally {
+      setDownloadingAll(false);
+    }
   };
 
   return (
@@ -401,6 +480,23 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
           </select>
         </div>
       </div>
+
+      {/* Download every diploma of the class as one PDF */}
+      {selectedClass && (
+        <div className="mb-5">
+          <button
+            onClick={downloadClass}
+            disabled={downloadingAll || !user?.signature}
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-lg transition disabled:opacity-50 text-sm"
+          >
+            <Layers className="h-4 w-4" />
+            {downloadingAll ? '…' : text.downloadAll}
+          </button>
+          {!user?.signature && (
+            <p className="text-xs text-amber-600 mt-1.5">{text.needSignature}</p>
+          )}
+        </div>
+      )}
 
       {/* Module configuration for the class */}
       <details className="mb-5 border border-gray-200 rounded-lg overflow-hidden">
@@ -453,6 +549,41 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
         </div>
       ) : (
         <div className="space-y-6">
+          {/* Student header: name, position, quick prev/next navigation */}
+          <div className="flex items-center justify-between gap-2 pb-3 border-b border-gray-100">
+            <div>
+              <p className="text-base font-semibold text-gray-800">{data.student.name}</p>
+              {students.length > 0 && studentIndex >= 0 && (
+                <p className="text-xs text-gray-400">{studentIndex + 1} / {students.length}</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => goToStudent(-1)}
+                disabled={students.length < 2}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />{text.prev}
+              </button>
+              <button
+                onClick={() => goToStudent(1)}
+                disabled={students.length < 2}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition disabled:opacity-40"
+              >
+                {text.next}<ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Geen diploma toggle */}
+          <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={excluded} onChange={toggleExcluded} className="w-4 h-4 accent-amber-600" />
+              <span className="text-sm font-medium text-amber-800">{text.noDiploma}</span>
+            </label>
+            <p className="text-xs text-amber-600 mt-1">{text.noDiplomaHint}</p>
+          </div>
+
           {/* Stats overview */}
           <div>
             <h4 className="text-sm font-semibold text-emerald-800 mb-2">{text.overview}</h4>
@@ -560,7 +691,7 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
           </div>
 
           {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
             <button
               onClick={saveGrades}
               disabled={saving}
@@ -570,11 +701,23 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
             </button>
             <button
               onClick={download}
-              className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-white border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-semibold rounded-lg transition text-sm"
+              disabled={excluded}
+              className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-white border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-semibold rounded-lg transition text-sm disabled:opacity-40"
             >
               <Download className="h-4 w-4" />{text.download}
             </button>
+            {students.length > 1 && (
+              <button
+                onClick={() => goToStudent(1)}
+                className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition text-sm sm:ml-auto"
+              >
+                {text.next}<ChevronRight className="h-4 w-4" />
+              </button>
+            )}
           </div>
+          {excluded && (
+            <p className="text-xs text-amber-600">{text.excludedNotice}</p>
+          )}
           {!user?.signature && (
             <p className="text-xs text-amber-600">{text.needSignature}</p>
           )}

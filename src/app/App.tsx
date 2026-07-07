@@ -31,12 +31,14 @@ interface User {
   phone?: string;
   role: 'parent' | 'teacher' | 'admin' | 'superadmin';
   lastCheckIn?: string;
+  signature?: string | null;
 }
 
 interface AppContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   user: User | null;
+  setUser: (user: User | null) => void;
   accessToken: string | null;
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
 }
@@ -249,6 +251,7 @@ export default function App() {
     language,
     setLanguage,
     user,
+    setUser,
     accessToken,
     apiRequest,
   };

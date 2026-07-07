@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, ClipboardList, BellRing, Settings, MessageSquare, CalendarDays } from 'lucide-react';
+import { Moon, ClipboardList, BellRing, Settings, MessageSquare, CalendarDays, Award } from 'lucide-react';
 import booksLogo from '../../imports/books__1_.png';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
@@ -7,6 +7,7 @@ import { translations } from './translations';
 import { quranChapters } from '../../utils/quranData';
 import TeacherManageView from './TeacherManageView';
 import AbsenceOverviewView from './AbsenceOverviewView';
+import DiplomaView from './DiplomaView';
 import AgendaCalendar from './AgendaCalendar';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
@@ -36,10 +37,11 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [students, setStudents] = useState<Student[]>([]);
   const [studentsWithStats, setStudentsWithStats] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useHashTab<'attendance' | 'meldingen' | 'beheer' | 'oudergesprekken' | 'agenda'>(
+  const [activeTab, setActiveTab] = useHashTab<'attendance' | 'meldingen' | 'beheer' | 'oudergesprekken' | 'agenda' | 'diploma'>(
     'attendance',
-    ['attendance', 'meldingen', 'beheer', 'oudergesprekken', 'agenda'] as const,
+    ['attendance', 'meldingen', 'beheer', 'oudergesprekken', 'agenda', 'diploma'] as const,
   );
+  const [diplomaVisible, setDiplomaVisible] = useState(false);
   const [conferSessions, setConferSessions] = useState<any[]>([]);
   const [conferExpanded, setConferExpanded] = useState<string | null>(null);
 
@@ -81,6 +83,9 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
 
   useEffect(() => {
     loadData();
+    apiRequest('/diploma/settings')
+      .then((d) => setDiplomaVisible(!!d.visible))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -427,6 +432,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     { id: 'agenda', label: language === 'tr' ? 'Ajanda' : 'Agenda', icon: CalendarDays },
     { id: 'meldingen', label: language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen', icon: BellRing },
     { id: 'oudergesprekken', label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken', icon: MessageSquare },
+    ...(diplomaVisible ? [{ id: 'diploma', label: 'Diploma', icon: Award }] : []),
     { id: 'beheer', label: 'Beheer', icon: Settings },
   ];
 
@@ -1058,6 +1064,11 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             {/* ─── AGENDA TAB ─── */}
             {activeTab === 'agenda' && (
               <AgendaCalendar language={language} apiRequest={apiRequest} role="teacher" />
+            )}
+
+            {/* ─── DIPLOMA TAB ─── */}
+            {activeTab === 'diploma' && diplomaVisible && (
+              <DiplomaView classes={classes} language={language} apiRequest={apiRequest} />
             )}
           </div>
         </div>

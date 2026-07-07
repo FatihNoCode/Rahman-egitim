@@ -609,10 +609,21 @@ app.put("/make-server-6679cacd/me", async (c) => {
     const userData = await getUserData(user.id);
     if (!userData) return c.json({ error: 'User not found' }, 404);
 
-    const { name, phone } = await c.req.json();
+    const { name, phone, signature } = await c.req.json();
     const updated = { ...userData };
     if (name !== undefined) updated.name = name;
     if (phone !== undefined) updated.phone = phone;
+    // Teacher handwritten signature, stored as a PNG data URL. Empty string
+    // clears it. Guard the size so a huge upload can't bloat the KV record.
+    if (signature !== undefined) {
+      if (typeof signature !== 'string') {
+        return c.json({ error: 'Invalid signature' }, 400);
+      }
+      if (signature && signature.length > 500_000) {
+        return c.json({ error: 'Signature image is too large' }, 400);
+      }
+      updated.signature = signature || null;
+    }
     updated.updatedAt = new Date().toISOString();
 
     await kv.set(`user:${user.id}`, updated);
@@ -2853,6 +2864,257 @@ app.put("/make-server-6679cacd/school-year/notification-deadline", async (c) => 
   } catch (err) {
     console.log('Update notification deadline error:', err);
     return c.json({ error: 'Failed to update deadline' }, 500);
+  }
+});
+
+// ============= DIPLOMA ROUTES =============
+//
+// The Diploma feature lets teachers compile an end-of-year report card per
+// student: attendance/homework stats, per-module grades or stars, an optional
+// note, and the teacher's signature — rendered as a downloadable A4 diploma.
+// A superadmin (or admin) turns the feature on per school before teachers see
+// the tab.
+
+// The fixed set of subject modules a teacher can grade. Keys are stable; the
+// bilingual labels live on the frontend.
+const DIPLOMA_MODULES = ['koran', 'tajweed', 'arabisch', 'hadith', 'ahlak', 'adab', 'aqiedah', 'fiqh', 'salah', 'seerah'];
+
+// Reads the diploma visibility flag for a school (defaults to hidden).
+async function isDiplomaVisible(schoolId: string): Promise<boolean> {
+  const settings = await kv.get(`diploma_settings:${schoolId}`);
+  return !!settings?.visible;
+}
+
+// Whether the diploma tab should show for the current user. Admin/superadmin
+// resolve to a single school; a teacher sees it when ANY of their schools has
+// it enabled.
+app.get("/make-server-6679cacd/diploma/settings", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const userData = await getUserData(user.id);
+    if (userData?.role === 'admin' || userData?.role === 'superadmin') {
+      const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+      if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
+      return c.json({ visible: await isDiplomaVisible(schoolId!) });
+    }
+
+    // Teacher / parent: visible if enabled in any of their schools.
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    for (const sid of schoolIds) {
+      if (await isDiplomaVisible(sid)) return c.json({ visible: true });
+    }
+    return c.json({ visible: false });
+  } catch (err) {
+    console.log('Get diploma settings error:', err);
+    return c.json({ error: 'Failed to get diploma settings' }, 500);
+  }
+});
+
+// Toggle diploma visibility for a school (admin for own school, superadmin for
+// the school they are acting on).
+app.put("/make-server-6679cacd/diploma/settings", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'admin' && userData?.role !== 'superadmin') {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
+
+    const { visible } = await c.req.json();
+    await kv.set(`diploma_settings:${schoolId}`, { visible: !!visible, updatedBy: user.id, updatedAt: new Date().toISOString() });
+    return c.json({ visible: !!visible });
+  } catch (err) {
+    console.log('Update diploma settings error:', err);
+    return c.json({ error: 'Failed to update diploma settings' }, 500);
+  }
+});
+
+// Which modules a class is graded on, and whether each is a grade or stars.
+app.get("/make-server-6679cacd/diploma/config/:classId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const classId = c.req.param('classId');
+    const userData = await getUserData(user.id);
+    if (!(await userHasClassAccess(user.id, userData, classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const config = await kv.get(`diploma_config:${classId}`);
+    return c.json({ modules: config?.modules || [] });
+  } catch (err) {
+    console.log('Get diploma config error:', err);
+    return c.json({ error: 'Failed to get diploma config' }, 500);
+  }
+});
+
+app.put("/make-server-6679cacd/diploma/config/:classId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const classId = c.req.param('classId');
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'teacher' || !(await userHasClassAccess(user.id, userData, classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const { modules } = await c.req.json();
+    if (!Array.isArray(modules)) return c.json({ error: 'Invalid modules' }, 400);
+
+    // Sanitize: only known module keys, each grade|star, de-duplicated.
+    const seen = new Set<string>();
+    const clean = modules
+      .filter((m: any) => m && DIPLOMA_MODULES.includes(m.key) && (m.type === 'grade' || m.type === 'star'))
+      .filter((m: any) => (seen.has(m.key) ? false : (seen.add(m.key), true)))
+      .map((m: any) => ({ key: m.key, type: m.type }));
+
+    await kv.set(`diploma_config:${classId}`, { modules: clean, updatedBy: user.id, updatedAt: new Date().toISOString() });
+    return c.json({ modules: clean });
+  } catch (err) {
+    console.log('Update diploma config error:', err);
+    return c.json({ error: 'Failed to update diploma config' }, 500);
+  }
+});
+
+// Full diploma dataset for one student: attendance/homework stats for the
+// current school year, the lesson summaries (lesverslag) of that year, the
+// saved grades + note, and the requesting teacher's own signature so the
+// downloadable diploma can be rendered fully client-side.
+app.get("/make-server-6679cacd/diploma/student/:studentId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const studentId = c.req.param('studentId');
+    const userData = await getUserData(user.id);
+    const student = await kv.get(`student:${studentId}`);
+    if (!student) return c.json({ error: 'Student not found' }, 404);
+    if (!(await userHasClassAccess(user.id, userData, student.classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const cls = await kv.get(`class:${student.classId}`);
+    const currentYear = student.schoolId ? await getCurrentSchoolYear(student.schoolId) : null;
+    const yearStart = currentYear ? new Date(currentYear.startDate) : new Date(0);
+    const now = new Date();
+
+    // Attendance-derived counts
+    let totalLessons = 0;
+    let lateCount = 0;
+    let absencesWithNotice = 0;
+    let absencesWithoutNotice = 0;
+
+    // Dates the parent notified an absence for (to split with/without notice)
+    let notifiedDates = new Set<string>();
+    if (currentYear) {
+      const yearKey = `student_absence_notifications:${studentId}:${currentYear.id}`;
+      const notificationIds = await kv.get(yearKey) || [];
+      const notifications = await kv.mget(notificationIds.map((id: string) => `absence_notification:${id}`));
+      notifiedDates = new Set(notifications.filter((n: any) => n).map((n: any) => n.lessonDate));
+    }
+
+    const allAttendance = await kv.getByPrefix('attendance:');
+    for (const att of allAttendance) {
+      if (!att || !att.date || !att.records) continue;
+      const attDate = new Date(att.date);
+      if (attDate < yearStart || attDate > now) continue;
+      const rec = att.records.find((r: any) => r.studentId === studentId);
+      if (!rec) continue;
+      totalLessons++;
+      if (rec.present === 'late') {
+        lateCount++;
+      } else if (rec.present === false) {
+        if (notifiedDates.has(att.date)) absencesWithNotice++;
+        else absencesWithoutNotice++;
+      }
+    }
+
+    // Homework given / finished for this student in this class
+    let homeworkGiven = 0;
+    let homeworkFinished = 0;
+    const allHomework = await kv.getByPrefix('homework:');
+    for (const hw of allHomework) {
+      if (!hw || !hw.id || hw.classId !== student.classId) continue;
+      const created = new Date(hw.createdAt || hw.lessonDate || 0);
+      if (created < yearStart || created > now) continue;
+      const forStudent = hw.studentIds === null || (Array.isArray(hw.studentIds) && hw.studentIds.includes(studentId));
+      if (!forStudent) continue;
+      homeworkGiven++;
+      const completion = await kv.get(`homework_completion:${studentId}:${hw.id}`);
+      if (completion?.completed) homeworkFinished++;
+    }
+
+    // Lesson summaries for the year (lesverslag overview)
+    const lessons = (await kv.getByPrefix(`lesson:${student.classId}:`))
+      .filter((l: any) => l && l.date && l.summary)
+      .filter((l: any) => { const d = new Date(l.date); return d >= yearStart && d <= now; })
+      .sort((a: any, b: any) => b.date.localeCompare(a.date))
+      .map((l: any) => ({ date: l.date, summary: l.summary }));
+
+    const config = await kv.get(`diploma_config:${student.classId}`);
+    const record = await kv.get(`diploma:${studentId}`);
+
+    return c.json({
+      student: { id: studentId, name: student.name },
+      className: cls?.name || '',
+      schoolYear: currentYear?.name || '',
+      stats: { totalLessons, lateCount, absencesWithNotice, absencesWithoutNotice, homeworkGiven, homeworkFinished },
+      lessons,
+      modules: config?.modules || [],
+      grades: record?.grades || {},
+      note: record?.note || '',
+      teacherName: userData?.name || '',
+      signature: userData?.signature || null,
+    });
+  } catch (err) {
+    console.log('Get diploma student error:', err);
+    return c.json({ error: 'Failed to get diploma data' }, 500);
+  }
+});
+
+// Save the grades + note a teacher entered for a student's diploma.
+app.put("/make-server-6679cacd/diploma/student/:studentId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const studentId = c.req.param('studentId');
+    const userData = await getUserData(user.id);
+    const student = await kv.get(`student:${studentId}`);
+    if (!student) return c.json({ error: 'Student not found' }, 404);
+    if (userData?.role !== 'teacher' || !(await userHasClassAccess(user.id, userData, student.classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const { grades, note } = await c.req.json();
+    const cleanGrades: Record<string, number> = {};
+    if (grades && typeof grades === 'object') {
+      for (const key of DIPLOMA_MODULES) {
+        const v = grades[key];
+        if (typeof v === 'number' && isFinite(v)) cleanGrades[key] = v;
+      }
+    }
+
+    await kv.set(`diploma:${studentId}`, {
+      studentId,
+      grades: cleanGrades,
+      note: typeof note === 'string' ? note.slice(0, 2000) : '',
+      updatedBy: user.id,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Save diploma student error:', err);
+    return c.json({ error: 'Failed to save diploma' }, 500);
   }
 });
 

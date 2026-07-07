@@ -83,6 +83,10 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   const [notificationDeadline, setNotificationDeadline] = useState('09:00');
   const [newYearName, setNewYearName] = useState('');
 
+  // Diploma feature visibility (per school)
+  const [diplomaVisible, setDiplomaVisible] = useState(false);
+  const [savingDiploma, setSavingDiploma] = useState(false);
+
   // Class management
   const [newClassName, setNewClassName] = useState('');
   const [newClassTeacherId, setNewClassTeacherId] = useState('');
@@ -102,7 +106,34 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   useEffect(() => {
     loadData();
     loadSchoolYearSettings();
+    loadDiplomaSettings();
   }, []);
+
+  const loadDiplomaSettings = async () => {
+    try {
+      const data = await apiRequest('/diploma/settings');
+      setDiplomaVisible(!!data.visible);
+    } catch (error) {
+      console.error('Error loading diploma settings:', error);
+    }
+  };
+
+  const toggleDiplomaVisible = async () => {
+    const next = !diplomaVisible;
+    setSavingDiploma(true);
+    try {
+      await apiRequest('/diploma/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ visible: next }),
+      });
+      setDiplomaVisible(next);
+      notify.success(language === 'tr' ? 'Kaydedildi!' : 'Opgeslagen!');
+    } catch (error: any) {
+      notify.error(error.message || 'Error');
+    } finally {
+      setSavingDiploma(false);
+    }
+  };
 
   useEffect(() => {
     if (activeTab === 'entities' && students.length > 0 && students[0].absenceCount === undefined) {
@@ -391,6 +422,30 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
 
           {activeTab === 'settings' && (
             <div className="space-y-6">
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h3 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-1">
+                  {language === 'tr' ? 'Diploma' : 'Diploma'}
+                </h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  {language === 'tr'
+                    ? 'Görünür yapıldığında, öğretmenler öğrencilere diploma oluşturabilir.'
+                    : 'Wanneer zichtbaar, kunnen leerkrachten diploma’s aanmaken voor leerlingen.'}
+                </p>
+                <div className="flex items-center justify-between bg-emerald-50 p-4 rounded-lg">
+                  <span className="text-sm font-medium text-gray-700">
+                    {language === 'tr' ? 'Öğretmenler için diploma sekmesi' : 'Diploma-tabblad voor leerkrachten'}
+                  </span>
+                  <button
+                    onClick={toggleDiplomaVisible}
+                    disabled={savingDiploma}
+                    className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-50 ${diplomaVisible ? 'bg-emerald-600' : 'bg-gray-300'}`}
+                    aria-pressed={diplomaVisible}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${diplomaVisible ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+              </div>
+
               {currentYear && (
                 <div className="bg-white rounded-xl shadow-lg p-6">
                   <h3 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-4">{t.schoolYear}</h3>

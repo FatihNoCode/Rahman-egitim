@@ -31,6 +31,12 @@ const t = {
     markAllRead: 'Alles als gelezen markeren',
     back: 'Terug',
     saved: 'Opgeslagen!',
+    signature: 'Handtekening',
+    signatureHint: 'Upload uw handtekening (afbeelding). Deze verschijnt op de diploma’s die u maakt.',
+    uploadSignature: 'Handtekening uploaden',
+    replaceSignature: 'Handtekening vervangen',
+    removeSignature: 'Verwijderen',
+    signatureTooLarge: 'Afbeelding te groot. Kies een kleinere afbeelding.',
   },
   tr: {
     myInfo: 'Bilgilerim',
@@ -44,11 +50,43 @@ const t = {
     markAllRead: 'Tümünü okundu işaretle',
     back: 'Geri',
     saved: 'Kaydedildi!',
+    signature: 'İmza',
+    signatureHint: 'İmzanızı (resim) yükleyin. Oluşturduğunuz diplomalarda görünür.',
+    uploadSignature: 'İmza yükle',
+    replaceSignature: 'İmzayı değiştir',
+    removeSignature: 'Kaldır',
+    signatureTooLarge: 'Resim çok büyük. Daha küçük bir resim seçin.',
   },
 };
 
+// Downscales an uploaded image to a signature-sized transparent PNG data URL,
+// so what we store in the profile stays small.
+function fileToSignatureDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 500;
+        const scale = Math.min(1, maxW / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('no ctx'));
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = reject;
+      img.src = reader.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function UserMenu({ onLogout }: UserMenuProps) {
-  const { language, user, apiRequest } = useApp();
+  const { language, user, setUser, apiRequest } = useApp();
   const text = t[language];
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<'menu' | 'profile' | 'notifications'>('menu');
@@ -56,9 +94,25 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [editName, setEditName] = useState(user?.name || '');
   const [editPhone, setEditPhone] = useState('');
+  const [editSignature, setEditSignature] = useState<string | null>(user?.signature || null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const isTeacher = user?.role === 'teacher';
+
+  const handleSignatureFile = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const dataUrl = await fileToSignatureDataUrl(file);
+      if (dataUrl.length > 500_000) {
+        alert(text.signatureTooLarge);
+        return;
+      }
+      setEditSignature(dataUrl);
+    } catch {
+      alert(text.signatureTooLarge);
+    }
+  };
 
   const loadNotifications = async () => {
     try {
@@ -92,15 +146,19 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
     setOpen(true);
     setEditName(user?.name || '');
     setEditPhone((user as any)?.phone || '');
+    setEditSignature(user?.signature || null);
   };
 
   const saveProfile = async () => {
     setSaving(true);
     try {
-      await apiRequest('/me', {
+      const body: Record<string, unknown> = { name: editName, phone: editPhone };
+      if (isTeacher) body.signature = editSignature || '';
+      const res = await apiRequest('/me', {
         method: 'PUT',
-        body: JSON.stringify({ name: editName, phone: editPhone }),
+        body: JSON.stringify(body),
       });
+      if (res?.user && user) setUser({ ...user, ...res.user });
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
     } catch (err) {
@@ -226,6 +284,33 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
+                {isTeacher && (
+                  <div className="border-t border-gray-100 pt-3">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">{text.signature}</label>
+                    <p className="text-[11px] text-gray-400 mb-2">{text.signatureHint}</p>
+                    {editSignature && (
+                      <div className="mb-2 flex items-center gap-2">
+                        <img src={editSignature} alt="signature" className="h-14 max-w-[180px] object-contain border border-gray-200 rounded bg-white p-1" />
+                        <button
+                          type="button"
+                          onClick={() => setEditSignature(null)}
+                          className="text-xs font-medium text-red-600 hover:text-red-800"
+                        >
+                          {text.removeSignature}
+                        </button>
+                      </div>
+                    )}
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 cursor-pointer transition">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => { handleSignatureFile(e.target.files?.[0]); e.target.value = ''; }}
+                      />
+                      {editSignature ? text.replaceSignature : text.uploadSignature}
+                    </label>
+                  </div>
+                )}
                 <button
                   onClick={saveProfile}
                   disabled={saving}

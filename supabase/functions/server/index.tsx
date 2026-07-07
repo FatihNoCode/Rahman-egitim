@@ -315,8 +315,9 @@ function buildEventCard(opts: {
 // email with a styled details card, an "add to Google Agenda" link, and the
 // invite as an .ics attachment for the specific slot.
 async function sendConferenceConfirmationEmail(to: string, session: any, slot: any, studentName: string) {
+  const location = 'Rahman Moskee Amersfoort';
   const title = `Oudergesprek ${studentName} | Veli Görüşmesi`;
-  const description = `Oudergesprek voor ${studentName} bij Ilim Yolu.`;
+  const description = `Oudergesprek voor ${studentName} bij ${location}.`;
   const { googleLink } = buildCalendarLinks(session.date, slot.start, slot.end, title, description, to);
 
   // Attach the invite as a real .ics file named "oudergesprek". Apple Mail
@@ -329,7 +330,7 @@ async function sendConferenceConfirmationEmail(to: string, session: any, slot: a
     rows: [
       { label: 'Wanneer · Ne zaman', value: `${formatDutchDate(session.date)} &middot; ${slot.start} – ${slot.end}` },
       { label: 'Tijdzone · Saat dilimi', value: '(GMT+02:00) Europe/Amsterdam' },
-      { label: 'Locatie · Yer', value: 'Ilim Yolu' },
+      { label: 'Locatie · Yer', value: location },
       { label: 'Leerling · Öğrenci', value: studentName },
     ],
     googleLink,

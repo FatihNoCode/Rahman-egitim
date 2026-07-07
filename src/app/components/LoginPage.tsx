@@ -19,6 +19,7 @@ interface LoginPageProps {
 export default function LoginPage({ onLogin, language, setLanguage }: LoginPageProps) {
   const t = translations[language];
   const [isSignup, setIsSignup] = useState(false);
+  const [signupPending, setSignupPending] = useState(false);
   const [isForgot, setIsForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
@@ -107,27 +108,10 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
           return;
         }
 
-        // Auto login after signup
-        const loginResponse = await fetch(`${API_BASE}/signin`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ email, password }),
-        });
-
-        const loginData = await loginResponse.json();
-        if (!loginResponse.ok) throw new Error(loginData.error);
-
-        if (loginData.accessToken && loginData.refreshToken) {
-          await supabase.auth.setSession({
-            access_token: loginData.accessToken,
-            refresh_token: loginData.refreshToken,
-          });
-        }
-
-        onLogin(loginData.user, loginData.accessToken);
+        // No auto-login: new registrations must be approved by an admin first.
+        // Show a confirmation screen explaining what happens next.
+        setLoading(false);
+        setSignupPending(true);
       } else {
         const response = await fetch(`${API_BASE}/signin`, {
           method: 'POST',
@@ -141,7 +125,11 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
         const data = await response.json();
         if (!response.ok) {
           // Map common errors to localized messages
-          if (data.error.includes('Invalid login credentials') || data.error.includes('Email not confirmed')) {
+          if (data.error === 'ACCOUNT_PENDING') {
+            setError(language === 'tr'
+              ? 'Hesabınız henüz bir yönetici tarafından onaylanmadı. Onaylandığında bir e-posta alacaksınız.'
+              : 'Uw account is nog niet goedgekeurd door een beheerder. U ontvangt een e-mail zodra dit is gebeurd.');
+          } else if (data.error.includes('Invalid login credentials') || data.error.includes('Email not confirmed')) {
             setError(t.invalidCredentials);
           } else {
             setError(data.error);
@@ -200,6 +188,52 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
       <h1 className="text-xl font-bold text-gray-800 tracking-tight">Ilim Yolu</h1>
     </div>
   );
+
+  if (signupPending) {
+    return (
+      <div className="relative size-full flex items-center justify-center p-3 sm:p-4">
+        <Backdrop />
+        <div className="relative w-full max-w-md">
+          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-emerald-950/5 ring-1 ring-black/5 p-5 sm:p-7 md:p-9">
+            <BrandMark />
+            <div className="py-2">
+              <div className="flex justify-center mb-4">
+                <div className="bg-emerald-100 rounded-full p-4 inline-flex">
+                  <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+                </div>
+              </div>
+              <p className="font-semibold text-gray-800 text-center mb-1">
+                {language === 'tr' ? 'Kaydınız alındı!' : 'Registratie ontvangen!'}
+              </p>
+              <p className="text-sm text-gray-500 text-center mb-4">
+                {language === 'tr'
+                  ? 'Kaydınız için teşekkür ederiz. Bu adrese bir onay e-postası gönderdik:'
+                  : 'Bedankt voor uw registratie. We hebben een bevestiging gestuurd naar:'}
+              </p>
+              <p className="text-sm font-semibold text-emerald-700 text-center mb-4 break-all">{email}</p>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6">
+                <p className="text-amber-800 text-sm font-semibold mb-0.5">
+                  {language === 'tr' ? '⏳ Henüz giriş yapamazsınız' : '⏳ U kunt nog niet inloggen'}
+                </p>
+                <p className="text-amber-700 text-xs">
+                  {language === 'tr'
+                    ? 'Bir yönetici hesabınızı onaylamalı ve size bir rol atamalıdır. Onaylandığında bir e-posta alacak ve giriş yapabileceksiniz.'
+                    : 'Een beheerder moet uw account eerst goedkeuren en een rol toekennen. Zodra dit is gebeurd, ontvangt u een e-mail en kunt u inloggen.'}
+                </p>
+              </div>
+              <button
+                onClick={() => { setSignupPending(false); setIsSignup(false); setPassword(''); setConfirmPassword(''); }}
+                className="w-full flex items-center justify-center gap-1.5 text-emerald-600 hover:text-emerald-800 font-medium text-sm transition"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                {language === 'tr' ? 'Giriş sayfasına dön' : 'Terug naar inloggen'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isForgot) {
     return (

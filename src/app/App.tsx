@@ -2,6 +2,7 @@ import { useState, useEffect, createContext, useContext, lazy, Suspense } from '
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../lib/supabase';
 import LoginPage from './components/LoginPage';
+import ProductTour, { hasSeenTour } from './components/ProductTour';
 import { FeedbackHost } from './components/ui/feedback';
 import { markSessionStart, clearSessionStart, isSessionExpired } from '../lib/session';
 import faviconUrl from '../imports/books__1_.png';
@@ -62,6 +63,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'superadmin' | 'admin'>('superadmin');
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [isRecovery, setIsRecovery] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const pathSegments = window.location.pathname.split('/');
   const pageParam = new URLSearchParams(window.location.search).get('page');
   // Canonical route is /inschrijven; the older /inschrijving path (and page
@@ -201,6 +203,20 @@ export default function App() {
     }
   };
 
+  // Superadmins are guided through the admin tour (they operate schools the
+  // same way an admin does). Parents/teachers/admins get their own tour.
+  const tourRole =
+    user?.role === 'superadmin' ? 'admin' :
+    user?.role === 'parent' || user?.role === 'teacher' || user?.role === 'admin' ? user.role :
+    null;
+
+  // Show the role-specific product tour on the user's first visit.
+  useEffect(() => {
+    if (user && tourRole && !hasSeenTour(tourRole)) {
+      setShowTour(true);
+    }
+  }, [user, tourRole]);
+
   const handleLogin = (userData: User, token: string) => {
     markSessionStart();
     setUser(userData);
@@ -259,6 +275,9 @@ export default function App() {
   return (
     <AppContext.Provider value={contextValue}>
       <FeedbackHost />
+      {showTour && tourRole && (
+        <ProductTour role={tourRole} language={language} onClose={() => setShowTour(false)} />
+      )}
       <div className="size-full bg-gradient-to-br from-emerald-50 to-teal-100">
         <Suspense
           fallback={

@@ -502,41 +502,48 @@ app.post("/make-server-6679cacd/signup", async (c) => {
       return c.json({ error: error.message }, 400);
     }
 
-    // Store user data in KV
+    // Store user data in KV. New self-registrations start as `pending`: they
+    // cannot sign in until an admin approves them and assigns a definitive
+    // role. The role stored here is provisional — the admin sets the real one
+    // during approval. `parent` is used as a neutral placeholder so the account
+    // surfaces in the admin's user overview.
     await kv.set(`user:${data.user.id}`, {
       id: data.user.id,
       email,
       name,
       phone: phone.trim(),
       role,
+      status: 'pending',
       hasAccount: true,
       lastCheckIn: null,
       createdAt: new Date().toISOString()
     });
 
-    if (role === 'parent') {
-      await kv.set(`parent_children:${data.user.id}`, []);
+    await kv.set(`parent_children:${data.user.id}`, []);
 
-      // Send welcome email to parent
-      await sendEmail(
-        email,
-        'Welkom bij Ilim Yolu | Hoş Geldiniz',
-        emailWrapper('Welkom', `
-          <p style="color:#374151;line-height:1.6">Beste ouder,</p>
-          <p style="color:#374151;line-height:1.6">Welkom bij het Ilim Yolu leerlingvolgsysteem! U kunt nu de aanwezigheid, gedragsnota's en huiswerk van uw kind(eren) volgen via het ouderportaal.</p>
-          <p style="margin:24px 0"><a href="https://ilimyolu.com" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Naar het portaal</a></p>
-          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-          <p style="color:#374151;line-height:1.6">Sayın veli,</p>
-          <p style="color:#374151;line-height:1.6">Ilim Yolu öğrenci takip sistemine hoş geldiniz! Artık çocuğunuzun/çocuklarınızın devam durumunu, davranış notlarını ve ödevlerini veli portalından takip edebilirsiniz.</p>
-          <p style="margin:24px 0"><a href="https://ilimyolu.com" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Portala git</a></p>
-        `)
-      );
-    } else if (role === 'teacher') {
-      await kv.set(`teacher_classes:${data.user.id}`, []);
-    }
+    // Send a registration-received email that makes clear the account is NOT
+    // yet active — an admin must approve it first, after which a second email
+    // confirms they can log in.
+    await sendEmail(
+      email,
+      'Registratie ontvangen | Kaydınız alındı - Ilim Yolu',
+      emailWrapper('Registratie ontvangen', `
+        <p style="color:#374151;line-height:1.6">Beste ${name},</p>
+        <p style="color:#374151;line-height:1.6">Bedankt voor uw registratie bij het Ilim Yolu leerlingvolgsysteem.</p>
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="color:#92400e;margin:0;line-height:1.6"><strong>Let op:</strong> uw registratie geeft u nog geen directe toegang tot het systeem. Een beheerder moet uw account eerst goedkeuren en de juiste rol toekennen. Zodra dit is gebeurd, ontvangt u een e-mail en kunt u inloggen.</p>
+        </div>
+        <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+        <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+        <p style="color:#374151;line-height:1.6">Sayın ${name},</p>
+        <p style="color:#374151;line-height:1.6">Ilim Yolu öğrenci takip sistemine kaydolduğunuz için teşekkür ederiz.</p>
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="color:#92400e;margin:0;line-height:1.6"><strong>Önemli:</strong> kaydınız size sisteme hemen erişim vermez. Bir yönetici önce hesabınızı onaylamalı ve size uygun rolü atamalıdır. Bu işlem tamamlandığında bir e-posta alacak ve giriş yapabileceksiniz.</p>
+        </div>
+      `)
+    );
 
-    return c.json({ success: true, userId: data.user.id });
+    return c.json({ success: true, userId: data.user.id, pending: true });
   } catch (err) {
     console.log('Signup error:', err);
     return c.json({ error: 'Failed to create user' }, 500);
@@ -563,6 +570,14 @@ app.post("/make-server-6679cacd/signin", async (c) => {
     }
 
     const userData = await getUserData(data.user.id);
+
+    // Block accounts that are still awaiting admin approval. Accounts created
+    // before this flow existed have no `status` field and are treated as
+    // approved. Sign the just-created session out so a pending token can't be
+    // reused to hit authenticated endpoints.
+    if (userData?.status === 'pending') {
+      return c.json({ error: 'ACCOUNT_PENDING' }, 403);
+    }
 
     // Update last check-in for parents
     if (userData?.role === 'parent') {
@@ -1596,12 +1611,12 @@ app.get("/make-server-6679cacd/users", async (c) => {
 
       if (u.role === 'admin') {
         if (u.schoolId !== schoolId) continue;
-        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt });
+        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, status: u.status || 'approved' });
       } else if (u.role === 'superadmin') {
         // Only visible to real superadmins — a regular admin has no actionable use
         // for cross-tenant superadmin accounts.
         if (userData.role !== 'superadmin') continue;
-        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt });
+        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, status: u.status || 'approved' });
       } else if (u.role === 'teacher') {
         const classIds: string[] = await kv.get(`teacher_classes:${u.id}`) || [];
         const classes = await kv.mget(classIds.map((id: string) => `class:${id}`));
@@ -1610,14 +1625,14 @@ app.get("/make-server-6679cacd/users", async (c) => {
         // class is assigned) are still shown — same as not-yet-assigned parents
         // below — otherwise there's no way to ever assign them a class.
         if (classIds.length > 0 && inSchool.length === 0) continue;
-        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, classCount: inSchool.length });
+        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, classCount: inSchool.length, status: u.status || 'approved' });
       } else if (u.role === 'parent') {
         // Shadow parent records created from a public child signup ("inschrijving")
         // before any real login account exists. They carry their own schoolId
         // since they have no children/classes yet to derive it from.
         if (u.hasAccount === false) {
           if (u.schoolId && u.schoolId !== schoolId) continue;
-          users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, hasAccount: false });
+          users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, hasAccount: false, status: u.status || 'approved' });
           continue;
         }
 
@@ -1627,7 +1642,7 @@ app.get("/make-server-6679cacd/users", async (c) => {
         // Parentless parents are still shown — the whole point of this page is
         // to manage not-yet-assigned accounts, unlike the older /parents route.
         if (children.length > 0 && inSchool.length === 0) continue;
-        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, childrenIds: inSchool.map((s: any) => s.id), hasAccount: true });
+        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, childrenIds: inSchool.map((s: any) => s.id), hasAccount: true, status: u.status || 'approved' });
       }
     }
 
@@ -1794,6 +1809,140 @@ app.delete("/make-server-6679cacd/users/:userId", async (c) => {
   } catch (err) {
     console.log('Delete user error:', err);
     return c.json({ error: 'Failed to delete user' }, 500);
+  }
+});
+
+// Approve a pending self-registration: assign the definitive role, flip the
+// account to `approved`, and email the user that they can now log in. Admins
+// and superadmins may approve; only superadmins may hand out admin/superadmin
+// roles (privileged-tier guard, same as the role-change endpoint above).
+app.post("/make-server-6679cacd/users/:userId/approve", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const userData = await getUserData(user.id);
+    if (!userData || (userData.role !== 'admin' && userData.role !== 'superadmin')) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
+    if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
+
+    const targetUserId = c.req.param('userId');
+    const { role } = await c.req.json();
+
+    if (!['parent', 'teacher', 'admin', 'superadmin'].includes(role)) {
+      return c.json({ error: 'Invalid role' }, 400);
+    }
+
+    const isRealSuperadmin = userData.role === 'superadmin';
+    if ((role === 'admin' || role === 'superadmin') && !isRealSuperadmin) {
+      return c.json({ error: 'Only superadmins can grant admin or superadmin roles' }, 403);
+    }
+
+    const target = await kv.get(`user:${targetUserId}`);
+    if (!target) return c.json({ error: 'User not found' }, 404);
+
+    const updated: any = { ...target, role, status: 'approved' };
+
+    // Set up role-specific bookkeeping. A freshly-registered account has no
+    // classes/children yet, so there is nothing from an old role to unwind.
+    if (role === 'admin') {
+      updated.schoolId = schoolId;
+    } else {
+      delete updated.schoolId;
+      if (role === 'parent' && !(await kv.get(`parent_children:${targetUserId}`))) {
+        await kv.set(`parent_children:${targetUserId}`, []);
+      }
+      if (role === 'teacher' && !(await kv.get(`teacher_classes:${targetUserId}`))) {
+        await kv.set(`teacher_classes:${targetUserId}`, []);
+      }
+    }
+    updated.updatedAt = new Date().toISOString();
+
+    await kv.set(`user:${targetUserId}`, updated);
+
+    // Let the newly-approved user know they can sign in.
+    if (target.email) {
+      await sendEmail(
+        target.email,
+        'Uw account is goedgekeurd | Hesabınız onaylandı - Ilim Yolu',
+        emailWrapper('Account goedgekeurd', `
+          <p style="color:#374151;line-height:1.6">Beste ${target.name || ''},</p>
+          <p style="color:#374151;line-height:1.6">Goed nieuws! Uw account voor het Ilim Yolu leerlingvolgsysteem is goedgekeurd. U kunt nu inloggen met uw e-mailadres en wachtwoord.</p>
+          <p style="margin:24px 0"><a href="https://ilimyolu.com" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Inloggen</a></p>
+          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+          <p style="color:#374151;line-height:1.6">Sayın ${target.name || ''},</p>
+          <p style="color:#374151;line-height:1.6">Güzel haber! Ilim Yolu öğrenci takip sistemi hesabınız onaylandı. Artık e-posta adresiniz ve şifrenizle giriş yapabilirsiniz.</p>
+          <p style="margin:24px 0"><a href="https://ilimyolu.com" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Giriş yap</a></p>
+        `)
+      );
+    }
+
+    return c.json({ user: updated });
+  } catch (err) {
+    console.log('Approve user error:', err);
+    return c.json({ error: 'Failed to approve user' }, 500);
+  }
+});
+
+// Reject a pending self-registration: hard-delete the auth account and KV data
+// and email the applicant. Admins and superadmins may reject pending accounts.
+app.post("/make-server-6679cacd/users/:userId/reject", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const userData = await getUserData(user.id);
+    if (!userData || (userData.role !== 'admin' && userData.role !== 'superadmin')) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const targetUserId = c.req.param('userId');
+    const target = await kv.get(`user:${targetUserId}`);
+    if (!target) return c.json({ error: 'User not found' }, 404);
+
+    // Only ever reject accounts that are actually awaiting approval — this
+    // endpoint must not become a back door for deleting established users.
+    if (target.status !== 'pending') {
+      return c.json({ error: 'User is not pending approval' }, 400);
+    }
+
+    await kv.del(`parent_children:${targetUserId}`);
+    await kv.del(`teacher_classes:${targetUserId}`);
+    await kv.del(`user:${targetUserId}`);
+
+    if (target.hasAccount !== false) {
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      );
+      const { error: authError } = await supabase.auth.admin.deleteUser(targetUserId);
+      if (authError) {
+        console.log('Reject (delete auth) error:', authError);
+      }
+    }
+
+    if (target.email) {
+      await sendEmail(
+        target.email,
+        'Registratie afgewezen | Kayıt reddedildi - Ilim Yolu',
+        emailWrapper('Registratie afgewezen', `
+          <p style="color:#374151;line-height:1.6">Beste ${target.name || ''},</p>
+          <p style="color:#374151;line-height:1.6">Uw registratie voor het Ilim Yolu leerlingvolgsysteem is helaas niet goedgekeurd. Neem bij vragen contact op met de beheerder van uw school.</p>
+          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+          <p style="color:#374151;line-height:1.6">Sayın ${target.name || ''},</p>
+          <p style="color:#374151;line-height:1.6">Ilim Yolu öğrenci takip sistemi kaydınız maalesef onaylanmadı. Sorularınız için lütfen okulunuzun yöneticisiyle iletişime geçin.</p>
+        `)
+      );
+    }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Reject user error:', err);
+    return c.json({ error: 'Failed to reject user' }, 500);
   }
 });
 

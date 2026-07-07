@@ -25,6 +25,7 @@ interface AppUser {
   classCount?: number;
   childrenIds?: string[];
   hasAccount?: boolean;
+  status?: 'pending' | 'approved';
 }
 
 interface UsersViewProps {
@@ -67,6 +68,12 @@ export default function UsersView({
   const [deletingUser, setDeletingUser] = useState<AppUser | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
 
+  // Pending registrations: which role to grant on approval + in-flight ids
+  const [pendingRole, setPendingRole] = useState<Record<string, Role>>({});
+  const [pendingBusyId, setPendingBusyId] = useState<string | null>(null);
+  const [rejectingUser, setRejectingUser] = useState<AppUser | null>(null);
+  const [rejectSaving, setRejectSaving] = useState(false);
+
   const t = {
     tr: {
       title: 'Kullanıcılar',
@@ -102,6 +109,15 @@ export default function UsersView({
       confirmDeleteBody: (name: string) => `${name} kalıcı olarak silinecek ve bir daha giriş yapamayacak. Bu işlem geri alınamaz. Devam etmek istiyor musunuz?`,
       delete: 'Sil',
       sending: 'Gönderiliyor...',
+      pendingTitle: 'Onay bekleyen kayıtlar',
+      pendingHint: 'Bu kişiler kayıt oldu ancak henüz giriş yapamıyor. Bir rol atayın ve onaylayın; onaylandığında giriş yapabileceklerine dair bir e-posta alırlar.',
+      assignRole: 'Rol ata',
+      approve: 'Onayla',
+      reject: 'Reddet',
+      registeredOn: 'Kayıt tarihi',
+      confirmRejectTitle: 'Kaydı reddet',
+      confirmRejectBody: (name: string) => `${name} adlı kişinin kaydı reddedilecek ve hesabı silinecek. Bilgilendirme e-postası gönderilecek. Devam etmek istiyor musunuz?`,
+      approved: 'Onaylandı ✓',
     },
     nl: {
       title: 'Gebruikers',
@@ -137,6 +153,15 @@ export default function UsersView({
       confirmDeleteBody: (name: string) => `${name} wordt permanent verwijderd en kan niet meer inloggen. Deze actie kan niet ongedaan worden gemaakt. Wilt u doorgaan?`,
       delete: 'Verwijderen',
       sending: 'Verzenden...',
+      pendingTitle: 'Registraties in afwachting',
+      pendingHint: 'Deze personen hebben zich geregistreerd maar kunnen nog niet inloggen. Ken een rol toe en keur ze goed; ze ontvangen dan een e-mail dat ze kunnen inloggen.',
+      assignRole: 'Rol toewijzen',
+      approve: 'Goedkeuren',
+      reject: 'Afwijzen',
+      registeredOn: 'Geregistreerd op',
+      confirmRejectTitle: 'Registratie afwijzen',
+      confirmRejectBody: (name: string) => `De registratie van ${name} wordt afgewezen en het account wordt verwijderd. Er wordt een e-mail verstuurd. Wilt u doorgaan?`,
+      approved: 'Goedgekeurd ✓',
     },
   };
   const text = t[language];
@@ -240,7 +265,48 @@ export default function UsersView({
     }
   };
 
+  const approveUser = async (u: AppUser) => {
+    const role = pendingRole[u.id] || 'parent';
+    setPendingBusyId(u.id);
+    try {
+      await apiRequest(`/users/${u.id}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ role }),
+      });
+      await loadUsers();
+      onDataChange();
+    } catch (error: any) {
+      notify.error(error.message || text.genericError);
+    } finally {
+      setPendingBusyId(null);
+    }
+  };
+
+  const confirmReject = async () => {
+    if (!rejectingUser) return;
+    setRejectSaving(true);
+    try {
+      await apiRequest(`/users/${rejectingUser.id}/reject`, { method: 'POST' });
+      setRejectingUser(null);
+      await loadUsers();
+      onDataChange();
+    } catch (error: any) {
+      notify.error(error.message || text.genericError);
+    } finally {
+      setRejectSaving(false);
+    }
+  };
+
+  // Only real superadmins may grant admin/superadmin; regular admins approve
+  // pending users into parent/teacher roles.
+  const pendingRoleOptions = isRealSuperadmin
+    ? ROLE_ORDER
+    : ROLE_ORDER.filter((r) => r === 'parent' || r === 'teacher');
+
+  const pendingUsers = users.filter((u) => u.status === 'pending');
+
   const filteredUsers = users.filter((u) => {
+    if (u.status === 'pending') return false; // shown in the dedicated panel above
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (u.name || '').toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
@@ -261,6 +327,73 @@ export default function UsersView({
           />
         </div>
       </div>
+
+      {!loading && pendingUsers.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+          <h4 className="text-base font-semibold text-amber-800 flex items-center gap-2">
+            <span className="inline-flex items-center justify-center h-6 min-w-6 px-1.5 rounded-full bg-amber-500 text-white text-xs font-bold">
+              {pendingUsers.length}
+            </span>
+            {text.pendingTitle}
+          </h4>
+          <p className="text-xs text-amber-700 mt-1 mb-3">{text.pendingHint}</p>
+          <div className="space-y-2">
+            {pendingUsers.map((u) => {
+              const busy = pendingBusyId === u.id;
+              return (
+                <div
+                  key={u.id}
+                  className="flex flex-col md:flex-row md:items-center gap-3 bg-white rounded-lg border border-amber-100 p-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-800 truncate">
+                      {u.name || text.noName}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                    <p className="text-xs text-gray-400">
+                      {u.phone || text.noPhone} · {text.registeredOn}{' '}
+                      {new Date(u.createdAt).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="text-xs text-gray-500">{text.assignRole}</label>
+                    <select
+                      value={pendingRole[u.id] || 'parent'}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setPendingRole((prev) => ({ ...prev, [u.id]: e.target.value as Role }))
+                      }
+                      className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+                    >
+                      {pendingRoleOptions.map((r) => (
+                        <option key={r} value={r}>
+                          {roleLabel(r)}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => approveUser(u)}
+                      disabled={busy}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs sm:text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition disabled:opacity-50"
+                    >
+                      <Check className="h-4 w-4" />
+                      {busy ? text.sending : text.approve}
+                    </button>
+                    <button
+                      onClick={() => setRejectingUser(u)}
+                      disabled={busy}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs sm:text-sm font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition disabled:opacity-50"
+                    >
+                      <X className="h-4 w-4" />
+                      {text.reject}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-12 text-gray-400">{text.loading}</div>
@@ -485,6 +618,34 @@ export default function UsersView({
               <button
                 onClick={() => setDeletingUser(null)}
                 disabled={deleteSaving}
+                className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2.5 rounded-lg transition disabled:opacity-50"
+              >
+                {text.cancel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject pending registration confirmation */}
+      {rejectingUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-red-700 mb-3">{text.confirmRejectTitle}</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              {text.confirmRejectBody(rejectingUser.name || rejectingUser.email)}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmReject}
+                disabled={rejectSaving}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-lg transition disabled:opacity-50"
+              >
+                {rejectSaving ? text.sending : text.reject}
+              </button>
+              <button
+                onClick={() => setRejectingUser(null)}
+                disabled={rejectSaving}
                 className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2.5 rounded-lg transition disabled:opacity-50"
               >
                 {text.cancel}

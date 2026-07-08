@@ -3,18 +3,16 @@ import type { Language } from '../App';
 
 type TourRole = 'parent' | 'teacher' | 'admin';
 
-// Persist per-role so switching roles (e.g. a superadmin who is also a parent
-// elsewhere) each get their own first-run tour.
-//
-// The `v2` marker resets the "seen" flag for everyone: when the tour content
-// changes we bump this version so previously-dismissed users see the new tour
-// once more. Older keys (`ilimyolu_tour_seen_<role>`) are simply ignored.
-const storageKey = (role: TourRole) => `ilimyolu_tour_seen_v2_${role}`;
+// Persisted in sessionStorage (not localStorage) so the tour shows again for
+// every parent on each new login session, rather than being suppressed forever
+// on a device. Dismissing it only hides it for the rest of the current
+// session; a mid-session refresh won't re-pop it, but the next login will.
+const storageKey = (role: TourRole) => `ilimyolu_tour_seen_${role}`;
 
 export function hasSeenTour(role: string): boolean {
   if (role !== 'parent' && role !== 'teacher' && role !== 'admin') return true;
   try {
-    return localStorage.getItem(storageKey(role)) === '1';
+    return sessionStorage.getItem(storageKey(role)) === '1';
   } catch {
     return true;
   }
@@ -45,7 +43,7 @@ interface ProductTourProps {
 export default function ProductTour({ role, language, onClose }: ProductTourProps) {
   const finish = () => {
     try {
-      localStorage.setItem(storageKey(role), '1');
+      sessionStorage.setItem(storageKey(role), '1');
     } catch {
       // ignore storage failures — worst case the tour shows again
     }

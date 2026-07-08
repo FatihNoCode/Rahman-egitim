@@ -48,9 +48,12 @@ const moduleLabel = (key: string, lang: 'tr' | 'nl') => {
 const T = {
   nl: {
     title: 'Diploma',
+    intro: 'Werkwijze: 1) kies een klas, 2) stel de onderdelen in, 3) selecteer een leerling en geef beoordelingen, 4) download het diploma. De hele klas in één PDF downloaden kan boven- en onderaan.',
+    classSection: 'Voor de hele klas',
+    studentSection: 'Per leerling',
     selectClass: 'Selecteer klas',
     selectStudent: 'Selecteer leerling',
-    chooseStudent: 'Kies een leerling om verder te gaan.',
+    chooseStudent: 'Kies hierboven een leerling om beoordelingen in te vullen en een diploma te maken.',
     configTitle: 'Onderdelen voor deze klas',
     configHint: 'Kies welke onderdelen beoordeeld worden en of dat met een cijfer of met sterren gebeurt.',
     grade: 'Cijfer',
@@ -96,9 +99,12 @@ const T = {
   },
   tr: {
     title: 'Diploma',
+    intro: 'Adımlar: 1) bir sınıf seçin, 2) bölümleri ayarlayın, 3) bir öğrenci seçip değerlendirin, 4) diplomayı indirin. Tüm sınıfı tek PDF olarak üstten ve alttan indirebilirsiniz.',
+    classSection: 'Tüm sınıf için',
+    studentSection: 'Öğrenci bazında',
     selectClass: 'Sınıf seç',
     selectStudent: 'Öğrenci seç',
-    chooseStudent: 'Devam etmek için bir öğrenci seçin.',
+    chooseStudent: 'Değerlendirme girmek ve diploma oluşturmak için yukarıdan bir öğrenci seçin.',
     configTitle: 'Bu sınıf için bölümler',
     configHint: 'Hangi bölümlerin değerlendirileceğini ve not mu yoksa yıldız mı verileceğini seçin.',
     grade: 'Not',
@@ -477,10 +483,11 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-1.5">
         <Award className="h-6 w-6 text-emerald-700" />
         <h3 className="text-lg sm:text-xl font-semibold text-emerald-800">{text.title}</h3>
       </div>
+      <p className="text-xs sm:text-sm text-gray-500 mb-4 leading-relaxed">{text.intro}</p>
 
       {/* Class + student selectors */}
       <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-5">
@@ -513,9 +520,16 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
         </div>
       </div>
 
+      {/* ===== Class-level controls: config + whole-class download ===== */}
+      {selectedClass && (
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80 mb-2">
+          {text.classSection}
+        </p>
+      )}
+
       {/* Download every diploma of the class as one PDF */}
       {selectedClass && (
-        <div className="mb-5">
+        <div className="mb-3">
           <button
             onClick={downloadClass}
             disabled={downloadingAll || !user?.signature}
@@ -531,7 +545,7 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
       )}
 
       {/* Module configuration for the class */}
-      <details className="mb-5 border border-gray-200 rounded-lg overflow-hidden">
+      <details className="mb-6 border border-gray-200 rounded-lg overflow-hidden">
         <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer bg-gray-50 text-sm font-semibold text-gray-700">
           <Settings2 className="h-4 w-4 text-gray-500" />
           {text.configTitle}
@@ -572,6 +586,12 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
           </button>
         </div>
       </details>
+
+      {selectedClass && (
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80 mb-2">
+          {text.studentSection}
+        </p>
+      )}
 
       {!selectedStudent ? (
         <p className="text-gray-400 text-sm">{text.chooseStudent}</p>
@@ -739,6 +759,13 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
               className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-white border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-semibold rounded-lg transition text-sm disabled:opacity-40"
             >
               <Download className="h-4 w-4" />{text.download}
+            </button>
+            <button
+              onClick={downloadClass}
+              disabled={downloadingAll || !user?.signature}
+              className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-lg transition text-sm disabled:opacity-50"
+            >
+              <Layers className="h-4 w-4" />{downloadingAll ? '…' : text.downloadAll}
             </button>
             {students.length > 1 && (
               <button

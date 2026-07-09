@@ -56,7 +56,6 @@ export default function ProductTour({ role, language, onClose }: ProductTourProp
       ? 'Bir çocuğu derslere nasıl kaydedeceğinizi gösteren kısa bir tur.'
       : 'Een korte rondleiding: hoe u een kind inschrijft voor lessen.',
     close: language === 'tr' ? 'Kapat' : 'Sluiten',
-    start: language === 'tr' ? 'Başla 🎉' : 'Aan de slag 🎉',
   };
 
   return (
@@ -79,15 +78,6 @@ export default function ProductTour({ role, language, onClose }: ProductTourProp
           <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
             <ArcadeEmbed />
           </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-3 px-6 pb-6">
-          <button
-            onClick={finish}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl transition"
-          >
-            {t.start}
-          </button>
         </div>
       </div>
     </div>

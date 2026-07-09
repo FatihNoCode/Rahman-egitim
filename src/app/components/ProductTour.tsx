@@ -60,7 +60,7 @@ export default function ProductTour({ role, language, onClose }: ProductTourProp
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-3xl rounded-3xl bg-white shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-5xl rounded-3xl bg-white shadow-2xl overflow-hidden">
         {/* Header band */}
         <div className="bg-gradient-to-br from-emerald-600 to-teal-600 px-6 pt-6 pb-6 text-white relative">
           <button

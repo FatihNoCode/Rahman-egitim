@@ -28,6 +28,13 @@ interface LocationsMapProps {
 // slightly beyond the border so the outermost pins aren't flush against an edge.
 const NL_BOUNDS = L.latLngBounds([50.6, 3.1], [53.7, 7.3]);
 
+// Zooming all the way out until the whole country fits leaves it small and
+// ringed by neighbours. The zoom-out limit is instead taken from a box 85% of
+// that size, so the furthest-out view is a touch tighter and the Netherlands
+// sits large and centred. Panning still covers NL_BOUNDS, so the strip this
+// crops stays reachable and no pin is stranded.
+const ZOOM_OUT_BOUNDS = NL_BOUNDS.pad(-0.075);
+
 // Outer ring of the dimming mask. Spans the whole world so the mask still
 // covers the corners at the furthest-out zoom, whatever the pane's shape.
 const WORLD_RING: [number, number][] = [
@@ -93,15 +100,13 @@ export default function LocationsMap({ locations, selectedId, onSelect, t }: Loc
     }).addTo(map);
 
     // Derive the furthest-out zoom from the container rather than hardcoding a
-    // level: this is the zoom at which the whole country is just visible, so
-    // every pin stays reachable and no amount of zooming out reveals Europe.
-    // Recomputed on resize because it depends on the pane's size.
+    // level, so the limit holds at any pane size. Recomputed on resize.
     const clampZoomOut = () => {
-      const min = map.getBoundsZoom(NL_BOUNDS);
+      const min = map.getBoundsZoom(ZOOM_OUT_BOUNDS);
       map.setMinZoom(min);
       if (map.getZoom() < min) map.setZoom(min);
     };
-    map.fitBounds(NL_BOUNDS);
+    map.fitBounds(ZOOM_OUT_BOUNDS);
     clampZoomOut();
     map.on('resize', clampZoomOut);
 

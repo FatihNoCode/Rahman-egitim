@@ -708,9 +708,11 @@ app.post("/make-server-6679cacd/notifications/read-all", async (c) => {
 // more schools (lesson types). Only superadmins ever see this layer; admins,
 // teachers and parents stay scoped to their school as before.
 
-// The IGMG Noord-Nederland branches, from https://milligorus.nl/vestigingen/.
-// Coordinates are city-level starting points; a superadmin can correct the
-// exact pin per location afterwards.
+// The IGMG branches: Noord-Nederland from https://milligorus.nl/vestigingen/
+// and Zuid-Nederland from https://igmg.nl/vestigingen/. The northern site
+// publishes no street addresses, so those coordinates are city-level starting
+// points; the southern ones are geocoded from their real addresses. A
+// superadmin can correct any pin afterwards.
 const SEED_LOCATIONS = [
   { name: 'Almere Erkam', city: 'Almere', website: 'https://mgalmere.nl', lat: 52.3508, lng: 5.2647 },
   { name: 'Amersfoort Rahman Moskee', city: 'Amersfoort', website: 'https://mgamersfoort.nl', lat: 52.1561, lng: 5.3878 },
@@ -734,28 +736,67 @@ const SEED_LOCATIONS = [
   { name: 'Utrecht', city: 'Utrecht', website: 'https://mgutrecht.nl', lat: 52.0907, lng: 5.1214 },
   { name: 'Weesp', city: 'Weesp', website: 'https://mgweesp.nl', lat: 52.3080, lng: 5.0418 },
   { name: 'Zaandam', city: 'Zaandam', website: 'https://mgzaandam.nl', lat: 52.4390, lng: 4.8294 },
+
+  // IGMG Zuid-Nederland
+  { name: 'Ayasofya Moskee', city: 'Arnhem', address: 'Sonsbeeksingel 110, 6822 BJ Arnhem', website: 'https://arnhemayasofya.nl', lat: 51.9860, lng: 5.9151 },
+  { name: 'Mimar Sinan Moskee', city: 'Den Haag', address: 'Tenierstraat 13, 2526 NX Den Haag', website: 'http://moskeemimarsinan.nl', lat: 52.0685, lng: 4.3049 },
+  { name: 'Aksa Moskee', city: 'Dordrecht', address: 'Willem de Zwijgerlaan 1, 3314 NX Dordrecht', website: 'https://aksamoskee.nl', lat: 51.7990, lng: 4.6722 },
+  { name: 'Ede MGT Moskee', city: 'Ede', address: 'Molenstraat 169, 6712 CV Ede', website: 'http://edemgt.nl', lat: 52.0460, lng: 5.6561 },
+  { name: 'Mevlana Moskee', city: 'Eindhoven', address: 'Jan van Riebeecklaan 2, 5642 MD Eindhoven', website: 'https://mevlanamoskee.com', lat: 51.4391, lng: 5.5160 },
+  { name: 'Yunus Emre Moskee', city: 'Eindhoven', address: 'Franklinplein 4, 5621 GA Eindhoven', website: '', lat: 51.4537, lng: 5.4597 },
+  { name: 'SCC De Brug', city: 'Leerdam', address: 'Tiendweg 11, 4142 EG Leerdam', website: 'http://debrugleerdam.nl', lat: 51.8911, lng: 5.0870 },
+  { name: 'Stichting Fatih', city: 'Leiden', address: 'Noachstraat 2, 2324 LT Leiden', website: 'https://www.stichtingfatih.nl', lat: 52.1521, lng: 4.4704 },
+  { name: 'Mescid-i Cuma Moskee', city: 'Oss', address: 'Industriepark Oost 5, 5348 GM Oss', website: '', lat: 51.7707, lng: 5.5388 },
+  { name: 'Ayasofya Moskee', city: 'Rotterdam', address: 'Mathenesserdijk 357, 3026 GD Rotterdam', website: 'https://www.ayasofya.nl', lat: 51.9138, lng: 4.4448 },
+  { name: 'Birlik Moskee', city: 'Rotterdam', address: 'Putseplein 26, 3073 HT Rotterdam', website: 'https://stichtingbirlik.nl', lat: 51.8967, lng: 4.4998 },
+  { name: 'Iskender Paşa Moskee', city: 'Rotterdam', address: 'Insulindestraat 236, 3037 BK Rotterdam', website: 'https://www.iskenderpasa.nl', lat: 51.9326, lng: 4.4693 },
+  { name: 'Mescid-i Ravza Moskee', city: 'Rotterdam', address: 'Adrianaplein 24, 3014 XK Rotterdam', website: '', lat: 51.9169, lng: 4.4649 },
+  { name: 'Islamitisch Centrum Yıldız', city: 'Schiedam', address: 'Dr. Schaepmansingel 5, 3118 XH Schiedam', website: 'https://www.sicy.nl', lat: 51.9157, lng: 4.3811 },
+  { name: 'Sultanahmet Moskee', city: 'Tilburg', address: 'Smidspad 6, 5046 JC Tilburg', website: 'http://www.tilburgsultanahmet.nl', lat: 51.5704, lng: 5.0788 },
+  { name: 'Selahaddin-i Eyyubi Moskee', city: 'Ulft', address: 'Debbeshoek 9B, 7071 XK Ulft', website: 'http://www.milligorusulft.nl', lat: 51.8909, lng: 6.3785 },
+  { name: 'Milli Görüş Islamitische en Culturele Unie', city: 'Veenendaal', address: 'Nieuweweg 52, 3905 LN Veenendaal', website: '', lat: 52.0318, lng: 5.5545 },
+  { name: 'Süleymaniye Moskee', city: 'Uden', address: 'Pres. Kennedylaan 22A, 5402 KD Uden', website: 'https://www.suleymaniyemoskeeuden.nl', lat: 51.6619, lng: 5.6265 },
 ];
 
-// Creates the branch list on first use and back-fills the existing schools —
-// which all run at the Amersfoort mosque — onto that location, so nothing
-// created before the location layer existed ends up orphaned off the map.
+// A seeded location is identified by its branch and city rather than by id, so
+// that adding branches to SEED_LOCATIONS later tops up an already-seeded
+// database instead of duplicating what is there.
+const seedKeyOf = (l: { name: string; city: string }) =>
+  `${l.name}|${l.city}`.toLowerCase();
+
+// Creates any missing branches and back-fills the existing schools — which all
+// run at the Amersfoort mosque — onto that location, so nothing created before
+// the location layer existed ends up orphaned off the map.
 async function ensureLocationsSeeded(): Promise<any[]> {
   let ids: string[] = await kv.get('location_ids') || [];
+  let locations = (await kv.mget(ids.map((id: string) => `location:${id}`))).filter((l: any) => l && l.id);
 
-  if (ids.length === 0) {
-    const created = SEED_LOCATIONS.map((l) => ({
+  // Locations seeded before seedKey existed are matched on their original
+  // name/city and stamped, so a later rename can't resurrect them as a copy.
+  const unstamped = locations.filter((l: any) => !l.seedKey);
+  if (unstamped.length > 0) {
+    const stamped = unstamped.map((l: any) => ({ ...l, seedKey: seedKeyOf(l) }));
+    await kv.mset(stamped.map((l: any) => `location:${l.id}`), stamped);
+    locations = locations.map((l: any) => stamped.find((s: any) => s.id === l.id) || l);
+  }
+
+  const known = new Set(locations.map((l: any) => l.seedKey));
+  const missing = SEED_LOCATIONS.filter((l) => !known.has(seedKeyOf(l)));
+
+  if (missing.length > 0) {
+    const created = missing.map((l) => ({
       id: crypto.randomUUID(),
-      ...l,
       address: '',
+      ...l,
+      seedKey: seedKeyOf(l),
       active: true,
       createdAt: new Date().toISOString(),
     }));
     await kv.mset(created.map((l) => `location:${l.id}`), created);
-    ids = created.map((l) => l.id);
+    ids = [...ids, ...created.map((l) => l.id)];
     await kv.set('location_ids', ids);
+    locations = [...locations, ...created];
   }
-
-  const locations = (await kv.mget(ids.map((id: string) => `location:${id}`))).filter((l: any) => l && l.id);
 
   const amersfoort = locations.find((l: any) => l.city === 'Amersfoort');
   if (amersfoort) {

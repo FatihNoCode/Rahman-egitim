@@ -489,7 +489,6 @@ function NameMatchGame({ letters, allLetters, onComplete, lang }: {
     if (letter.id === current.id) {
       setFeedback('correct');
       setCorrect(c => c + 1);
-      play(audioPath(current.id));
       setTimeout(() => {
         if (idx < queue.length - 1) setIdx(i => i + 1);
         else {
@@ -944,7 +943,6 @@ function BalloonPopGame({ letters, onComplete }: {
     if (!target || frozen) return;
     setBalloons(prev => prev.map(b => b.id === balloonId ? { ...b, popped: true } : b));
     if (letter.id === target.id) {
-      play(audioPath(letter.id));
       setScore(scoreRef.current + 1);
       setFeedback('🎉 Pop!');
       setFrozen(true);
@@ -1092,7 +1090,6 @@ function FallingLettersGame({ letters, onComplete }: {
             setScore(s => s + 1);
             setCombo(c => c + 1);
             setFlash('good');
-            play(audioPath(item.letter.id));
             setTimeout(() => setFlash(null), 300);
           } else {
             setLives(l => {
@@ -1249,7 +1246,6 @@ function WhackAMoleGame({ letters, onComplete }: {
     if (letter.id === targetLetter.id) {
       setWhacked(holeIdx);
       setScore(s => s + 1);
-      play(audioPath(letter.id));
       setTimeout(() => {
         if (round < maxRounds - 1) setRound(r => r + 1);
         else onComplete(score + 1 >= 8 ? 3 : score + 1 >= 5 ? 2 : 1);

@@ -293,7 +293,7 @@ function LetterCard({ letter, size = 'md', onClick, glow }: {
         ${sizes[size]}
       `}
     >
-      <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, lineHeight: 1 }} className={sizes[size].split(' ')[0]}>
+      <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, lineHeight: 1.35 }} className={sizes[size].split(' ')[0]}>
         {letter.arabic}
       </span>
       <span className="text-xs font-bold text-gray-500">{letter.nameNl}</span>
@@ -334,9 +334,9 @@ function LearnGame({ letters, onComplete, lang }: {
 
       <button
         onClick={tap}
-        className="w-52 h-52 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center gap-3 hover:scale-105 active:scale-95 transition-all duration-150 relative"
+        className="w-52 h-52 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center gap-3 pb-16 hover:scale-105 active:scale-95 transition-all duration-150 relative"
       >
-        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 100, lineHeight: 1 }}>{letter.arabic}</span>
+        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 84, lineHeight: 1.35 }}>{letter.arabic}</span>
         {tapped.has(idx) && <span className="absolute top-3 right-3 text-green-500 text-xl">✓</span>}
         <span className={SPEAKER_BADGE}>🔊</span>
       </button>
@@ -404,6 +404,7 @@ function ListenPickGame({ letters, allLetters, onComplete, lang }: {
     } else {
       setFeedback('wrong');
       setLives(l => l - 1);
+      play(audioPath(current.id)); // replay so the child can hear it again
       setTimeout(() => {
         if (lives <= 1) { onComplete(1); return; }
         setFeedback(null);
@@ -443,7 +444,7 @@ function ListenPickGame({ letters, allLetters, onComplete, lang }: {
           return (
             <button key={ch.id} onClick={() => choose(ch)}
               className={`${bg} rounded-2xl p-4 flex flex-col items-center shadow-md hover:scale-105 active:scale-95 transition-all duration-150`}>
-              <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 52, lineHeight: 1 }}>{ch.arabic}</span>
+              <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 52, lineHeight: 1.35 }}>{ch.arabic}</span>
               <span className="text-xs font-bold text-gray-500 mt-1">{lang === 'tr' ? ch.nameTr : ch.nameNl}</span>
             </button>
           );
@@ -499,6 +500,7 @@ function NameMatchGame({ letters, allLetters, onComplete, lang }: {
     } else {
       setFeedback('wrong');
       setLives(l => l - 1);
+      play(audioPath(current.id)); // replay so the child can hear it again
       setTimeout(() => {
         if (lives <= 1) { onComplete(1); return; }
         setFeedback(null);
@@ -519,7 +521,7 @@ function NameMatchGame({ letters, allLetters, onComplete, lang }: {
 
       <div className="w-64 h-40 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:scale-105 transition"
         onClick={() => play(audioPath(current.id))}>
-        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 88, lineHeight: 1 }}>{current.arabic}</span>
+        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 88, lineHeight: 1.35 }}>{current.arabic}</span>
       </div>
       <p className="text-white/80 text-sm">Wat is de naam van deze letter?</p>
 
@@ -727,8 +729,8 @@ function HarakatLearnGame({ letters, onComplete }: {
       </div>
 
       <button onClick={tap}
-        className="w-52 h-52 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center hover:scale-105 active:scale-95 transition-all duration-150 relative">
-        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 90, lineHeight: 1 }}>
+        className="w-52 h-52 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center pb-16 hover:scale-105 active:scale-95 transition-all duration-150 relative">
+        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 76, lineHeight: 1.35 }}>
           {harakatIdx === 0 ? `${letter.arabic}َ` : harakatIdx === 1 ? `${letter.arabic}ُ` : `${letter.arabic}ِ`}
         </span>
         <span className={SPEAKER_BADGE}>🔊</span>
@@ -785,6 +787,7 @@ function HarakatQuizGame({ letters, onComplete }: {
     } else {
       setFeedback('wrong');
       setLives(l => l - 1);
+      play(audioPath(q.letter.id, q.harakat.id)); // replay so the child can hear it again
       setTimeout(() => {
         if (lives <= 1) { onComplete(1); return; }
         setFeedback(null); setSelected(null);
@@ -841,6 +844,8 @@ function HarakatQuizGame({ letters, onComplete }: {
 
 // ─── Game: Balloon Pop ───────────────────────────────────────────────────────
 
+const BALLOON_COLORS = ['#f43f5e', '#8b5cf6', '#06b6d4', '#f59e0b', '#10b981'];
+
 function BalloonPopGame({ letters, onComplete }: {
   letters: ArabicLetter[]; onComplete: (stars: number) => void;
 }) {
@@ -857,24 +862,43 @@ function BalloonPopGame({ letters, onComplete }: {
   scoreRef.current = score;
   livesRef.current = lives;
 
-  type Balloon = { id: string; letter: ArabicLetter; x: number; speed: number; startTime: number; popped: boolean };
+  type Balloon = { id: string; letter: ArabicLetter; x: number; speed: number; startTime: number; popped: boolean; color: string };
   const [balloons, setBalloons] = useState<Balloon[]>([]);
+  // Bumped every animation frame purely to re-render, so the balloons that
+  // getY() positions from Date.now() actually appear to rise.
+  const [, setTick] = useState(0);
 
   const target = queue[idx];
 
+  // Stars scale with the queue length; bundles are not always 8 letters long.
+  const starsFor = (s: number) => {
+    const pct = s / queue.length;
+    return pct >= 0.9 ? 3 : pct >= 0.6 ? 2 : 1;
+  };
+  const finish = () => onComplete(starsFor(scoreRef.current));
+  const advance = () => { if (idx < queue.length - 1) setIdx(i => i + 1); else finish(); };
+
+  // Distractors come from the letters this stage is actually teaching, topped
+  // up from the full alphabet only when the bundle is too small.
   useEffect(() => {
     if (!target) return;
     setFrozen(false);
-    const distractors = pick(LETTERS.filter(l => l.id !== target.id), 4);
+    const inBundle = letters.filter(l => l.id !== target.id);
+    const distractors = pick(inBundle, 4);
+    if (distractors.length < 4) {
+      const rest = LETTERS.filter(l => l.id !== target.id && !letters.some(x => x.id === l.id));
+      distractors.push(...pick(rest, 4 - distractors.length));
+    }
     const all = shuffle([target, ...distractors]);
     const now = Date.now();
     setBalloons(all.map((letter, i) => ({
       id: `${letter.id}-${now}-${i}`,
       letter,
-      x: 8 + (i * 18) + Math.random() * 5,
-      speed: 6 + Math.random() * 4,
+      x: 10 + i * 19 + Math.random() * 4,
+      speed: 9 + Math.random() * 5,
       startTime: now + i * 400,
       popped: false,
+      color: BALLOON_COLORS[i % BALLOON_COLORS.length],
     })));
     play(audioPath(target.id));
   }, [idx, target]);
@@ -886,59 +910,52 @@ function BalloonPopGame({ letters, onComplete }: {
     return 100 - elapsed * b.speed;
   };
 
+  const loseLife = (msg: string, thenAdvance: boolean) => {
+    const remaining = livesRef.current - 1;
+    setLives(remaining);
+    setFeedback(msg);
+    if (remaining <= 0) { setTimeout(finish, 600); return; }
+    setTimeout(() => {
+      setFeedback(null);
+      if (thenAdvance) advance();
+    }, thenAdvance ? 900 : 600);
+  };
+
   useEffect(() => {
+    if (frozen || balloons.length === 0) return;
     let active = true;
-    let escaped = false;
     const animate = () => {
-      if (!active || escaped) return;
+      if (!active) return;
       const targetBalloon = balloons.find(b => !b.popped && b.letter.id === target?.id);
-      if (targetBalloon && getY(targetBalloon) < -10 && !frozen) {
-        escaped = true;
+      if (targetBalloon && getY(targetBalloon) < -10) {
         setFrozen(true);
         setBalloons(prev => prev.map(b => ({ ...b, popped: true })));
-        setLives(l => {
-          const nl = l - 1;
-          if (nl <= 0) { setTimeout(() => onComplete(scoreRef.current >= 6 ? 3 : scoreRef.current >= 4 ? 2 : 1), 300); return 0; }
-          return nl;
-        });
-        setFeedback('💨 Ontsnapt!');
-        setTimeout(() => { setFeedback(null); setIdx(i => i + 1); }, 900);
+        loseLife('💨 Ontsnapt!', true);
         return;
       }
+      setTick(t => t + 1);
       frameRef.current = requestAnimationFrame(animate);
     };
     frameRef.current = requestAnimationFrame(animate);
     return () => { active = false; cancelAnimationFrame(frameRef.current); };
-  });
+  }, [frozen, balloons, target]);
 
   const popBalloon = (balloonId: string, letter: ArabicLetter) => {
     if (!target || frozen) return;
     setBalloons(prev => prev.map(b => b.id === balloonId ? { ...b, popped: true } : b));
     if (letter.id === target.id) {
       play(audioPath(letter.id));
-      setScore(s => s + 1);
-      scoreRef.current += 1;
+      setScore(scoreRef.current + 1);
       setFeedback('🎉 Pop!');
       setFrozen(true);
-      setTimeout(() => {
-        setFeedback(null);
-        if (idx < queue.length - 1) setIdx(i => i + 1);
-        else onComplete(scoreRef.current >= 7 ? 3 : scoreRef.current >= 5 ? 2 : 1);
-      }, 700);
+      setTimeout(() => { setFeedback(null); advance(); }, 700);
     } else {
-      setLives(l => {
-        const nl = l - 1;
-        if (nl <= 0) { setTimeout(() => onComplete(scoreRef.current >= 6 ? 3 : scoreRef.current >= 4 ? 2 : 1), 300); return 0; }
-        return nl;
-      });
-      setFeedback('❌ Fout!');
-      setTimeout(() => setFeedback(null), 600);
+      loseLife('❌ Fout!', false);
+      play(audioPath(target.id)); // replay the target so they can hear it again
     }
   };
 
   if (!target) return null;
-
-  const BALLOON_COLORS = ['#f43f5e', '#8b5cf6', '#06b6d4', '#f59e0b', '#10b981'];
 
   return (
     <div className="flex flex-col items-center gap-3 p-4 h-full">
@@ -955,7 +972,7 @@ function BalloonPopGame({ letters, onComplete }: {
       <p className="text-white/80 text-sm">Pop de ballon met: <strong>{target.nameNl}</strong></p>
 
       <div className="relative w-full flex-1 min-h-[340px] rounded-3xl overflow-hidden bg-gradient-to-b from-sky-300/30 to-transparent">
-        {balloons.filter(b => !b.popped).map((b, i) => {
+        {balloons.filter(b => !b.popped).map(b => {
           const y = getY(b);
           if (y > 105 || y < -15) return null;
           return (
@@ -967,12 +984,11 @@ function BalloonPopGame({ letters, onComplete }: {
               left: `${b.x}%`,
               bottom: `${100 - y}%`,
               transform: 'translateX(-50%)',
-              transition: 'transform 0.1s',
             }}
           >
             <div className="relative flex flex-col items-center">
               <div className="w-16 h-20 rounded-full flex items-center justify-center shadow-lg relative overflow-hidden"
-                style={{ background: BALLOON_COLORS[i % BALLOON_COLORS.length] }}>
+                style={{ background: b.color }}>
                 <div className="absolute top-2 left-3 w-4 h-6 bg-white/30 rounded-full rotate-[-20deg]" />
                 <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 32, color: 'white', textShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
                   {b.letter.arabic}
@@ -1085,6 +1101,7 @@ function FallingLettersGame({ letters, onComplete }: {
             });
             setCombo(0);
             setFlash('bad');
+            play(audioPath(targetLetter.id)); // replay the target they missed
             setTimeout(() => setFlash(null), 300);
           }
         });
@@ -1243,6 +1260,7 @@ function WhackAMoleGame({ letters, onComplete }: {
         if (l <= 1) { onComplete(score >= 8 ? 3 : score >= 5 ? 2 : 1); return 0; }
         return l - 1;
       });
+      play(audioPath(targetLetter.id)); // replay the target so they can hear it again
       setTimeout(() => setWrongHit(null), 500);
     }
   };
@@ -1353,8 +1371,8 @@ function SignLearnGame({ letters, signs, onComplete, lang }: {
       )}
 
       <button onClick={tap}
-        className="w-52 h-52 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center hover:scale-105 active:scale-95 transition-all duration-150 relative">
-        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 90, lineHeight: 1 }}>{sign.render(letter.arabic)}</span>
+        className="w-52 h-52 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center pb-16 hover:scale-105 active:scale-95 transition-all duration-150 relative">
+        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 76, lineHeight: 1.35 }}>{sign.render(letter.arabic)}</span>
         <span className={SPEAKER_BADGE}>🔊</span>
       </button>
 
@@ -1402,6 +1420,7 @@ function SignReadGame({ letters, signs, onComplete, lang }: {
       }, 800);
     } else {
       setFeedback('wrong'); setLives(l => l - 1);
+      play(signAudio(q.letter.id, q.sign)); // replay so the child can hear it again
       setTimeout(() => { if (lives <= 1) { onComplete(1); return; } setFeedback(null); setSelected(null); }, 800);
     }
   };
@@ -1418,7 +1437,7 @@ function SignReadGame({ letters, signs, onComplete, lang }: {
 
       <button onClick={() => play(signAudio(q.letter.id, q.sign))}
         className="w-40 h-40 rounded-3xl bg-white shadow-2xl flex items-center justify-center hover:scale-105 transition">
-        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 72, lineHeight: 1 }}>{q.sign.render(q.letter.arabic)}</span>
+        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 72, lineHeight: 1.35 }}>{q.sign.render(q.letter.arabic)}</span>
       </button>
 
       <p className="text-white/80">{lang === 'tr' ? 'Hangi işareti görüyorsun?' : 'Welk teken zie je?'}</p>
@@ -1482,7 +1501,7 @@ function FormLearnGame({ letters, onComplete, lang }: {
         {formDefs.map(f => (
           <button key={f.key} onClick={() => play(audioPath(letter.id))}
             className="w-32 h-32 rounded-2xl bg-white shadow-lg flex flex-col items-center justify-center hover:scale-105 active:scale-95 transition">
-            <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 52, lineHeight: 1 }}>{letter.forms[f.key]}</span>
+            <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 52, lineHeight: 1.35 }}>{letter.forms[f.key]}</span>
             <span className="text-xs font-bold text-gray-500 mt-2">{tr(f.label, lang)}</span>
           </button>
         ))}
@@ -1532,6 +1551,7 @@ function FormReadGame({ letters, onComplete, lang }: {
       }, 800);
     } else {
       setFeedback('wrong'); setLives(l => l - 1);
+      play(audioPath(q.letter.id)); // replay so the child can hear it again
       setTimeout(() => { if (lives <= 1) { onComplete(1); return; } setFeedback(null); setSelected(null); }, 800);
     }
   };
@@ -1547,7 +1567,7 @@ function FormReadGame({ letters, onComplete, lang }: {
       </div>
 
       <div className="w-40 h-40 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center">
-        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 72, lineHeight: 1 }}>{q.letter.forms[q.pos.key]}</span>
+        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 72, lineHeight: 1.35 }}>{q.letter.forms[q.pos.key]}</span>
         <span className="text-xs font-bold text-gray-400 mt-1">{q.letter.nameNl}</span>
       </div>
 

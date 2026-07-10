@@ -6,6 +6,12 @@ const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679
 // Real Quranic Naskh font (loaded in index.html), with graceful fallbacks.
 const ARABIC_FONT = "'Amiri', 'Scheherazade New', serif";
 
+// Steady "tap to hear" affordance inside the big letter cards: a raised, round
+// chip that reads as a button rather than a jittering emoji.
+const SPEAKER_BADGE =
+  'absolute bottom-3 w-11 h-11 rounded-full bg-white border border-gray-200 ' +
+  'shadow-md flex items-center justify-center text-2xl leading-none';
+
 // ─── Bilingual UI strings ──────────────────────────────────────────────────────
 // Only the shared "chrome" (home, map, results, leaderboard, prompts) is
 // translated here; per-letter names already carry both languages in the data.
@@ -305,11 +311,8 @@ function LearnGame({ letters, onComplete, lang }: {
   const play = useAudio();
   const letter = letters[idx];
 
-  // A single letter is shown at a time, so auto-play its sound (0.5s delay).
-  useEffect(() => {
-    const t = setTimeout(() => play(audioPath(letter.id)), 500);
-    return () => clearTimeout(t);
-  }, [idx]);
+  // A single letter is shown at a time, so auto-play its sound.
+  useEffect(() => { play(audioPath(letter.id)); }, [idx]);
 
   const tap = () => {
     play(audioPath(letter.id));
@@ -335,7 +338,7 @@ function LearnGame({ letters, onComplete, lang }: {
       >
         <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 100, lineHeight: 1 }}>{letter.arabic}</span>
         {tapped.has(idx) && <span className="absolute top-3 right-3 text-green-500 text-xl">✓</span>}
-        <span className="absolute bottom-4 text-3xl animate-bounce">🔊</span>
+        <span className={SPEAKER_BADGE}>🔊</span>
       </button>
 
       <div className="text-center">
@@ -698,11 +701,8 @@ function HarakatLearnGame({ letters, onComplete }: {
 
   const tap = () => play(audioPath(letter.id, harakat.id));
 
-  // One letter+harakat at a time → auto-play its single sound (0.5s delay).
-  useEffect(() => {
-    const t = setTimeout(() => play(audioPath(letter.id, harakat.id)), 500);
-    return () => clearTimeout(t);
-  }, [letterIdx, harakatIdx]);
+  // One letter+harakat at a time → auto-play its single sound.
+  useEffect(() => { play(audioPath(letter.id, harakat.id)); }, [letterIdx, harakatIdx]);
 
   const next = () => {
     tap();
@@ -731,7 +731,7 @@ function HarakatLearnGame({ letters, onComplete }: {
         <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 90, lineHeight: 1 }}>
           {harakatIdx === 0 ? `${letter.arabic}َ` : harakatIdx === 1 ? `${letter.arabic}ُ` : `${letter.arabic}ِ`}
         </span>
-        <span className="absolute bottom-4 text-2xl animate-pulse">🔊</span>
+        <span className={SPEAKER_BADGE}>🔊</span>
       </button>
 
       <div className="text-center">
@@ -1325,11 +1325,8 @@ function SignLearnGame({ letters, signs, onComplete, lang }: {
   const current = letterIdx * signs.length + signIdx;
   const tap = () => play(signAudio(letter.id, sign));
 
-  // One letter+sign at a time → auto-play its single sound (0.5s delay).
-  useEffect(() => {
-    const t = setTimeout(() => play(signAudio(letter.id, sign)), 500);
-    return () => clearTimeout(t);
-  }, [letterIdx, signIdx]);
+  // One letter+sign at a time → auto-play its single sound.
+  useEffect(() => { play(signAudio(letter.id, sign)); }, [letterIdx, signIdx]);
 
   const next = () => {
     tap();
@@ -1358,7 +1355,7 @@ function SignLearnGame({ letters, signs, onComplete, lang }: {
       <button onClick={tap}
         className="w-52 h-52 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center hover:scale-105 active:scale-95 transition-all duration-150 relative">
         <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 90, lineHeight: 1 }}>{sign.render(letter.arabic)}</span>
-        <span className="absolute bottom-4 text-2xl animate-pulse">🔊</span>
+        <span className={SPEAKER_BADGE}>🔊</span>
       </button>
 
       <div className="text-center">
@@ -1461,11 +1458,8 @@ function FormLearnGame({ letters, onComplete, lang }: {
   const play = useAudio();
   const letter = set[idx] || set[0];
 
-  // One letter's forms shown at a time; a single base sound → auto-play (0.5s).
-  useEffect(() => {
-    const t = setTimeout(() => play(audioPath(letter.id)), 500);
-    return () => clearTimeout(t);
-  }, [idx]);
+  // One letter's forms shown at a time; a single base sound → auto-play.
+  useEffect(() => { play(audioPath(letter.id)); }, [idx]);
   const formDefs: { key: keyof ArabicLetter['forms']; label: keyof typeof T }[] = [
     { key: 'isolated', label: 'formIsolated' },
     { key: 'initial',  label: 'formInitial' },

@@ -29,11 +29,11 @@ interface LocationsMapProps {
 const NL_BOUNDS = L.latLngBounds([50.6, 3.1], [53.7, 7.3]);
 
 // Zooming all the way out until the whole country fits leaves it small and
-// ringed by neighbours. The zoom-out limit is instead taken from a box 83% of
+// ringed by neighbours. The zoom-out limit is instead taken from a box 84% of
 // that size, so the furthest-out view is a touch tighter and the Netherlands
 // sits large and centred. Panning still covers NL_BOUNDS, so the strip this
 // crops stays reachable and no pin is stranded.
-const ZOOM_OUT_BOUNDS = NL_BOUNDS.pad(-0.085);
+const ZOOM_OUT_BOUNDS = NL_BOUNDS.pad(-0.08);
 
 // Outer ring of the dimming mask. Spans the whole world so the mask still
 // covers the corners at the furthest-out zoom, whatever the pane's shape.

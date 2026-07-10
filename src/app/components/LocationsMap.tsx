@@ -1,0 +1,153 @@
+import { useEffect, useRef, useState, useMemo } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { MapPin, Search } from 'lucide-react';
+
+export interface LocationRecord {
+  id: string;
+  name: string;
+  city: string;
+  address?: string;
+  website?: string;
+  lat: number;
+  lng: number;
+  active: boolean;
+  schoolCount?: number;
+}
+
+interface LocationsMapProps {
+  locations: LocationRecord[];
+  selectedId: string | null;
+  onSelect: (location: LocationRecord) => void;
+  t: Record<string, string>;
+}
+
+// Leaflet's default marker points at image files that a bundler won't resolve,
+// so pins are drawn as inline HTML instead — that also lets a selected pin and
+// a pin with lesson types look different without shipping extra assets.
+function pinIcon(selected: boolean, hasSchools: boolean) {
+  const fill = selected ? '#047857' : hasSchools ? '#10b981' : '#9ca3af';
+  return L.divIcon({
+    className: '',
+    html: `<div style="transform:translate(-50%,-100%);filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))">
+      <svg width="${selected ? 34 : 26}" height="${selected ? 34 : 26}" viewBox="0 0 24 24" fill="${fill}" stroke="white" stroke-width="1.5">
+        <path d="M12 22s8-6.4 8-12a8 8 0 1 0-16 0c0 5.6 8 12 8 12z"/>
+        <circle cx="12" cy="10" r="2.6" fill="white" stroke="none"/>
+      </svg></div>`,
+    iconSize: [0, 0],
+  });
+}
+
+export default function LocationsMap({ locations, selectedId, onSelect, t }: LocationsMapProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markersRef = useRef<Record<string, L.Marker>>({});
+  // onSelect is re-created every render; a ref keeps the marker click handler
+  // current without tearing down and rebuilding every marker.
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return locations;
+    return locations.filter(
+      (l) => l.name.toLowerCase().includes(q) || (l.city || '').toLowerCase().includes(q),
+    );
+  }, [locations, query]);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const map = L.map(containerRef.current, { scrollWheelZoom: true }).setView([52.2, 5.4], 7);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(map);
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      markersRef.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    Object.values(markersRef.current).forEach((m) => m.remove());
+    markersRef.current = {};
+
+    locations.forEach((loc) => {
+      const marker = L.marker([loc.lat, loc.lng], {
+        icon: pinIcon(loc.id === selectedId, (loc.schoolCount || 0) > 0),
+        zIndexOffset: loc.id === selectedId ? 1000 : 0,
+      })
+        .addTo(map)
+        .bindTooltip(`${loc.name} — ${loc.city}`, { direction: 'top', offset: [0, -28] })
+        .on('click', () => onSelectRef.current(loc));
+      markersRef.current[loc.id] = marker;
+    });
+  }, [locations, selectedId]);
+
+  // Pan to whichever location was picked, whether from the map or the sidebar.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selectedId) return;
+    const loc = locations.find((l) => l.id === selectedId);
+    if (loc) map.flyTo([loc.lat, loc.lng], Math.max(map.getZoom(), 11), { duration: 0.6 });
+  }, [selectedId, locations]);
+
+  return (
+    <div className="flex flex-col md:flex-row gap-4">
+      <div className="md:w-72 flex-shrink-0 bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 flex flex-col">
+        <div className="relative mb-2">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t.searchLocations}
+            className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        <div className="overflow-y-auto max-h-[26rem] md:max-h-[30rem] -mx-1 px-1">
+          {filtered.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 py-8">{t.noLocationsFound}</p>
+          ) : (
+            <ul className="space-y-1">
+              {filtered.map((loc) => (
+                <li key={loc.id}>
+                  <button
+                    onClick={() => onSelect(loc)}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition flex items-start gap-2 ${
+                      loc.id === selectedId ? 'bg-emerald-50 ring-1 ring-emerald-200' : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <MapPin
+                      className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
+                        (loc.schoolCount || 0) > 0 ? 'text-emerald-600' : 'text-gray-300'
+                      }`}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-gray-800 truncate">{loc.name}</span>
+                      <span className="block text-xs text-gray-400">
+                        {loc.city}
+                        {(loc.schoolCount || 0) > 0 && ` · ${loc.schoolCount} ${t.schoolCount}`}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 min-w-0 bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 overflow-hidden">
+        <div ref={containerRef} className="h-[24rem] md:h-[34rem] w-full z-0" />
+      </div>
+    </div>
+  );
+}

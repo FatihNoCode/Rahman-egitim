@@ -1,16 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
-import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon } from 'lucide-react';
+import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import InboxView from './InboxView';
+import type { LocationRecord } from './LocationsMap';
 import booksLogo from '../../imports/books__1_.png';
 import { notify } from './ui/feedback';
+
+// Leaflet and its CSS are only needed once a superadmin opens the map, so the
+// whole map bundle stays out of the initial download.
+const LocationsMap = lazy(() => import('./LocationsMap'));
 
 interface SchoolRecord {
   id: string;
   name: string;
+  locationId?: string;
   active: boolean;
   createdAt: string;
 }
@@ -25,38 +31,53 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   const t = translations[language];
 
   const [schools, setSchools] = useState<SchoolRecord[]>([]);
+  const [locations, setLocations] = useState<LocationRecord[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<LocationRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [newSchoolName, setNewSchoolName] = useState('');
   const [creating, setCreating] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'schools' | 'inbox'>('schools');
+  const [tab, setTab] = useState<'locations' | 'inbox'>('locations');
 
   useEffect(() => {
-    loadSchools();
+    loadData();
   }, []);
 
-  const loadSchools = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const data = await apiRequest('/schools');
-      setSchools(data.schools || []);
+      const [locationData, schoolData] = await Promise.all([
+        apiRequest('/locations'),
+        apiRequest('/schools'),
+      ]);
+      setLocations(locationData.locations || []);
+      setSchools(schoolData.schools || []);
+      // Keep the open location's details fresh (e.g. its school count) after a
+      // reload, without bouncing the superadmin back to the map.
+      setSelectedLocation((current) =>
+        current ? (locationData.locations || []).find((l: LocationRecord) => l.id === current.id) || null : null,
+      );
     } catch (error) {
-      console.error('Error loading schools:', error);
+      console.error('Error loading locations/schools:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  const schoolsAtLocation = selectedLocation
+    ? schools.filter((s) => s.locationId === selectedLocation.id)
+    : [];
+
   const createSchool = async () => {
-    if (!newSchoolName.trim()) return;
+    if (!newSchoolName.trim() || !selectedLocation) return;
     setCreating(true);
     try {
       await apiRequest('/schools', {
         method: 'POST',
-        body: JSON.stringify({ name: newSchoolName.trim() }),
+        body: JSON.stringify({ name: newSchoolName.trim(), locationId: selectedLocation.id }),
       });
       setNewSchoolName('');
-      await loadSchools();
+      await loadData();
     } catch (error: any) {
       notify.error(error.message || 'Error creating school');
     } finally {
@@ -71,7 +92,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
         method: 'PUT',
         body: JSON.stringify({ active: !school.active }),
       });
-      await loadSchools();
+      await loadData();
     } catch (error: any) {
       notify.error(error.message || 'Error updating school');
     } finally {
@@ -81,7 +102,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
 
   return (
     <div className="size-full overflow-auto p-3 sm:p-4 md:p-6">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
           <div className="flex items-center gap-3">
             <img src={booksLogo} alt="Ilim Yolu" className="h-9 w-9 sm:h-11 sm:w-11 object-contain" />
@@ -112,7 +133,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
         <div className="flex gap-4 sm:gap-6 items-start">
           <Sidebar
             items={[
-              { id: 'schools', label: t.schools, icon: School },
+              { id: 'locations', label: t.locations, icon: MapPin },
               { id: 'inbox', label: t.inbox, icon: InboxIcon },
             ]}
             activeId={tab}
@@ -124,8 +145,51 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
 
           <div className="flex-1 min-w-0">
 
-        {tab === 'schools' && (
+        {tab === 'locations' && !selectedLocation && (
+          loading ? (
+            <div className="text-center py-24 text-gray-400">
+              <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+              {t.loading}
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-gray-500 mb-3">{t.selectLocationHint}</p>
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center h-[34rem]">
+                    <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+                  </div>
+                }
+              >
+                <LocationsMap
+                  locations={locations}
+                  selectedId={null}
+                  onSelect={setSelectedLocation}
+                  t={t as unknown as Record<string, string>}
+                />
+              </Suspense>
+            </>
+          )
+        )}
+
+        {tab === 'locations' && selectedLocation && (
           <>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setSelectedLocation(null)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-medium ring-1 ring-black/5 transition"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  {t.backToLocations}
+                </button>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-800 leading-tight">{selectedLocation.name}</h2>
+                  <p className="text-xs text-gray-400">{selectedLocation.city}</p>
+                </div>
+              </div>
+            </div>
+
             <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">{t.createSchool}</h2>
               <div className="flex flex-col sm:flex-row gap-2">
@@ -150,9 +214,11 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
 
             <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-800">{t.schools}</h2>
+                <h2 className="text-lg font-semibold text-gray-800">
+                  {t.lessonTypesAt} {selectedLocation.name}
+                </h2>
                 <button
-                  onClick={loadSchools}
+                  onClick={loadData}
                   disabled={loading}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition disabled:opacity-50"
                 >
@@ -165,11 +231,11 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                   <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
                   {t.loading}
                 </div>
-              ) : schools.length === 0 ? (
+              ) : schoolsAtLocation.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">{t.noSchoolsYet}</div>
               ) : (
                 <div className="space-y-2">
-                  {schools.map((school) => (
+                  {schoolsAtLocation.map((school) => (
                     <div
                       key={school.id}
                       className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 sm:p-4 rounded-xl border border-gray-100 hover:border-gray-200 transition"

@@ -703,6 +703,170 @@ app.post("/make-server-6679cacd/notifications/read-all", async (c) => {
   }
 });
 
+// ============= LOCATION ROUTES =============
+// A location (vestiging) is the physical site — a mosque — that hosts one or
+// more schools (lesson types). Only superadmins ever see this layer; admins,
+// teachers and parents stay scoped to their school as before.
+
+// The IGMG Noord-Nederland branches, from https://milligorus.nl/vestigingen/.
+// Coordinates are city-level starting points; a superadmin can correct the
+// exact pin per location afterwards.
+const SEED_LOCATIONS = [
+  { name: 'Almere Erkam', city: 'Almere', website: 'https://mgalmere.nl', lat: 52.3508, lng: 5.2647 },
+  { name: 'Amersfoort Rahman Moskee', city: 'Amersfoort', website: 'https://mgamersfoort.nl', lat: 52.1561, lng: 5.3878 },
+  { name: 'Ayasofya', city: 'Amsterdam', website: 'https://mgwestermoskee.nl', lat: 52.3676, lng: 4.9041 },
+  { name: 'Cafer-i Sadik', city: 'Amsterdam', website: 'https://mgcaferisadik.nl', lat: 52.3600, lng: 4.9200 },
+  { name: 'Ensar', city: 'Amsterdam', website: 'https://mgensar.nl', lat: 52.3750, lng: 4.8900 },
+  { name: 'Mevlana', city: 'Amsterdam', website: 'https://mgmevlana.nl', lat: 52.3550, lng: 4.8850 },
+  { name: 'Selimiye', city: 'Amsterdam', website: 'https://mgselimiye.nl', lat: 52.3800, lng: 4.9300 },
+  { name: 'Barneveld', city: 'Barneveld', website: 'https://mgbarneveld.nl', lat: 52.1401, lng: 5.5843 },
+  { name: 'Fatih', city: 'Beverwijk', website: 'https://mgbeverwijk.nl', lat: 52.4873, lng: 4.6564 },
+  { name: 'Deventer', city: 'Deventer', website: 'https://mgdeventer.nl', lat: 52.2551, lng: 6.1639 },
+  { name: 'Enschede', city: 'Enschede', website: 'https://mgenschede.nl', lat: 52.2215, lng: 6.8937 },
+  { name: 'Fatih', city: 'Haarlem', website: 'https://mghaarlemfatih.nl', lat: 52.3874, lng: 4.6462 },
+  { name: 'Furkan', city: 'Haarlem', website: 'https://mgfurkan.nl', lat: 52.3800, lng: 4.6600 },
+  { name: 'Heemskerk', city: 'Heemskerk', website: 'https://mgheemskerk.nl', lat: 52.5100, lng: 4.6714 },
+  { name: 'Hilversum', city: 'Hilversum', website: 'https://mghilversum.nl', lat: 52.2233, lng: 5.1719 },
+  { name: 'Hoofddorp', city: 'Hoofddorp', website: 'https://mghoofddorp.nl', lat: 52.3061, lng: 4.6907 },
+  { name: 'Hoogezand', city: 'Hoogezand', website: 'https://mghoogezand.nl', lat: 53.1622, lng: 6.7594 },
+  { name: 'Oldenzaal', city: 'Oldenzaal', website: 'https://mgoldenzaal.nl', lat: 52.3131, lng: 6.9289 },
+  { name: 'Soest', city: 'Soest', website: 'https://mgsoest.nl', lat: 52.1736, lng: 5.2919 },
+  { name: 'Utrecht', city: 'Utrecht', website: 'https://mgutrecht.nl', lat: 52.0907, lng: 5.1214 },
+  { name: 'Weesp', city: 'Weesp', website: 'https://mgweesp.nl', lat: 52.3080, lng: 5.0418 },
+  { name: 'Zaandam', city: 'Zaandam', website: 'https://mgzaandam.nl', lat: 52.4390, lng: 4.8294 },
+];
+
+// Creates the branch list on first use and back-fills the existing schools —
+// which all run at the Amersfoort mosque — onto that location, so nothing
+// created before the location layer existed ends up orphaned off the map.
+async function ensureLocationsSeeded(): Promise<any[]> {
+  let ids: string[] = await kv.get('location_ids') || [];
+
+  if (ids.length === 0) {
+    const created = SEED_LOCATIONS.map((l) => ({
+      id: crypto.randomUUID(),
+      ...l,
+      address: '',
+      active: true,
+      createdAt: new Date().toISOString(),
+    }));
+    await kv.mset(created.map((l) => `location:${l.id}`), created);
+    ids = created.map((l) => l.id);
+    await kv.set('location_ids', ids);
+  }
+
+  const locations = (await kv.mget(ids.map((id: string) => `location:${id}`))).filter((l: any) => l && l.id);
+
+  const amersfoort = locations.find((l: any) => l.city === 'Amersfoort');
+  if (amersfoort) {
+    const schoolIds: string[] = await kv.get('school_ids') || [];
+    const schools = (await kv.mget(schoolIds.map((id: string) => `school:${id}`))).filter((s: any) => s && s.id);
+    const orphans = schools.filter((s: any) => !s.locationId);
+    if (orphans.length > 0) {
+      await kv.mset(
+        orphans.map((s: any) => `school:${s.id}`),
+        orphans.map((s: any) => ({ ...s, locationId: amersfoort.id })),
+      );
+    }
+  }
+
+  return locations;
+}
+
+app.get("/make-server-6679cacd/locations", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'superadmin') return c.json({ error: 'Only superadmins can list locations' }, 403);
+
+    const locations = await ensureLocationsSeeded();
+
+    // Attach the school count so the map can show which pins are already in use.
+    const schoolIds: string[] = await kv.get('school_ids') || [];
+    const schools = (await kv.mget(schoolIds.map((id: string) => `school:${id}`))).filter((s: any) => s && s.id);
+    const counts: Record<string, number> = {};
+    for (const s of schools) {
+      if (s.locationId) counts[s.locationId] = (counts[s.locationId] || 0) + 1;
+    }
+
+    return c.json({
+      locations: locations.map((l: any) => ({ ...l, schoolCount: counts[l.id] || 0 })),
+    });
+  } catch (err) {
+    console.log('List locations error:', err);
+    return c.json({ error: 'Failed to get locations' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/locations", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'superadmin') return c.json({ error: 'Only superadmins can create locations' }, 403);
+
+    const { name, city, address, website, lat, lng } = await c.req.json();
+    if (!name || !name.trim()) return c.json({ error: 'name is required' }, 400);
+
+    await ensureLocationsSeeded();
+
+    const id = crypto.randomUUID();
+    const location = {
+      id,
+      name: name.trim(),
+      city: (city || '').trim(),
+      address: (address || '').trim(),
+      website: (website || '').trim(),
+      // Fall back to the geographic centre of the Netherlands so a new pin is
+      // always placed somewhere the superadmin can find and drag it.
+      lat: typeof lat === 'number' ? lat : 52.1326,
+      lng: typeof lng === 'number' ? lng : 5.2913,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    await kv.set(`location:${id}`, location);
+    const ids: string[] = await kv.get('location_ids') || [];
+    await kv.set('location_ids', [...ids, id]);
+
+    return c.json({ success: true, location });
+  } catch (err) {
+    console.log('Create location error:', err);
+    return c.json({ error: 'Failed to create location' }, 500);
+  }
+});
+
+app.put("/make-server-6679cacd/locations/:locationId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'superadmin') return c.json({ error: 'Only superadmins can update locations' }, 403);
+
+    const locationId = c.req.param('locationId');
+    const existing = await kv.get(`location:${locationId}`);
+    if (!existing) return c.json({ error: 'Location not found' }, 404);
+
+    const { name, city, address, website, lat, lng, active } = await c.req.json();
+    const updated = {
+      ...existing,
+      ...(name !== undefined ? { name: String(name).trim() } : {}),
+      ...(city !== undefined ? { city: String(city).trim() } : {}),
+      ...(address !== undefined ? { address: String(address).trim() } : {}),
+      ...(website !== undefined ? { website: String(website).trim() } : {}),
+      ...(typeof lat === 'number' ? { lat } : {}),
+      ...(typeof lng === 'number' ? { lng } : {}),
+      ...(active !== undefined ? { active: !!active } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`location:${locationId}`, updated);
+    return c.json({ success: true, location: updated });
+  } catch (err) {
+    console.log('Update location error:', err);
+    return c.json({ error: 'Failed to update location' }, 500);
+  }
+});
+
 // ============= SCHOOL ROUTES (multi-tenancy) =============
 
 app.post("/make-server-6679cacd/schools", async (c) => {
@@ -712,11 +876,13 @@ app.post("/make-server-6679cacd/schools", async (c) => {
     const userData = await getUserData(user.id);
     if (userData?.role !== 'superadmin') return c.json({ error: 'Only superadmins can create schools' }, 403);
 
-    const { name } = await c.req.json();
+    const { name, locationId } = await c.req.json();
     if (!name || !name.trim()) return c.json({ error: 'name is required' }, 400);
+    if (!locationId) return c.json({ error: 'locationId is required' }, 400);
+    if (!(await kv.get(`location:${locationId}`))) return c.json({ error: 'Invalid location' }, 400);
 
     const id = crypto.randomUUID();
-    const school = { id, name: name.trim(), active: true, createdAt: new Date().toISOString() };
+    const school = { id, name: name.trim(), locationId, active: true, createdAt: new Date().toISOString() };
     await kv.set(`school:${id}`, school);
     const ids: string[] = await kv.get('school_ids') || [];
     await kv.set('school_ids', [...ids, id]);
@@ -734,6 +900,9 @@ app.get("/make-server-6679cacd/schools", async (c) => {
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
     if (userData?.role !== 'superadmin') return c.json({ error: 'Only superadmins can list all schools' }, 403);
+
+    // Back-fills locationId on pre-location-layer schools before we return them.
+    await ensureLocationsSeeded();
 
     const ids: string[] = await kv.get('school_ids') || [];
     const schools = (await kv.mget(ids.map((id: string) => `school:${id}`))).filter((s: any) => s && s.id);

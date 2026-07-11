@@ -1704,26 +1704,11 @@ function WorldMap({ progress, onSelectStage, lang }: {
   onSelectStage: (stageId: string) => void;
   lang: 'nl' | 'tr';
 }) {
-  const totalStars = ALL_STAGES.reduce((sum, s) => sum + (progress[s.id] || 0), 0);
-  const maxStars = ALL_STAGES.length * 3;
-
   return (
     <div className="flex flex-col gap-6 p-4 pb-10">
-      {/* Progress summary */}
-      <div className="bg-white/20 rounded-2xl p-4 flex items-center gap-4">
-        <span className="text-4xl">⭐</span>
-        <div>
-          <p className="text-white font-bold text-xl">{totalStars} / {maxStars} sterren</p>
-          <div className="w-48 bg-white/30 rounded-full h-3 mt-1">
-            <div className="bg-yellow-400 rounded-full h-3 transition-all" style={{ width: `${(totalStars / maxStars) * 100}%` }} />
-          </div>
-        </div>
-      </div>
-
       {SECTIONS.map(section => {
         const sectionStages = ALL_STAGES.filter(s => s.sectionId === section.id);
         if (sectionStages.length === 0) return null;
-        const sectionStars = sectionStages.reduce((sum, s) => sum + (progress[s.id] || 0), 0);
         // Linear path: a stage unlocks once the previous stage anywhere in the
         // whole ladder has at least one star.
         const firstUnlocked = ALL_STAGES.findIndex(s => (progress[s.id] || 0) < 1);
@@ -1733,7 +1718,6 @@ function WorldMap({ progress, onSelectStage, lang }: {
           <div key={section.id} className="rounded-3xl overflow-hidden shadow-xl">
             <div className={`bg-gradient-to-r ${section.bg} px-5 py-3 flex justify-between items-center`}>
               <h2 className="text-white font-bold text-lg">{section.emoji} {lang === 'tr' ? section.titleTr : section.title}</h2>
-              <Stars count={sectionStars} max={sectionStages.length * 3} />
             </div>
             <div className="bg-white/10 p-3 flex flex-col gap-2">
               {sectionStages.map(stage => {
@@ -1898,8 +1882,8 @@ function LeaderboardView({ lang, playerName, onBack }: { lang: Lang; playerName:
   const medal = (i: number) => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`);
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex flex-col">
-      <div className="flex items-center justify-between p-4 sticky top-0 bg-slate-900/80 backdrop-blur z-10">
+    <div className="min-h-full bg-gradient-to-b from-slate-600 via-slate-700 to-slate-600 flex flex-col">
+      <div className="flex items-center justify-between p-4 sticky top-0 bg-slate-700/80 backdrop-blur z-10">
         <button onClick={onBack} className="text-white/80 hover:text-white font-bold transition">{tr('back', lang)}</button>
         <h1 className="text-white font-bold text-xl">{tr('leaderboard', lang)}</h1>
         <span className="w-12" />
@@ -1935,7 +1919,7 @@ function NameEntry({ lang, onSubmit }: { lang: Lang; onSubmit: (name: string) =>
   const [value, setValue] = useState('');
   const submit = () => { const v = value.trim(); if (v) onSubmit(v); };
   return (
-    <div className="min-h-full bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-center gap-6 p-6">
+    <div className="min-h-full bg-gradient-to-b from-slate-600 via-slate-700 to-slate-600 flex flex-col items-center justify-center gap-6 p-6">
       <div className="w-28 h-28 rounded-3xl bg-white/5 border border-white/10 backdrop-blur flex items-center justify-center shadow-2xl">
         <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 56, color: 'white' }}>أ ب</span>
       </div>
@@ -2023,14 +2007,13 @@ export default function ElifBaPage({ onBack }: { onBack?: () => void }) {
 
   if (view === 'map') {
     return (
-      <div className="min-h-full bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex flex-col">
-        <div className="flex items-center justify-between p-4 sticky top-0 bg-slate-900/80 backdrop-blur z-10">
+      <div className="min-h-full bg-gradient-to-b from-slate-600 via-slate-700 to-slate-600 flex flex-col">
+        <div className="flex items-center justify-between p-4 sticky top-0 bg-slate-700/80 backdrop-blur z-10">
           <button onClick={() => setView('home')} className="text-white/80 hover:text-white font-bold transition">{tr('back', lang)}</button>
           <h1 className="text-white font-bold text-xl">{tr('map', lang)}</h1>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setView('leaderboard')} className="text-lg hover:scale-110 transition" title={tr('leaderboard', lang)}>🏆</button>
-            <span className="text-yellow-300 font-bold">⭐ {totalStars}</span>
-          </div>
+          <button onClick={() => setView('leaderboard')} className="text-white/70 hover:text-white font-medium text-sm transition" title={tr('leaderboard', lang)}>
+            {tr('leaderboard', lang).replace(/🏆\s?/, '')}
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto">
           <WorldMap progress={progress} onSelectStage={stageId => setView({ stageId })} lang={lang} />
@@ -2041,12 +2024,12 @@ export default function ElifBaPage({ onBack }: { onBack?: () => void }) {
 
   // Home screen
   return (
-    <div className="min-h-full bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-between p-6 relative">
+    <div className="min-h-full bg-gradient-to-b from-slate-600 via-slate-700 to-slate-600 flex flex-col items-center justify-between p-6 relative">
       <TopThreeCorner playerName={name} lang={lang} onOpen={() => setView('leaderboard')} />
 
-      <div className="w-full flex items-center justify-end">
+      <div className="w-full flex items-center justify-end gap-3">
         {onBack ? (
-          <button onClick={onBack} className="text-white/60 hover:text-white font-medium transition text-sm mr-auto">
+          <button onClick={onBack} className="text-white/60 hover:text-white font-medium transition text-sm">
             {tr('backToLogin', lang)}
           </button>
         ) : null}
@@ -2064,19 +2047,12 @@ export default function ElifBaPage({ onBack }: { onBack?: () => void }) {
           {name && <p className="text-white/70 text-sm mt-3 font-medium">{name}</p>}
         </div>
 
-        {totalStars > 0 && (
-          <div className="text-white/70 text-sm">
-            <span className="text-white font-semibold">{totalStars}</span> {tr('starsEarned', lang)}
-          </div>
-        )}
-
         <button onClick={startPlaying}
           className="mt-2 px-12 py-4 rounded-2xl bg-white text-slate-900 font-bold text-lg shadow-xl hover:scale-[1.02] active:scale-95 transition-all duration-150">
           {totalStars > 0 ? tr('continue', lang) : tr('start', lang)}
         </button>
       </div>
 
-      <span className="text-white/20 text-xs">v2</span>
     </div>
   );
 }

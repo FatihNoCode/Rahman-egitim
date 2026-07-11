@@ -167,6 +167,16 @@ function pick<T>(arr: T[], n: number): T[] {
   return shuffle(arr).slice(0, n);
 }
 
+// Pick a random letter but avoid returning the same one as `prev` when the pool
+// is large enough to offer an alternative.
+function pickNext<T extends { id: string }>(arr: T[], prev?: T | null): T {
+  if (arr.length === 0) return prev as T;
+  if (arr.length === 1 || !prev) return arr[Math.floor(Math.random() * arr.length)];
+  const others = arr.filter(x => x.id !== prev.id);
+  const pool = others.length > 0 ? others : arr;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 // ─── Hooks ───────────────────────────────────────────────────────────────────
 
 function useLocalProgress() {
@@ -357,15 +367,13 @@ function LearnGame({ letters, onComplete, lang }: {
         </div>
       )}
 
-      <p className="text-white/80 text-sm">{tr('tapToHear', lang)}</p>
-
       <div className="flex gap-4 mt-2">
         <button onClick={prev} disabled={idx === 0}
-          className="px-5 py-2 rounded-xl bg-white/20 text-white font-bold disabled:opacity-30 hover:bg-white/30 transition">
+          className="px-6 py-3 rounded-2xl bg-white/20 text-white font-bold text-lg disabled:opacity-30 hover:bg-white/30 transition">
           {tr('back', lang)}
         </button>
         <button onClick={next}
-          className="px-6 py-2 rounded-xl bg-white text-emerald-700 font-bold hover:bg-emerald-50 shadow transition">
+          className="px-8 py-3 rounded-2xl bg-white text-emerald-700 font-bold text-lg hover:bg-emerald-50 shadow transition">
           {idx < letters.length - 1 ? tr('next', lang) : tr('done', lang)}
         </button>
       </div>
@@ -444,7 +452,7 @@ function ListenPickGame({ letters, allLetters, onComplete, lang }: {
       </button>
       <p className="text-white/80 text-sm">Welke letter hoor je?</p>
 
-      <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
+      <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
         {choices.map(ch => {
           const isSelected = selected === ch.id;
           const isAnswer = ch.id === current.id;
@@ -454,9 +462,9 @@ function ListenPickGame({ letters, allLetters, onComplete, lang }: {
           if (feedback && !isSelected && isAnswer) bg = 'bg-green-200';
           return (
             <button key={ch.id} onClick={() => choose(ch)}
-              className={`${bg} rounded-2xl p-4 flex flex-col items-center shadow-md hover:scale-105 active:scale-95 transition-all duration-150`}>
-              <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 52, lineHeight: 1.35 }}>{ch.arabic}</span>
-              <span className="text-xs font-bold text-gray-500 mt-1">{lang === 'tr' ? ch.nameTr : ch.nameNl}</span>
+              className={`${bg} rounded-2xl p-5 flex flex-col items-center shadow-md hover:scale-105 active:scale-95 transition-all duration-150`}>
+              <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 72, lineHeight: 1.35 }}>{ch.arabic}</span>
+              <span className="text-sm font-bold text-gray-500 mt-1">{lang === 'tr' ? ch.nameTr : ch.nameNl}</span>
             </button>
           );
         })}
@@ -535,7 +543,7 @@ function NameMatchGame({ letters, allLetters, onComplete, lang }: {
       </div>
       <p className="text-white/80 text-sm">Wat is de naam van deze letter?</p>
 
-      <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
+      <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
         {choices.map(ch => {
           const isSelected = selected === ch.id;
           const isAnswer = ch.id === current.id;
@@ -545,7 +553,7 @@ function NameMatchGame({ letters, allLetters, onComplete, lang }: {
           if (feedback && !isSelected && isAnswer) bg = 'bg-green-200';
           return (
             <button key={ch.id} onClick={() => choose(ch)}
-              className={`${bg} rounded-xl py-3 px-4 font-bold text-gray-800 shadow-md hover:scale-105 active:scale-95 transition-all`}>
+              className={`${bg} rounded-2xl py-5 px-4 text-xl font-bold text-gray-800 shadow-md hover:scale-105 active:scale-95 transition-all`}>
               {lang === 'tr' ? ch.nameTr : ch.nameNl}
             </button>
           );
@@ -673,13 +681,13 @@ function MemoryGame({ letters, onComplete }: {
       </div>
       <p className="text-white/70 text-sm">Vind de paren: letter + naam!</p>
 
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-4 gap-3">
         {cards.map(card => {
           const isFlipped = flipped.includes(card.uid) || matched.includes(card.id);
           const isMatched = matched.includes(card.id);
           return (
             <button key={card.uid} onClick={() => flip(card.uid)}
-              className={`w-20 h-28 rounded-xl flex items-center justify-center font-bold transition-all duration-300 shadow-md
+              className={`w-24 h-32 sm:w-28 sm:h-36 rounded-2xl flex items-center justify-center font-bold transition-all duration-300 shadow-lg
                 ${isFlipped
                   ? isMatched ? 'bg-green-400 text-white scale-95' : 'bg-white text-gray-800'
                   : 'bg-gradient-to-br from-slate-600 to-slate-800 text-white hover:scale-105 cursor-pointer'
@@ -687,9 +695,9 @@ function MemoryGame({ letters, onComplete }: {
               `}>
               {isFlipped ? (
                 card.type === 'arabic'
-                  ? <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 52 }}>{card.letter.arabic}</span>
-                  : <span className="text-sm text-center px-1">{card.letter.nameNl}</span>
-              ) : <span className="text-2xl">?</span>}
+                  ? <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 68 }}>{card.letter.arabic}</span>
+                  : <span className="text-lg text-center px-2">{card.letter.nameNl}</span>
+              ) : <span className="text-4xl">?</span>}
             </button>
           );
         })}
@@ -752,7 +760,7 @@ function HarakatLearnGame({ letters, onComplete }: {
       </div>
 
       <button onClick={next}
-        className="px-8 py-3 rounded-xl bg-white text-orange-700 font-bold shadow hover:bg-orange-50 transition text-lg">
+        className="px-10 py-4 rounded-2xl bg-white text-orange-700 font-bold shadow-lg hover:bg-orange-50 transition text-xl">
         {current < total - 1 ? 'Volgende ▶' : '🎉 Klaar!'}
       </button>
     </div>
@@ -905,19 +913,22 @@ function BalloonPopGame({ letters, onComplete }: {
       id: `${letter.id}-${now}-${i}`,
       letter,
       x: 10 + i * 19 + Math.random() * 4,
-      speed: 7.2 + Math.random() * 4, // 20% slower, so there is time to pick
-      startTime: now + i * 400,
+      speed: 4 + Math.random() * 2, // slow enough to give plenty of pick time
+      startTime: now + i * 500,
       popped: false,
       color: BALLOON_COLORS[i % BALLOON_COLORS.length],
     })));
     play(audioPath(target.id));
   }, [idx, target]);
 
+  // y is "bottom-offset percent": 0 = at container bottom, 100 = at top.
+  // Balloons start below the visible area, rise into view around the
+  // bottom 20% band, then float up.
   const getY = (b: Balloon) => {
-    if (b.popped) return 120;
+    if (b.popped) return -20;
     const elapsed = (Date.now() - b.startTime) / 1000;
-    if (elapsed < 0) return 120;
-    return 100 - elapsed * b.speed;
+    if (elapsed < 0) return -20;
+    return elapsed * b.speed;
   };
 
   const loseLife = (msg: string, thenAdvance: boolean) => {
@@ -937,7 +948,7 @@ function BalloonPopGame({ letters, onComplete }: {
     const animate = () => {
       if (!active) return;
       const targetBalloon = balloons.find(b => !b.popped && b.letter.id === target?.id);
-      if (targetBalloon && getY(targetBalloon) < -10) {
+      if (targetBalloon && getY(targetBalloon) > 110) {
         setFrozen(true);
         setBalloons(prev => prev.map(b => ({ ...b, popped: true })));
         loseLife('💨 Ontsnapt!', true);
@@ -974,13 +985,20 @@ function BalloonPopGame({ letters, onComplete }: {
       </div>
 
       <button onClick={() => play(audioPath(target.id))}
-        className="px-5 py-2 rounded-full bg-white/20 border-2 border-white/40 text-white font-bold flex items-center gap-2 hover:bg-white/30 active:scale-95 transition">
+        className="px-6 py-3 rounded-full bg-white/20 border-2 border-white/40 text-white font-bold text-lg flex items-center gap-2 hover:bg-white/30 active:scale-95 transition">
         🔊 Luister nogmaals
       </button>
 
-      <p className="text-white/80 text-sm">Pop de ballon met: <strong>{target.nameNl}</strong></p>
+      <p className="text-white text-lg">Pop de ballon met: <strong>{target.nameNl}</strong></p>
 
-      <div className="relative w-full flex-1 min-h-[560px] rounded-3xl overflow-hidden bg-gradient-to-b from-sky-300/20 to-transparent">
+      <div className="relative w-full flex-1 min-h-[70vh] rounded-3xl overflow-hidden bg-gradient-to-b from-sky-300 via-sky-200 to-sky-100">
+        {/* Sky decoration: sun + clouds */}
+        <div className="absolute top-4 right-6 text-6xl select-none pointer-events-none">☀️</div>
+        <div className="absolute top-10 left-8 text-4xl opacity-80 select-none pointer-events-none">☁️</div>
+        <div className="absolute top-24 right-24 text-3xl opacity-70 select-none pointer-events-none">☁️</div>
+        <div className="absolute top-40 left-1/3 text-4xl opacity-60 select-none pointer-events-none">☁️</div>
+        {/* Grass strip at the very bottom the balloons rise from */}
+        <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-emerald-500 to-emerald-400" />
         {balloons.filter(b => !b.popped).map(b => {
           const y = getY(b);
           if (y > 105 || y < -15) return null;
@@ -991,19 +1009,19 @@ function BalloonPopGame({ letters, onComplete }: {
             className="absolute hover:scale-110 active:scale-90"
             style={{
               left: `${b.x}%`,
-              bottom: `${100 - y}%`,
+              bottom: `${y}%`,
               transform: 'translateX(-50%)',
             }}
           >
             <div className="relative flex flex-col items-center">
-              <div className="w-16 h-20 rounded-full flex items-center justify-center shadow-lg relative overflow-hidden"
+              <div className="w-28 h-32 rounded-full flex items-center justify-center shadow-xl relative overflow-hidden"
                 style={{ background: b.color }}>
-                <div className="absolute top-2 left-3 w-4 h-6 bg-white/30 rounded-full rotate-[-20deg]" />
-                <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 32, color: 'white', textShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
+                <div className="absolute top-3 left-5 w-6 h-9 bg-white/30 rounded-full rotate-[-20deg]" />
+                <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 58, color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.35)' }}>
                   {b.letter.arabic}
                 </span>
               </div>
-              <div className="w-0.5 h-6 bg-white/40" />
+              <div className="w-0.5 h-8 bg-slate-600/50" />
             </div>
           </button>
           );
@@ -1030,30 +1048,35 @@ function FallingLettersGame({ letters, onComplete }: {
   const [timeLeft, setTimeLeft] = useState(30);
   const [basketX, setBasketX] = useState(50);
   const [fallingItems, setFallingItems] = useState<{ id: string; letter: ArabicLetter; x: number; y: number; isTarget: boolean }[]>([]);
-  const [targetLetter, setTargetLetter] = useState<ArabicLetter>(() => letters[Math.floor(Math.random() * letters.length)]);
+  const prevTargetRef = useRef<ArabicLetter | null>(null);
+  const [targetLetter, setTargetLetter] = useState<ArabicLetter>(() => {
+    const t = letters[Math.floor(Math.random() * letters.length)];
+    prevTargetRef.current = t;
+    return t;
+  });
+  const prevSpawnRef = useRef<ArabicLetter | null>(null);
   const [combo, setCombo] = useState(0);
   const [flash, setFlash] = useState<'good' | 'bad' | null>(null);
   const gameAreaRef = useRef<HTMLDivElement>(null);
+  const basketXRef = useRef(50);
+  basketXRef.current = basketX;
   const frameRef = useRef<number>(0);
   const spawnRef = useRef<ReturnType<typeof setInterval>>();
-  // Keep the latest score/lives in refs so the interval/animation callbacks
-  // (which capture their initial closure) grade the game with the real total
-  // instead of a stale 0.
   const scoreRef = useRef(0);
   const livesRef = useRef(3);
   scoreRef.current = score;
   livesRef.current = lives;
   const finalStars = () => (scoreRef.current >= 12 ? 3 : scoreRef.current >= 7 ? 2 : 1);
 
-  useEffect(() => {
-    play(audioPath(targetLetter.id));
-  }, [targetLetter]);
+  useEffect(() => { play(audioPath(targetLetter.id)); }, [targetLetter]);
 
-  // Rotate the target letter every few seconds so the child practises the
-  // whole set rather than a single letter for the full 30 seconds.
   useEffect(() => {
     const rotate = setInterval(() => {
-      setTargetLetter(letters[Math.floor(Math.random() * letters.length)]);
+      setTargetLetter(prev => {
+        const next = pickNext(letters, prev);
+        prevTargetRef.current = next;
+        return next;
+      });
     }, 6000);
     return () => clearInterval(rotate);
   }, [letters]);
@@ -1074,8 +1097,16 @@ function FallingLettersGame({ letters, onComplete }: {
 
   useEffect(() => {
     spawnRef.current = setInterval(() => {
-      const isTarget = Math.random() < 0.4;
-      const letter = isTarget ? targetLetter : LETTERS[Math.floor(Math.random() * LETTERS.length)];
+      const isTarget = Math.random() < 0.45;
+      let letter: ArabicLetter;
+      if (isTarget) {
+        letter = targetLetter;
+      } else {
+        const pool = LETTERS.filter(l => l.id !== targetLetter.id && l.id !== prevSpawnRef.current?.id);
+        letter = pool[Math.floor(Math.random() * pool.length)] ||
+          LETTERS[Math.floor(Math.random() * LETTERS.length)];
+      }
+      prevSpawnRef.current = letter;
       setFallingItems(prev => [...prev, {
         id: `${Date.now()}-${Math.random()}`,
         letter,
@@ -1089,19 +1120,25 @@ function FallingLettersGame({ letters, onComplete }: {
 
   useEffect(() => {
     let active = true;
+    const CATCH_Y_MIN = 78; // top of catch band
+    const CATCH_Y_MAX = 96; // bottom (just above basket)
+    const CATCH_X_TOL = 22; // wider tolerance so it plays well on touch
     const animate = () => {
       if (!active) return;
       setFallingItems(prev => {
-        const updated = prev.map(item => ({ ...item, y: item.y + 0.6 }));
-        const caught = updated.filter(item => item.y >= 85 && Math.abs(item.x - basketX) < 18);
-        const escaped = updated.filter(item => item.y >= 100 && item.isTarget && !caught.includes(item));
+        const updated = prev.map(item => ({ ...item, y: item.y + 0.55 }));
+        const bX = basketXRef.current;
+        const caught = updated.filter(item =>
+          item.y >= CATCH_Y_MIN && item.y <= CATCH_Y_MAX &&
+          Math.abs(item.x - bX) < CATCH_X_TOL
+        );
 
         caught.forEach(item => {
           if (item.isTarget) {
             setScore(s => s + 1);
             setCombo(c => c + 1);
             setFlash('good');
-            setTimeout(() => setFlash(null), 300);
+            setTimeout(() => setFlash(null), 250);
           } else {
             setLives(l => {
               if (l <= 1) { onComplete(finalStars()); return 0; }
@@ -1109,29 +1146,25 @@ function FallingLettersGame({ letters, onComplete }: {
             });
             setCombo(0);
             setFlash('bad');
-            play(audioPath(targetLetter.id)); // replay the target they missed
-            setTimeout(() => setFlash(null), 300);
+            play(audioPath(targetLetter.id));
+            setTimeout(() => setFlash(null), 250);
           }
         });
 
-        escaped.forEach(() => {
-          setCombo(0);
-        });
-
-        return updated.filter(item => item.y < 100 && !caught.includes(item));
+        return updated.filter(item => item.y < 105 && !caught.includes(item));
       });
       frameRef.current = requestAnimationFrame(animate);
     };
     frameRef.current = requestAnimationFrame(animate);
     return () => { active = false; cancelAnimationFrame(frameRef.current); };
-  }, [basketX, targetLetter]);
+  }, [targetLetter]);
 
   const handleMove = (e: React.TouchEvent | React.MouseEvent) => {
     if (!gameAreaRef.current) return;
     const rect = gameAreaRef.current.getBoundingClientRect();
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const pct = ((clientX - rect.left) / rect.width) * 100;
-    setBasketX(Math.max(10, Math.min(90, pct)));
+    setBasketX(Math.max(8, Math.min(92, pct)));
   };
 
   return (
@@ -1145,43 +1178,55 @@ function FallingLettersGame({ letters, onComplete }: {
       </div>
 
       {combo >= 3 && (
-        <div className="text-yellow-300 font-black text-sm animate-pulse">🔥 {combo}x COMBO!</div>
+        <div className="text-yellow-300 font-black text-base animate-pulse">🔥 {combo}x COMBO!</div>
       )}
 
-      <div className="flex items-center gap-2 bg-white/20 rounded-full px-4 py-1">
-        <span className="text-white text-sm">Vang:</span>
-        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 24, color: 'white' }}>{targetLetter.arabic}</span>
-        <span className="text-white/70 text-sm">({targetLetter.nameNl})</span>
-        <button onClick={() => play(audioPath(targetLetter.id))} className="text-lg">🔊</button>
+      <div className="flex items-center gap-3 bg-white/20 rounded-full px-5 py-2">
+        <span className="text-white font-bold">Vang:</span>
+        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 34, color: 'white' }}>{targetLetter.arabic}</span>
+        <span className="text-white/80 font-bold">({targetLetter.nameNl})</span>
+        <button onClick={() => play(audioPath(targetLetter.id))} className="text-2xl hover:scale-110 transition">🔊</button>
       </div>
 
       <div
         ref={gameAreaRef}
-        className={`relative w-full flex-1 min-h-[300px] rounded-3xl overflow-hidden transition-colors duration-200 ${
-          flash === 'good' ? 'bg-green-500/20' : flash === 'bad' ? 'bg-red-500/20' : 'bg-white/5'
-        }`}
+        className={`relative w-full flex-1 min-h-[65vh] rounded-3xl overflow-hidden transition-colors duration-200`}
+        style={{
+          background:
+            (flash === 'good' ? 'linear-gradient(rgba(74,222,128,0.15),rgba(74,222,128,0.15)),' :
+             flash === 'bad'  ? 'linear-gradient(rgba(248,113,113,0.15),rgba(248,113,113,0.15)),' : '') +
+            'linear-gradient(to bottom, #7dd3fc 0%, #bae6fd 50%, #86efac 90%, #4ade80 100%)',
+        }}
         onMouseMove={handleMove}
         onTouchMove={handleMove}
       >
+        {/* Sky decoration */}
+        <div className="absolute top-3 right-6 text-5xl opacity-90 select-none pointer-events-none">☀️</div>
+        <div className="absolute top-8 left-6 text-4xl opacity-80 select-none pointer-events-none">☁️</div>
+        <div className="absolute top-20 right-1/4 text-3xl opacity-70 select-none pointer-events-none">☁️</div>
+        <div className="absolute top-32 left-1/4 text-3xl opacity-70 select-none pointer-events-none">🌳</div>
+        <div className="absolute bottom-1 left-3 text-2xl opacity-80 select-none pointer-events-none">🌱</div>
+        <div className="absolute bottom-1 right-8 text-2xl opacity-80 select-none pointer-events-none">🌿</div>
+
         {fallingItems.map(item => (
           <div key={item.id} className="absolute"
             style={{ left: `${item.x}%`, top: `${item.y}%`, transform: 'translate(-50%, -50%)' }}>
-            <div className="w-20 h-20 rounded-2xl bg-white shadow-lg flex items-center justify-center">
-              <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 48 }}>{item.letter.arabic}</span>
+            <div className="w-24 h-24 rounded-2xl bg-white shadow-xl flex items-center justify-center border-2 border-slate-100">
+              <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 62 }}>{item.letter.arabic}</span>
             </div>
           </div>
         ))}
 
         {/* Basket */}
-        <div className="absolute bottom-2"
-          style={{ left: `${basketX}%`, transform: 'translateX(-50%)' }}>
-          <div className="w-28 h-14 bg-amber-600 rounded-b-2xl rounded-t-lg border-4 border-amber-800 flex items-center justify-center shadow-xl">
-            <span className="text-2xl">🧺</span>
+        <div className="absolute"
+          style={{ left: `${basketX}%`, bottom: '2%', transform: 'translateX(-50%)' }}>
+          <div className="w-36 h-20 bg-gradient-to-b from-amber-500 to-amber-700 rounded-b-3xl rounded-t-xl border-4 border-amber-900 flex items-center justify-center shadow-2xl">
+            <span className="text-4xl">🧺</span>
           </div>
         </div>
       </div>
 
-      <p className="text-white/60 text-xs">👆 Beweeg de mand met je vinger of muis!</p>
+      <p className="text-white/70 text-sm">👆 Beweeg de mand met je vinger of muis!</p>
     </div>
   );
 }
@@ -1196,132 +1241,170 @@ function WhackAMoleGame({ letters, onComplete }: {
   const [lives, setLives] = useState(3);
   const [round, setRound] = useState(0);
   const maxRounds = 10;
-  const [targetLetter, setTargetLetter] = useState<ArabicLetter>(letters[0]);
-  const [holes, setHoles] = useState<(ArabicLetter | null)[]>(Array(6).fill(null));
+  // Random hole positions inside the play area, scattered rather than a
+  // clean 3-column grid. Chosen once per mount so they stay stable.
+  const HOLE_COUNT = 6;
+  const holePositions = useRef<{ left: number; top: number }[]>(
+    (() => {
+      // Sample non-overlapping positions in a 100×100% area.
+      const pts: { left: number; top: number }[] = [];
+      let tries = 0;
+      while (pts.length < HOLE_COUNT && tries < 500) {
+        tries++;
+        const p = { left: 10 + Math.random() * 78, top: 10 + Math.random() * 74 };
+        if (pts.every(q => Math.hypot(p.left - q.left, p.top - q.top) > 26)) pts.push(p);
+      }
+      return pts;
+    })()
+  );
+
+  const prevTarget = useRef<ArabicLetter | null>(null);
+  const [targetLetter, setTargetLetter] = useState<ArabicLetter>(() => {
+    const t = letters[Math.floor(Math.random() * letters.length)];
+    prevTarget.current = t;
+    return t;
+  });
+  const [holes, setHoles] = useState<ArabicLetter[]>(() => {
+    const distractors = LETTERS.filter(l => l.id !== prevTarget.current!.id);
+    const chosen = pick(distractors, HOLE_COUNT - 1);
+    const arr = shuffle([prevTarget.current!, ...chosen]);
+    return arr;
+  });
   const [whacked, setWhacked] = useState<number | null>(null);
   const [wrongHit, setWrongHit] = useState<number | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval>>();
+  const shuffleRef = useRef<ReturnType<typeof setInterval>>();
+  const scoreRef = useRef(0);
+  scoreRef.current = score;
 
-  const newRound = useCallback(() => {
-    const target = letters[Math.floor(Math.random() * letters.length)];
+  const buildHoles = useCallback((target: ArabicLetter) => {
+    const distractors = LETTERS.filter(l => l.id !== target.id);
+    const chosen = pick(distractors, HOLE_COUNT - 1);
+    return shuffle([target, ...chosen]);
+  }, []);
+
+  const startRound = useCallback((nextRound: number) => {
+    const target = pickNext(letters, prevTarget.current);
+    prevTarget.current = target;
     setTargetLetter(target);
+    setHoles(buildHoles(target));
     setWhacked(null);
     setWrongHit(null);
-
-    const holeContents: (ArabicLetter | null)[] = Array(6).fill(null);
-    const targetHole = Math.floor(Math.random() * 6);
-    holeContents[targetHole] = target;
-
-    const otherHoles = [0, 1, 2, 3, 4, 5].filter(i => i !== targetHole);
-    const numDistractors = Math.min(2 + Math.floor(round / 3), 4);
-    const distractorHoles = shuffle(otherHoles).slice(0, numDistractors);
-    const distractorLetters = LETTERS.filter(l => l.id !== target.id);
-    distractorHoles.forEach(h => {
-      holeContents[h] = distractorLetters[Math.floor(Math.random() * distractorLetters.length)];
-    });
-
-    setHoles(holeContents);
     play(audioPath(target.id));
-  }, [letters, round]);
+    setRound(nextRound);
+  }, [letters, buildHoles, play]);
 
+  // Every 2.5s reshuffle the 6 letters' positions so the player has to keep
+  // tracking the target's sound rather than pointing at a fixed hole.
   useEffect(() => {
-    newRound();
-  }, [round]);
-
-  useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setHoles(prev => {
-        const newHoles = [...prev];
-        const emptySlots = newHoles.map((h, i) => h === null ? i : -1).filter(i => i >= 0);
-        const filledSlots = newHoles.map((h, i) => h !== null ? i : -1).filter(i => i >= 0);
-        if (Math.random() < 0.3 && filledSlots.length > 2) {
-          const hideIdx = filledSlots[Math.floor(Math.random() * filledSlots.length)];
-          if (newHoles[hideIdx]?.id !== targetLetter.id) {
-            newHoles[hideIdx] = null;
-          }
-        }
-        if (Math.random() < 0.3 && emptySlots.length > 0) {
-          const showIdx = emptySlots[Math.floor(Math.random() * emptySlots.length)];
-          const distractors = LETTERS.filter(l => l.id !== targetLetter.id);
-          newHoles[showIdx] = distractors[Math.floor(Math.random() * distractors.length)];
-        }
-        return newHoles;
-      });
-    }, 1200);
-    return () => clearInterval(timerRef.current!);
+    shuffleRef.current = setInterval(() => {
+      setHoles(prev => shuffle(prev));
+    }, 2500);
+    return () => clearInterval(shuffleRef.current!);
   }, [targetLetter]);
+
+  const finalStars = (s: number) => (s >= 8 ? 3 : s >= 5 ? 2 : 1);
 
   const whack = (holeIdx: number) => {
     const letter = holes[holeIdx];
-    if (!letter) return;
+    if (!letter || whacked !== null) return;
     if (letter.id === targetLetter.id) {
       setWhacked(holeIdx);
-      setScore(s => s + 1);
+      const newScore = scoreRef.current + 1;
+      setScore(newScore);
       setTimeout(() => {
-        if (round < maxRounds - 1) setRound(r => r + 1);
-        else onComplete(score + 1 >= 8 ? 3 : score + 1 >= 5 ? 2 : 1);
-      }, 600);
+        if (round < maxRounds - 1) startRound(round + 1);
+        else onComplete(finalStars(newScore));
+      }, 700);
     } else {
       setWrongHit(holeIdx);
       setLives(l => {
-        if (l <= 1) { onComplete(score >= 8 ? 3 : score >= 5 ? 2 : 1); return 0; }
+        if (l <= 1) { onComplete(finalStars(scoreRef.current)); return 0; }
         return l - 1;
       });
-      play(audioPath(targetLetter.id)); // replay the target so they can hear it again
+      play(audioPath(targetLetter.id));
       setTimeout(() => setWrongHit(null), 500);
     }
   };
 
   return (
-    <div className="flex flex-col items-center gap-4 p-4">
+    <div className="flex flex-col items-center gap-4 p-4 h-full">
       <div className="flex justify-between w-full items-center">
         <Hearts lives={lives} />
         <span className="text-white font-bold">Ronde {round + 1}/{maxRounds}</span>
         <span className="text-yellow-300 font-bold">🏆 {score}</span>
       </div>
 
-      <div className="flex items-center gap-2 bg-white/20 rounded-full px-4 py-2">
-        <span className="text-white font-bold">Sla:</span>
-        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 28, color: 'white' }}>{targetLetter.arabic}</span>
-        <span className="text-white/70">({targetLetter.nameNl})</span>
-        <button onClick={() => play(audioPath(targetLetter.id))} className="text-xl hover:scale-110 transition">🔊</button>
-      </div>
+      <button onClick={() => play(audioPath(targetLetter.id))}
+        className="px-6 py-3 rounded-full bg-white text-emerald-700 border-2 border-emerald-200 font-bold text-lg flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition">
+        🔊 Sla de letter die je hoort
+      </button>
 
-      <div className="grid grid-cols-3 gap-4 w-full max-w-sm mt-2">
-        {holes.map((letter, i) => (
-          <button
-            key={i}
-            onClick={() => letter && whack(i)}
-            className={`relative h-32 rounded-2xl flex items-center justify-center transition-all duration-150 ${
-              whacked === i ? 'bg-green-400 scale-95' :
-              wrongHit === i ? 'bg-red-400 scale-95 animate-pulse' :
-              letter ? 'bg-amber-900/60 hover:scale-105 active:scale-90 cursor-pointer' :
-              'bg-amber-900/30'
-            }`}
-            style={{ boxShadow: letter ? 'inset 0 -4px 8px rgba(0,0,0,0.3)' : 'inset 0 4px 8px rgba(0,0,0,0.3)' }}
-          >
-            {letter ? (
-              <div className={`flex flex-col items-center transition-all duration-200 ${
-                whacked === i ? 'scale-0' : 'animate-[mole-pop_0.3s_ease-out]'
-              }`}>
-                <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 60, color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
-                  {letter.arabic}
-                </span>
+      {/* Grassy field with scattered holes */}
+      <div className="relative w-full flex-1 min-h-[520px] rounded-3xl overflow-hidden"
+        style={{
+          background:
+            'radial-gradient(circle at 20% 30%, #86efac 0%, transparent 40%),' +
+            'radial-gradient(circle at 80% 60%, #a7f3d0 0%, transparent 45%),' +
+            'linear-gradient(to bottom, #4ade80, #16a34a)',
+        }}>
+        {/* Scattered grass tufts for texture */}
+        <div className="absolute top-6 left-[25%] text-2xl opacity-70 select-none pointer-events-none">🌱</div>
+        <div className="absolute bottom-8 left-[8%] text-2xl opacity-70 select-none pointer-events-none">🌿</div>
+        <div className="absolute top-[40%] right-[6%] text-2xl opacity-70 select-none pointer-events-none">🌱</div>
+        <div className="absolute bottom-[20%] right-[30%] text-2xl opacity-70 select-none pointer-events-none">🌿</div>
+        <div className="absolute top-[70%] left-[45%] text-2xl opacity-70 select-none pointer-events-none">🌱</div>
+
+        {holes.map((letter, i) => {
+          const pos = holePositions.current[i];
+          if (!pos) return null;
+          const isWhacked = whacked === i;
+          const isWrong = wrongHit === i;
+          return (
+            <button
+              key={i}
+              onClick={() => whack(i)}
+              className="absolute select-none"
+              style={{
+                left: `${pos.left}%`,
+                top: `${pos.top}%`,
+                transform: 'translate(-50%, -50%)',
+                width: 120,
+                height: 120,
+              }}
+            >
+              {/* Hole (dirt oval) */}
+              <div className="absolute inset-x-0 bottom-0 h-10 rounded-[50%]"
+                style={{
+                  background: 'radial-gradient(ellipse at center, #1c1917 0%, #292524 60%, #57534e 100%)',
+                  boxShadow: 'inset 0 4px 10px rgba(0,0,0,0.7), 0 4px 4px rgba(0,0,0,0.15)',
+                }} />
+              {/* Grass rim around hole */}
+              <div className="absolute inset-x-[-6px] bottom-8 flex justify-between px-2 text-emerald-800 select-none pointer-events-none text-lg">
+                <span>🌱</span><span>🌿</span><span>🌱</span>
               </div>
-            ) : (
-              <div className="w-12 h-4 rounded-full bg-amber-950/40" />
-            )}
-
-            {/* Hole rim */}
-            <div className="absolute bottom-0 left-0 right-0 h-4 bg-amber-900/80 rounded-b-2xl" />
-          </button>
-        ))}
+              {/* Mole with letter */}
+              <div className={`absolute left-1/2 bottom-3 -translate-x-1/2 transition-all duration-200 ${
+                isWhacked ? 'translate-y-4 scale-75 opacity-60' : isWrong ? 'animate-pulse' : 'animate-[mole-pop_0.3s_ease-out]'
+              }`}>
+                <div className="relative w-24 h-24 rounded-full flex items-center justify-center shadow-xl"
+                  style={{
+                    background: isWhacked ? '#4ade80' : isWrong ? '#f87171' : 'radial-gradient(circle at 30% 30%, #a16207, #78350f)',
+                    border: '3px solid #451a03',
+                  }}>
+                  <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 60, color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.6)' }}>
+                    {letter.arabic}
+                  </span>
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       <style>{`
         @keyframes mole-pop {
-          from { transform: translateY(20px) scale(0.5); opacity: 0; }
-          to { transform: translateY(0) scale(1); opacity: 1; }
+          from { transform: translate(-50%, 30px) scale(0.5); opacity: 0; }
+          to { transform: translate(-50%, 0) scale(1); opacity: 1; }
         }
       `}</style>
     </div>
@@ -1388,7 +1471,7 @@ function SignLearnGame({ letters, signs, onComplete, lang }: {
       </div>
 
       <button onClick={next}
-        className="px-8 py-3 rounded-xl bg-white text-orange-700 font-bold shadow hover:bg-orange-50 transition text-lg">
+        className="px-10 py-4 rounded-2xl bg-white text-orange-700 font-bold shadow-lg hover:bg-orange-50 transition text-xl">
         {current < total - 1 ? tr('next', lang) : tr('done', lang)}
       </button>
     </div>
@@ -1504,17 +1587,17 @@ function FormLearnGame({ letters, onComplete, lang }: {
         <div className="bg-white rounded-full h-2 transition-all" style={{ width: `${((idx + 1) / set.length) * 100}%` }} />
       </div>
       <p className="text-white font-bold text-xl">{letter.nameNl} <span className="text-white/60">/ {letter.nameTr}</span></p>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         {formDefs.map(f => (
           <button key={f.key} onClick={() => play(audioPath(letter.id))}
-            className="w-32 h-32 rounded-2xl bg-white shadow-lg flex flex-col items-center justify-center hover:scale-105 active:scale-95 transition">
-            <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 52, lineHeight: 1.35 }}>{letter.forms[f.key]}</span>
-            <span className="text-xs font-bold text-gray-500 mt-2">{tr(f.label, lang)}</span>
+            className="w-40 h-40 rounded-2xl bg-white shadow-lg flex flex-col items-center justify-center hover:scale-105 active:scale-95 transition">
+            <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 68, lineHeight: 1.35 }}>{letter.forms[f.key]}</span>
+            <span className="text-sm font-bold text-gray-500 mt-2">{tr(f.label, lang)}</span>
           </button>
         ))}
       </div>
       <button onClick={next}
-        className="px-8 py-3 rounded-xl bg-white text-orange-700 font-bold shadow hover:bg-orange-50 transition text-lg">
+        className="px-10 py-4 rounded-2xl bg-white text-orange-700 font-bold shadow-lg hover:bg-orange-50 transition text-xl">
         {idx < set.length - 1 ? tr('next', lang) : tr('done', lang)}
       </button>
     </div>
@@ -1783,14 +1866,15 @@ function GameIntro({ game, lang, onStart }: { game: GameType; lang: Lang; onStar
   const intro = GAME_INTROS[game]?.[lang];
   if (!intro) { onStart(); return null; }
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center p-6 pointer-events-none">
-      <div className="pointer-events-auto max-w-sm w-full bg-white rounded-3xl shadow-2xl p-6 flex flex-col items-center gap-3 text-center animate-[intro-in_0.2s_ease-out]">
+    <div className="flex-1 flex items-center justify-center p-6">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 flex flex-col items-center gap-4 text-center animate-[intro-in_0.2s_ease-out]">
         <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold">{lang === 'tr' ? 'Nasıl oynanır' : 'Zo speel je'}</p>
-        <h3 className="text-2xl font-bold text-slate-900">{intro.title}</h3>
-        <p className="text-slate-600">{intro.body}</p>
+        <h3 className="text-3xl font-bold text-slate-900">{intro.title}</h3>
+        <p className="text-slate-600 text-lg">{intro.body}</p>
+        <p className="text-slate-500 text-sm">{tr('tapToHear', lang)}</p>
         <button onClick={onStart}
-          className="mt-2 px-8 py-3 rounded-2xl bg-slate-900 text-white font-bold shadow hover:scale-[1.02] active:scale-95 transition">
-          {lang === 'tr' ? 'Başla' : 'Start'}
+          className="mt-3 px-12 py-4 rounded-2xl bg-slate-900 text-white font-bold text-xl shadow-lg hover:scale-[1.02] active:scale-95 transition">
+          {lang === 'tr' ? '🌟 Başla!' : '🌟 Start!'}
         </button>
       </div>
       <style>{`@keyframes intro-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }`}</style>
@@ -1842,7 +1926,6 @@ function StageView({ stageId, progress, onComplete, onBack, onNext, lang }: {
   return (
     <div className={`min-h-full bg-gradient-to-b ${section.bg} flex flex-col relative`}>
       <Confetti show={showConfetti} />
-      {showIntro && !done && <GameIntro game={stage.game} lang={lang} onStart={() => setShowIntro(false)} />}
 
       {/* Header */}
       <div className="flex items-center justify-between p-4">
@@ -1853,7 +1936,9 @@ function StageView({ stageId, progress, onComplete, onBack, onNext, lang }: {
         <Stars count={progress[stageId] || 0} />
       </div>
 
-      {done ? (
+      {showIntro && !done ? (
+        <GameIntro game={stage.game} lang={lang} onStart={() => setShowIntro(false)} />
+      ) : done ? (
         <div className="flex flex-col items-center justify-center flex-1 gap-6 p-6">
           <div className="text-8xl animate-bounce">{earnedStars === 3 ? '🏆' : earnedStars === 2 ? '🥈' : '🥉'}</div>
           <h2 className="text-white text-3xl font-bold">{tr('congrats', lang)}</h2>
@@ -1861,13 +1946,13 @@ function StageView({ stageId, progress, onComplete, onBack, onNext, lang }: {
           <p className="text-white/80 text-center">
             {earnedStars === 3 ? tr('perfect', lang) : earnedStars === 2 ? tr('good', lang) : tr('tryAgain', lang)}
           </p>
-          <div className="flex gap-3 mt-4">
-            <button onClick={() => { setDone(false); setShowConfetti(false); }}
-              className="px-6 py-3 rounded-xl bg-white/20 text-white font-bold hover:bg-white/30 transition">
+          <div className="flex gap-4 mt-4">
+            <button onClick={() => { setDone(false); setShowConfetti(false); setShowIntro(true); }}
+              className="px-8 py-4 rounded-2xl bg-white/20 text-white font-bold text-lg hover:bg-white/30 transition">
               {tr('retry', lang)}
             </button>
             <button onClick={onNext}
-              className="px-6 py-3 rounded-xl bg-white text-emerald-700 font-bold shadow hover:bg-emerald-50 transition">
+              className="px-10 py-4 rounded-2xl bg-white text-emerald-700 font-bold text-xl shadow-lg hover:bg-emerald-50 transition">
               {tr('nextLevel', lang)}
             </button>
           </div>

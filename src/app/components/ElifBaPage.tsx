@@ -668,17 +668,17 @@ function MemoryGame({ letters, onComplete }: {
           const isMatched = matched.includes(card.id);
           return (
             <button key={card.uid} onClick={() => flip(card.uid)}
-              className={`w-16 h-20 rounded-xl flex items-center justify-center font-bold text-sm transition-all duration-300 shadow-md
+              className={`w-20 h-28 rounded-xl flex items-center justify-center font-bold transition-all duration-300 shadow-md
                 ${isFlipped
                   ? isMatched ? 'bg-green-400 text-white scale-95' : 'bg-white text-gray-800'
-                  : 'bg-gradient-to-br from-purple-500 to-pink-600 text-white hover:scale-105 cursor-pointer'
+                  : 'bg-gradient-to-br from-slate-600 to-slate-800 text-white hover:scale-105 cursor-pointer'
                 }
               `}>
               {isFlipped ? (
                 card.type === 'arabic'
-                  ? <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 36 }}>{card.letter.arabic}</span>
-                  : <span className="text-xs text-center px-1">{card.letter.nameNl}</span>
-              ) : '?'}
+                  ? <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 52 }}>{card.letter.arabic}</span>
+                  : <span className="text-sm text-center px-1">{card.letter.nameNl}</span>
+              ) : <span className="text-2xl">?</span>}
             </button>
           );
         })}
@@ -969,7 +969,7 @@ function BalloonPopGame({ letters, onComplete }: {
 
       <p className="text-white/80 text-sm">Pop de ballon met: <strong>{target.nameNl}</strong></p>
 
-      <div className="relative w-full flex-1 min-h-[340px] rounded-3xl overflow-hidden bg-gradient-to-b from-sky-300/30 to-transparent">
+      <div className="relative w-full flex-1 min-h-[560px] rounded-3xl overflow-hidden bg-gradient-to-b from-sky-300/20 to-transparent">
         {balloons.filter(b => !b.popped).map(b => {
           const y = getY(b);
           if (y > 105 || y < -15) return null;
@@ -1063,7 +1063,7 @@ function FallingLettersGame({ letters, onComplete }: {
 
   useEffect(() => {
     spawnRef.current = setInterval(() => {
-      const isTarget = Math.random() < 0.35;
+      const isTarget = Math.random() < 0.4;
       const letter = isTarget ? targetLetter : LETTERS[Math.floor(Math.random() * LETTERS.length)];
       setFallingItems(prev => [...prev, {
         id: `${Date.now()}-${Math.random()}`,
@@ -1072,7 +1072,7 @@ function FallingLettersGame({ letters, onComplete }: {
         y: -5,
         isTarget: letter.id === targetLetter.id,
       }]);
-    }, 900);
+    }, 1500);
     return () => clearInterval(spawnRef.current);
   }, [targetLetter]);
 
@@ -1081,8 +1081,8 @@ function FallingLettersGame({ letters, onComplete }: {
     const animate = () => {
       if (!active) return;
       setFallingItems(prev => {
-        const updated = prev.map(item => ({ ...item, y: item.y + 1.2 }));
-        const caught = updated.filter(item => item.y >= 85 && Math.abs(item.x - basketX) < 15);
+        const updated = prev.map(item => ({ ...item, y: item.y + 0.6 }));
+        const caught = updated.filter(item => item.y >= 85 && Math.abs(item.x - basketX) < 18);
         const escaped = updated.filter(item => item.y >= 100 && item.isTarget && !caught.includes(item));
 
         caught.forEach(item => {
@@ -1153,19 +1153,19 @@ function FallingLettersGame({ letters, onComplete }: {
         onTouchMove={handleMove}
       >
         {fallingItems.map(item => (
-          <div key={item.id} className="absolute transition-none"
+          <div key={item.id} className="absolute"
             style={{ left: `${item.x}%`, top: `${item.y}%`, transform: 'translate(-50%, -50%)' }}>
-            <div className="w-12 h-12 rounded-xl bg-white shadow-lg flex items-center justify-center">
-              <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 28 }}>{item.letter.arabic}</span>
+            <div className="w-20 h-20 rounded-2xl bg-white shadow-lg flex items-center justify-center">
+              <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 48 }}>{item.letter.arabic}</span>
             </div>
           </div>
         ))}
 
         {/* Basket */}
-        <div className="absolute bottom-2 transition-all duration-75"
+        <div className="absolute bottom-2"
           style={{ left: `${basketX}%`, transform: 'translateX(-50%)' }}>
-          <div className="w-20 h-10 bg-amber-600 rounded-b-2xl rounded-t-lg border-4 border-amber-800 flex items-center justify-center shadow-xl">
-            <span className="text-xl">🧺</span>
+          <div className="w-28 h-14 bg-amber-600 rounded-b-2xl rounded-t-lg border-4 border-amber-800 flex items-center justify-center shadow-xl">
+            <span className="text-2xl">🧺</span>
           </div>
         </div>
       </div>
@@ -1281,7 +1281,7 @@ function WhackAMoleGame({ letters, onComplete }: {
           <button
             key={i}
             onClick={() => letter && whack(i)}
-            className={`relative h-24 rounded-2xl flex items-center justify-center transition-all duration-150 ${
+            className={`relative h-32 rounded-2xl flex items-center justify-center transition-all duration-150 ${
               whacked === i ? 'bg-green-400 scale-95' :
               wrongHit === i ? 'bg-red-400 scale-95 animate-pulse' :
               letter ? 'bg-amber-900/60 hover:scale-105 active:scale-90 cursor-pointer' :
@@ -1293,7 +1293,7 @@ function WhackAMoleGame({ letters, onComplete }: {
               <div className={`flex flex-col items-center transition-all duration-200 ${
                 whacked === i ? 'scale-0' : 'animate-[mole-pop_0.3s_ease-out]'
               }`}>
-                <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 42, color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+                <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 60, color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
                   {letter.arabic}
                 </span>
               </div>
@@ -1766,6 +1766,43 @@ function WorldMap({ progress, onSelectStage, lang }: {
 
 // ─── Stage Wrapper ────────────────────────────────────────────────────────────
 
+const GAME_INTROS: Record<GameType, { nl: { title: string; body: string }; tr: { title: string; body: string } }> = {
+  'learn':           { nl: { title: 'Zie & hoor',     body: 'Tik op de letter om het geluid te horen. Ga door met de pijl.' }, tr: { title: 'Gör & duy',    body: 'Sesi duymak için harfe dokun. İleri okla devam et.' } },
+  'listen-pick':     { nl: { title: 'Luister & kies', body: 'Je hoort een letter. Tik op de juiste letter tussen de vier.' }, tr: { title: 'Dinle & seç',   body: 'Bir harf duyacaksın. Doğru harfe dokun.' } },
+  'name-match':      { nl: { title: 'Naam quiz',      body: 'Je ziet een letter. Kies de juiste naam.' },                    tr: { title: 'İsim testi',   body: 'Harfi göreceksin. Doğru ismi seç.' } },
+  'review':          { nl: { title: 'Herhaling',      body: 'Kies de juiste naam bij de letter.' },                          tr: { title: 'Tekrar',       body: 'Harfin doğru ismini seç.' } },
+  'drag-sort':       { nl: { title: 'Sorteer',        body: 'Sleep de letters in de juiste volgorde.' },                     tr: { title: 'Sırala',       body: 'Harfleri doğru sıraya sürükle.' } },
+  'memory':          { nl: { title: 'Geheugenspel',   body: 'Draai twee kaarten om. Vind de letter en zijn naam.' },         tr: { title: 'Hafıza oyunu', body: 'İki kartı çevir. Harfi ve adını eşleştir.' } },
+  'harakat-learn':   { nl: { title: 'Harakaat leren', body: 'Luister naar de letter met fatha, damma of kasra.' },           tr: { title: 'Hareke öğren', body: 'Üstün, ötre, esre ile harfi dinle.' } },
+  'harakat-quiz':    { nl: { title: 'Harakat quiz',   body: 'Welke harakat hoor je? Tik op het juiste antwoord.' },          tr: { title: 'Hareke testi', body: 'Hangi harekeyi duyuyorsun? Doğru cevaba dokun.' } },
+  'balloon-pop':     { nl: { title: 'Ballonnen!',     body: 'Tik op de ballon met de letter die je hoort. Wees snel!' },     tr: { title: 'Balonlar!',    body: 'Duyduğun harfli balona dokun. Çabuk ol!' } },
+  'falling-letters': { nl: { title: 'Vang de letter', body: 'Beweeg de mand met je vinger of muis en vang de juiste letter.' }, tr: { title: 'Harfi yakala', body: 'Sepeti hareket ettir ve doğru harfi yakala.' } },
+  'whack-a-mole':    { nl: { title: 'Sla de mol',     body: 'Sla op de letter die je hoort — pas op voor foute letters!' },  tr: { title: 'Köstebeğe vur',body: 'Duyduğun harfe vur — yanlış harflere dikkat!' } },
+  'sign-learn':      { nl: { title: 'Tekens leren',   body: 'Bekijk en luister naar de letter met het teken.' },             tr: { title: 'İşaretleri öğren', body: 'Harfi işaretle birlikte gör ve dinle.' } },
+  'sign-read':       { nl: { title: 'Teken herkennen',body: 'Welk teken zie je op de letter?' },                             tr: { title: 'İşareti tanı', body: 'Harfte hangi işareti görüyorsun?' } },
+  'form-learn':      { nl: { title: 'De 4 vormen',    body: 'Zie hoe de letter er los, aan het begin, midden en eind uitziet.' }, tr: { title: '4 şekil', body: 'Harfin yalın, baş, orta ve son şekillerini gör.' } },
+  'form-read':       { nl: { title: 'Welke positie?', body: 'Bekijk de vorm en kies of het begin, midden of eind is.' },     tr: { title: 'Hangi konum?', body: 'Şekle bak ve baş, orta ya da son olduğunu seç.' } },
+};
+
+function GameIntro({ game, lang, onStart }: { game: GameType; lang: Lang; onStart: () => void }) {
+  const intro = GAME_INTROS[game]?.[lang];
+  if (!intro) { onStart(); return null; }
+  return (
+    <div className="absolute inset-0 z-30 flex items-center justify-center p-6 pointer-events-none">
+      <div className="pointer-events-auto max-w-sm w-full bg-white rounded-3xl shadow-2xl p-6 flex flex-col items-center gap-3 text-center animate-[intro-in_0.2s_ease-out]">
+        <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold">{lang === 'tr' ? 'Nasıl oynanır' : 'Zo speel je'}</p>
+        <h3 className="text-2xl font-bold text-slate-900">{intro.title}</h3>
+        <p className="text-slate-600">{intro.body}</p>
+        <button onClick={onStart}
+          className="mt-2 px-8 py-3 rounded-2xl bg-slate-900 text-white font-bold shadow hover:scale-[1.02] active:scale-95 transition">
+          {lang === 'tr' ? 'Başla' : 'Start'}
+        </button>
+      </div>
+      <style>{`@keyframes intro-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }`}</style>
+    </div>
+  );
+}
+
 function StageView({ stageId, progress, onComplete, onBack, onNext, lang }: {
   stageId: string; progress: Record<string, any>;
   onComplete: (stageId: string, stars: number) => void;
@@ -1776,6 +1813,7 @@ function StageView({ stageId, progress, onComplete, onBack, onNext, lang }: {
   const [showConfetti, setShowConfetti] = useState(false);
   const [done, setDone] = useState(false);
   const [earnedStars, setEarnedStars] = useState(0);
+  const [showIntro, setShowIntro] = useState(true);
 
   const handleComplete = (stars: number) => {
     setEarnedStars(stars);
@@ -1807,8 +1845,9 @@ function StageView({ stageId, progress, onComplete, onBack, onNext, lang }: {
   };
 
   return (
-    <div className={`min-h-full bg-gradient-to-b ${section.bg} flex flex-col`}>
+    <div className={`min-h-full bg-gradient-to-b ${section.bg} flex flex-col relative`}>
       <Confetti show={showConfetti} />
+      {showIntro && !done && <GameIntro game={stage.game} lang={lang} onStart={() => setShowIntro(false)} />}
 
       {/* Header */}
       <div className="flex items-center justify-between p-4">
@@ -1859,8 +1898,8 @@ function LeaderboardView({ lang, playerName, onBack }: { lang: Lang; playerName:
   const medal = (i: number) => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`);
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-indigo-600 via-purple-700 to-fuchsia-800 flex flex-col">
-      <div className="flex items-center justify-between p-4 sticky top-0 bg-indigo-700/80 backdrop-blur z-10">
+    <div className="min-h-full bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex flex-col">
+      <div className="flex items-center justify-between p-4 sticky top-0 bg-slate-900/80 backdrop-blur z-10">
         <button onClick={onBack} className="text-white/80 hover:text-white font-bold transition">{tr('back', lang)}</button>
         <h1 className="text-white font-bold text-xl">{tr('leaderboard', lang)}</h1>
         <span className="w-12" />
@@ -1896,8 +1935,8 @@ function NameEntry({ lang, onSubmit }: { lang: Lang; onSubmit: (name: string) =>
   const [value, setValue] = useState('');
   const submit = () => { const v = value.trim(); if (v) onSubmit(v); };
   return (
-    <div className="min-h-full bg-gradient-to-b from-emerald-500 via-teal-600 to-cyan-700 flex flex-col items-center justify-center gap-6 p-6">
-      <div className="w-28 h-28 rounded-full bg-white/20 backdrop-blur flex items-center justify-center shadow-2xl">
+    <div className="min-h-full bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-center gap-6 p-6">
+      <div className="w-28 h-28 rounded-3xl bg-white/5 border border-white/10 backdrop-blur flex items-center justify-center shadow-2xl">
         <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 56, color: 'white' }}>أ ب</span>
       </div>
       <h1 className="text-3xl font-black text-white text-center">{tr('namePrompt', lang)}</h1>
@@ -1912,7 +1951,7 @@ function NameEntry({ lang, onSubmit }: { lang: Lang; onSubmit: (name: string) =>
         className="w-full max-w-xs px-5 py-4 rounded-2xl text-center text-xl font-bold text-gray-800 shadow-lg outline-none focus:ring-4 ring-yellow-300"
       />
       <button onClick={submit} disabled={!value.trim()}
-        className="px-10 py-4 rounded-3xl bg-white text-emerald-700 font-black text-xl shadow-2xl hover:scale-105 active:scale-95 transition disabled:opacity-40">
+        className="px-10 py-4 rounded-2xl bg-white text-slate-900 font-bold text-lg shadow-xl hover:scale-[1.02] active:scale-95 transition disabled:opacity-40">
         {tr('letsGo', lang)}
       </button>
     </div>
@@ -1984,8 +2023,8 @@ export default function ElifBaPage({ onBack }: { onBack?: () => void }) {
 
   if (view === 'map') {
     return (
-      <div className="min-h-full bg-slate-700 flex flex-col">
-        <div className="flex items-center justify-between p-4 sticky top-0 bg-indigo-600/80 backdrop-blur z-10">
+      <div className="min-h-full bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex flex-col">
+        <div className="flex items-center justify-between p-4 sticky top-0 bg-slate-900/80 backdrop-blur z-10">
           <button onClick={() => setView('home')} className="text-white/80 hover:text-white font-bold transition">{tr('back', lang)}</button>
           <h1 className="text-white font-bold text-xl">{tr('map', lang)}</h1>
           <div className="flex items-center gap-2">
@@ -2002,72 +2041,76 @@ export default function ElifBaPage({ onBack }: { onBack?: () => void }) {
 
   // Home screen
   return (
-    <div className="min-h-full bg-gradient-to-b from-emerald-500 via-teal-600 to-cyan-700 flex flex-col items-center justify-between p-6">
-      <div className="w-full flex items-center justify-between">
+    <div className="min-h-full bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-between p-6 relative">
+      <TopThreeCorner playerName={name} lang={lang} onOpen={() => setView('leaderboard')} />
+
+      <div className="w-full flex items-center justify-end">
         {onBack ? (
-          <button onClick={onBack} className="text-white/70 hover:text-white font-bold transition text-sm">
+          <button onClick={onBack} className="text-white/60 hover:text-white font-medium transition text-sm mr-auto">
             {tr('backToLogin', lang)}
           </button>
-        ) : <span />}
+        ) : null}
         {LangButton}
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center gap-8 text-center">
-        {/* Logo */}
-        <div className="relative">
-          <div className="w-36 h-36 rounded-full bg-white/20 backdrop-blur flex items-center justify-center shadow-2xl">
-            <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 72, color: 'white' }}>أ ب</span>
-          </div>
-          <div className="absolute -top-2 -right-2 w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center text-2xl shadow-lg">
-            ⭐
-          </div>
+        <div className="w-32 h-32 rounded-3xl bg-white/5 border border-white/10 backdrop-blur flex items-center justify-center shadow-2xl">
+          <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 64, color: 'white' }}>أ ب</span>
         </div>
 
         <div>
-          <h1 className="text-5xl font-black text-white drop-shadow-lg">Elif-Ba</h1>
-          <p className="text-white/80 text-lg mt-2 font-semibold">Leren / Öğren</p>
-          <p className="text-white/60 text-sm mt-1">{tr('subtitle', lang)}</p>
-          {name && <p className="text-white/80 text-sm mt-2 font-bold">👋 {name}</p>}
+          <h1 className="text-5xl font-black text-white tracking-tight">Elif-Ba</h1>
+          <p className="text-white/50 text-sm mt-3">{tr('subtitle', lang)}</p>
+          {name && <p className="text-white/70 text-sm mt-3 font-medium">{name}</p>}
         </div>
 
         {totalStars > 0 && (
-          <div className="bg-white/20 rounded-2xl px-6 py-3 flex items-center gap-3">
-            <span className="text-3xl">⭐</span>
-            <span className="text-white font-bold text-xl">{totalStars} {tr('starsEarned', lang)}</span>
+          <div className="text-white/70 text-sm">
+            <span className="text-white font-semibold">{totalStars}</span> {tr('starsEarned', lang)}
           </div>
         )}
 
         <button onClick={startPlaying}
-          className="mt-2 px-12 py-5 rounded-3xl bg-white text-emerald-700 font-black text-2xl shadow-2xl hover:scale-105 active:scale-95 transition-all duration-150">
+          className="mt-2 px-12 py-4 rounded-2xl bg-white text-slate-900 font-bold text-lg shadow-xl hover:scale-[1.02] active:scale-95 transition-all duration-150">
           {totalStars > 0 ? tr('continue', lang) : tr('start', lang)}
         </button>
-
-        <button onClick={() => setView('leaderboard')}
-          className="px-6 py-2 rounded-2xl bg-white/20 text-white font-bold hover:bg-white/30 transition">
-          {tr('leaderboard', lang)}
-        </button>
-
-        <div className="flex gap-4 text-center mt-2">
-          <div className="bg-white/10 rounded-xl p-3">
-            <p className="text-2xl">🔤</p>
-            <p className="text-white/80 text-xs">28 letters</p>
-          </div>
-          <div className="bg-white/10 rounded-xl p-3">
-            <p className="text-2xl">🎵</p>
-            <p className="text-white/80 text-xs">{lang === 'tr' ? 'Gerçek ses' : 'Echte audio'}</p>
-          </div>
-          <div className="bg-white/10 rounded-xl p-3">
-            <p className="text-2xl">🏆</p>
-            <p className="text-white/80 text-xs">{tr('stars', lang)}</p>
-          </div>
-          <div className="bg-white/10 rounded-xl p-3">
-            <p className="text-2xl">🎮</p>
-            <p className="text-white/80 text-xs">{lang === 'tr' ? 'Oyunlar' : 'Spelletjes'}</p>
-          </div>
-        </div>
       </div>
 
-      <p className="text-white/40 text-xs mt-6">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</p>
+      <span className="text-white/20 text-xs">v2</span>
     </div>
+  );
+}
+
+// ─── Top-3 leaderboard corner ────────────────────────────────────────────────
+
+function TopThreeCorner({ playerName, lang, onOpen }: { playerName: string; lang: Lang; onOpen: () => void }) {
+  const [rows, setRows] = useState<LeaderRow[] | null>(null);
+  useEffect(() => { fetchLeaderboard().then(setRows); }, []);
+  const top3 = (rows || []).slice(0, 3);
+
+  return (
+    <button onClick={onOpen}
+      className="absolute top-4 left-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur px-3 py-2 text-left hover:bg-white/10 transition min-w-[140px]">
+      <p className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-1">{tr('leaderboard', lang).replace(/🏆\s?/, '')}</p>
+      {rows === null ? (
+        <p className="text-white/50 text-xs">…</p>
+      ) : top3.length === 0 ? (
+        <p className="text-white/50 text-xs">—</p>
+      ) : (
+        <div className="flex flex-col gap-0.5">
+          {top3.map((r, i) => {
+            const isMe = playerName && r.name.toLowerCase() === playerName.toLowerCase();
+            const medal = i === 0 ? '1' : i === 1 ? '2' : '3';
+            return (
+              <div key={`${r.name}-${i}`} className={`flex items-center gap-2 text-xs ${isMe ? 'text-yellow-300' : 'text-white/80'}`}>
+                <span className="w-3 text-white/40 font-semibold">{medal}</span>
+                <span className="flex-1 truncate font-medium">{r.name}</span>
+                <span className="text-white/60">{r.stars}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </button>
   );
 }

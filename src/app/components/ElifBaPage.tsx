@@ -61,38 +61,39 @@ export interface ArabicLetter {
   arabic: string;
   nameNl: string;
   nameTr: string;
+  peltek?: boolean;
   forms: { isolated: string; initial: string; medial: string; final: string };
 }
 
 export const LETTERS: ArabicLetter[] = [
-  { id: 'alif',       arabic: 'ا', nameNl: 'Alif',   nameTr: 'Elif',   forms: { isolated: 'ا', initial: 'ا', medial: 'ا', final: 'ا' } },
-  { id: 'ba',         arabic: 'ب', nameNl: 'Ba',     nameTr: 'Be',     forms: { isolated: 'ب', initial: 'بـ', medial: 'ـبـ', final: 'ـب' } },
-  { id: 'ta (neutral)',arabic:'ت', nameNl: 'Ta',     nameTr: 'Te',     forms: { isolated: 'ت', initial: 'تـ', medial: 'ـتـ', final: 'ـت' } },
-  { id: 'tha',        arabic: 'ث', nameNl: 'Tha',    nameTr: 'Se',     forms: { isolated: 'ث', initial: 'ثـ', medial: 'ـثـ', final: 'ـث' } },
-  { id: 'jim',        arabic: 'ج', nameNl: 'Jim',    nameTr: 'Cim',    forms: { isolated: 'ج', initial: 'جـ', medial: 'ـجـ', final: 'ـج' } },
-  { id: 'ha early',   arabic: 'ح', nameNl: 'Ḥā',    nameTr: 'Ha',     forms: { isolated: 'ح', initial: 'حـ', medial: 'ـحـ', final: 'ـح' } },
-  { id: 'kha',        arabic: 'خ', nameNl: 'Kha',    nameTr: 'Hı',     forms: { isolated: 'خ', initial: 'خـ', medial: 'ـخـ', final: 'ـخ' } },
-  { id: 'dal',        arabic: 'د', nameNl: 'Dal',    nameTr: 'Dal',    forms: { isolated: 'د', initial: 'د', medial: 'ـد', final: 'ـد' } },
-  { id: 'dhal',       arabic: 'ذ', nameNl: 'Dhal',   nameTr: 'Zel',    forms: { isolated: 'ذ', initial: 'ذ', medial: 'ـذ', final: 'ـذ' } },
-  { id: 'ra',         arabic: 'ر', nameNl: 'Ra',     nameTr: 'Ra',     forms: { isolated: 'ر', initial: 'ر', medial: 'ـر', final: 'ـر' } },
-  { id: 'za',         arabic: 'ز', nameNl: 'Za',     nameTr: 'Ze',     forms: { isolated: 'ز', initial: 'ز', medial: 'ـز', final: 'ـز' } },
-  { id: 'sin',        arabic: 'س', nameNl: 'Sin',    nameTr: 'Sin',    forms: { isolated: 'س', initial: 'سـ', medial: 'ـسـ', final: 'ـس' } },
-  { id: 'shin',       arabic: 'ش', nameNl: 'Shin',   nameTr: 'Şın',    forms: { isolated: 'ش', initial: 'شـ', medial: 'ـشـ', final: 'ـش' } },
-  { id: 'sad',        arabic: 'ص', nameNl: 'Sad',    nameTr: 'Sad',    forms: { isolated: 'ص', initial: 'صـ', medial: 'ـصـ', final: 'ـص' } },
-  { id: 'dad',        arabic: 'ض', nameNl: 'Dad',    nameTr: 'Dad',    forms: { isolated: 'ض', initial: 'ضـ', medial: 'ـضـ', final: 'ـض' } },
-  { id: 'ta (heavy)', arabic: 'ط', nameNl: 'Ta (zwaar)', nameTr: 'Tı', forms: { isolated: 'ط', initial: 'طـ', medial: 'ـطـ', final: 'ـط' } },
-  { id: 'za heavy',   arabic: 'ظ', nameNl: 'Za (zwaar)', nameTr: 'Zı', forms: { isolated: 'ظ', initial: 'ظـ', medial: 'ـظـ', final: 'ـظ' } },
-  { id: 'ayn',        arabic: 'ع', nameNl: 'Ayn',    nameTr: 'Ayn',    forms: { isolated: 'ع', initial: 'عـ', medial: 'ـعـ', final: 'ـع' } },
-  { id: 'ghayn',      arabic: 'غ', nameNl: 'Ghayn',  nameTr: 'Ğayn',   forms: { isolated: 'غ', initial: 'غـ', medial: 'ـغـ', final: 'ـغ' } },
-  { id: 'fa',         arabic: 'ف', nameNl: 'Fa',     nameTr: 'Fe',     forms: { isolated: 'ف', initial: 'فـ', medial: 'ـفـ', final: 'ـف' } },
-  { id: 'qaf',        arabic: 'ق', nameNl: 'Qaf',    nameTr: 'Kaf',    forms: { isolated: 'ق', initial: 'قـ', medial: 'ـقـ', final: 'ـق' } },
-  { id: 'kaf',        arabic: 'ك', nameNl: 'Kaf',    nameTr: 'Kef',    forms: { isolated: 'ك', initial: 'كـ', medial: 'ـكـ', final: 'ـك' } },
-  { id: 'lam',        arabic: 'ل', nameNl: 'Lam',    nameTr: 'Lam',    forms: { isolated: 'ل', initial: 'لـ', medial: 'ـلـ', final: 'ـل' } },
-  { id: 'mim',        arabic: 'م', nameNl: 'Mim',    nameTr: 'Mim',    forms: { isolated: 'م', initial: 'مـ', medial: 'ـمـ', final: 'ـم' } },
-  { id: 'nun',        arabic: 'ن', nameNl: 'Nun',    nameTr: 'Nun',    forms: { isolated: 'ن', initial: 'نـ', medial: 'ـنـ', final: 'ـن' } },
-  { id: 'ha later',   arabic: 'ه', nameNl: 'Hā',    nameTr: 'He',     forms: { isolated: 'ه', initial: 'هـ', medial: 'ـهـ', final: 'ـه' } },
-  { id: 'waw',        arabic: 'و', nameNl: 'Waw',    nameTr: 'Vav',    forms: { isolated: 'و', initial: 'و', medial: 'ـو', final: 'ـو' } },
-  { id: 'ya',         arabic: 'ي', nameNl: 'Ya',     nameTr: 'Ye',     forms: { isolated: 'ي', initial: 'يـ', medial: 'ـيـ', final: 'ـي' } },
+  { id: 'elif',         arabic: 'ا', nameNl: 'Elif', nameTr: 'Elif', forms: { isolated: 'ا', initial: 'ا', medial: 'ا', final: 'ا' } },
+  { id: 'be',           arabic: 'ب', nameNl: 'Be',   nameTr: 'Be',   forms: { isolated: 'ب', initial: 'بـ', medial: 'ـبـ', final: 'ـب' } },
+  { id: 'te',           arabic: 'ت', nameNl: 'Te',   nameTr: 'Te',   forms: { isolated: 'ت', initial: 'تـ', medial: 'ـتـ', final: 'ـت' } },
+  { id: 'se (peltek)',  arabic: 'ث', nameNl: 'Se (peltek)', nameTr: 'Se (peltek)', peltek: true, forms: { isolated: 'ث', initial: 'ثـ', medial: 'ـثـ', final: 'ـث' } },
+  { id: 'cim',          arabic: 'ج', nameNl: 'Cim',  nameTr: 'Cim',  forms: { isolated: 'ج', initial: 'جـ', medial: 'ـجـ', final: 'ـج' } },
+  { id: 'ha',           arabic: 'ح', nameNl: 'Ha',   nameTr: 'Ha',   forms: { isolated: 'ح', initial: 'حـ', medial: 'ـحـ', final: 'ـح' } },
+  { id: 'ga',           arabic: 'خ', nameNl: 'Ga',   nameTr: 'Ga',   forms: { isolated: 'خ', initial: 'خـ', medial: 'ـخـ', final: 'ـخ' } },
+  { id: 'del',          arabic: 'د', nameNl: 'Del',  nameTr: 'Del',  forms: { isolated: 'د', initial: 'د', medial: 'ـد', final: 'ـد' } },
+  { id: 'zel (peltek)', arabic: 'ذ', nameNl: 'Zel (peltek)', nameTr: 'Zel (peltek)', peltek: true, forms: { isolated: 'ذ', initial: 'ذ', medial: 'ـذ', final: 'ـذ' } },
+  { id: 'ra',           arabic: 'ر', nameNl: 'Ra',   nameTr: 'Ra',   forms: { isolated: 'ر', initial: 'ر', medial: 'ـر', final: 'ـر' } },
+  { id: 'ze',           arabic: 'ز', nameNl: 'Ze',   nameTr: 'Ze',   forms: { isolated: 'ز', initial: 'ز', medial: 'ـز', final: 'ـز' } },
+  { id: 'sin',          arabic: 'س', nameNl: 'Sin',  nameTr: 'Sin',  forms: { isolated: 'س', initial: 'سـ', medial: 'ـسـ', final: 'ـس' } },
+  { id: 'shin',         arabic: 'ش', nameNl: 'Shin', nameTr: 'Shin', forms: { isolated: 'ش', initial: 'شـ', medial: 'ـشـ', final: 'ـش' } },
+  { id: 'sad',          arabic: 'ص', nameNl: 'Sad',  nameTr: 'Sad',  forms: { isolated: 'ص', initial: 'صـ', medial: 'ـصـ', final: 'ـص' } },
+  { id: 'dad',          arabic: 'ض', nameNl: 'Dad',  nameTr: 'Dad',  forms: { isolated: 'ض', initial: 'ضـ', medial: 'ـضـ', final: 'ـض' } },
+  { id: 'ta',           arabic: 'ط', nameNl: 'Ta',   nameTr: 'Ta',   forms: { isolated: 'ط', initial: 'طـ', medial: 'ـطـ', final: 'ـط' } },
+  { id: 'za (peltek)',  arabic: 'ظ', nameNl: 'Za (peltek)', nameTr: 'Za (peltek)', peltek: true, forms: { isolated: 'ظ', initial: 'ظـ', medial: 'ـظـ', final: 'ـظ' } },
+  { id: 'ayn',          arabic: 'ع', nameNl: 'Ayn',  nameTr: 'Ayn',  forms: { isolated: 'ع', initial: 'عـ', medial: 'ـعـ', final: 'ـع' } },
+  { id: 'gayn',         arabic: 'غ', nameNl: 'Gayn', nameTr: 'Gayn', forms: { isolated: 'غ', initial: 'غـ', medial: 'ـغـ', final: 'ـغ' } },
+  { id: 'fe',           arabic: 'ف', nameNl: 'Fe',   nameTr: 'Fe',   forms: { isolated: 'ف', initial: 'فـ', medial: 'ـفـ', final: 'ـف' } },
+  { id: 'kaf',          arabic: 'ق', nameNl: 'Kaf',  nameTr: 'Kaf',  forms: { isolated: 'ق', initial: 'قـ', medial: 'ـقـ', final: 'ـق' } },
+  { id: 'kef',          arabic: 'ك', nameNl: 'Kef',  nameTr: 'Kef',  forms: { isolated: 'ك', initial: 'كـ', medial: 'ـكـ', final: 'ـك' } },
+  { id: 'lam',          arabic: 'ل', nameNl: 'Lam',  nameTr: 'Lam',  forms: { isolated: 'ل', initial: 'لـ', medial: 'ـلـ', final: 'ـل' } },
+  { id: 'mim',          arabic: 'م', nameNl: 'Mim',  nameTr: 'Mim',  forms: { isolated: 'م', initial: 'مـ', medial: 'ـمـ', final: 'ـم' } },
+  { id: 'nun',          arabic: 'ن', nameNl: 'Nun',  nameTr: 'Nun',  forms: { isolated: 'ن', initial: 'نـ', medial: 'ـنـ', final: 'ـن' } },
+  { id: 'he',           arabic: 'ه', nameNl: 'He',   nameTr: 'He',   forms: { isolated: 'ه', initial: 'هـ', medial: 'ـهـ', final: 'ـه' } },
+  { id: 'waw',          arabic: 'و', nameNl: 'Waw',  nameTr: 'Waw',  forms: { isolated: 'و', initial: 'و', medial: 'ـو', final: 'ـو' } },
+  { id: 'ye',           arabic: 'ي', nameNl: 'Ye',   nameTr: 'Ye',   forms: { isolated: 'ي', initial: 'يـ', medial: 'ـيـ', final: 'ـي' } },
 ];
 
 const HARAKATS = [
@@ -343,8 +344,18 @@ function LearnGame({ letters, onComplete, lang }: {
 
       <div className="text-center">
         <p className="text-3xl font-bold text-white">{lang === 'tr' ? letter.nameTr : letter.nameNl}</p>
-        <p className="text-white/60 text-sm mt-1">{lang === 'nl' ? letter.nameTr : letter.nameNl}</p>
       </div>
+
+      {letter.peltek && (
+        <div className="max-w-xs bg-amber-300/90 text-amber-950 rounded-2xl px-4 py-3 text-sm shadow-md">
+          <p className="font-bold mb-1">{lang === 'tr' ? '✨ Peltek harf' : '✨ Peltek-letter'}</p>
+          <p className="text-amber-900">
+            {lang === 'tr'
+              ? 'Bu harfin telaffuzu özeldir: dilinizin ucunu ön dişlerinizin arasına koyup üfleyerek çıkarılır.'
+              : 'Deze letter heeft een speciale uitspraak: leg de punt van je tong tussen je voortanden en blaas de klank uit.'}
+          </p>
+        </div>
+      )}
 
       <p className="text-white/80 text-sm">{tr('tapToHear', lang)}</p>
 

@@ -867,6 +867,225 @@ function HarakatQuizGame({ letters, onComplete }: {
 
 const BALLOON_COLORS = ['#f43f5e', '#8b5cf6', '#06b6d4', '#f59e0b', '#10b981'];
 
+// Ambient scene props (clouds, stars, flowers) sampled once per session so
+// they don't re-shuffle on every re-render. Balloons stay interactive.
+function useSkyScene() {
+  const rand = (a: number, b: number) => a + Math.random() * (b - a);
+  // Spread the six clouds across the sky rather than sampling their left
+  // position freely — pure random tended to clump 3–4 clouds on top of each
+  // other. Slot them evenly (~16% apart) with a small jitter, and stagger
+  // both the vertical band and the animation phase so they don't drift as a
+  // wall.
+  const cloudsRef = useRef(
+    Array.from({ length: 6 }).map((_, i) => ({
+      id: i,
+      top: 4 + (i % 3) * 9 + rand(-2, 2),
+      left: -8 + i * 17 + rand(-4, 4),
+      size: Math.round(i % 2 === 0 ? rand(160, 210) : rand(100, 140)),
+      dur: rand(75, 110),
+      delay: -(i * 12) - rand(0, 8),
+      anim: i % 2 === 0 ? 'ebCloudDrift' : 'ebCloudDriftR',
+    }))
+  );
+  const starsRef = useRef(
+    Array.from({ length: 40 }).map((_, i) => ({
+      id: i,
+      left: rand(0, 100),
+      top: rand(0, 62),
+      size: Math.round(rand(1.5, 3.5)),
+      dur: rand(2, 4.5),
+      delay: -rand(0, 4),
+    }))
+  );
+  const flowersRef = useRef(
+    Array.from({ length: 12 }).map((_, i) => ({
+      id: i,
+      left: rand(2, 96),
+      bottom: rand(4, 26),
+      size: Math.round(rand(6, 11)),
+      color: ['#fbbf24', '#fb7185', '#fef3c7'][i % 3],
+    }))
+  );
+  return { clouds: cloudsRef.current, stars: starsRef.current, flowers: flowersRef.current };
+}
+
+// Shared scene layers used by both BalloonPopGame and HarakatBalloonPopGame.
+// Day and night are stacked and crossfaded via opacity so the transition is
+// a smooth ~6 s fade rather than an instant swap.
+const SKY_FADE_MS = 6000;
+
+function SkyScene({ night }: { night: boolean }) {
+  const { clouds, stars, flowers } = useSkyScene();
+  const fade = { transition: `opacity ${SKY_FADE_MS}ms ease-in-out` } as const;
+  return (
+    <>
+      {/* Day sky (base) */}
+      <div className="absolute inset-0" style={{
+        background: 'linear-gradient(to bottom, #6ec3e8 0%, #a9dcef 38%, #fdf3df 100%)',
+      }} />
+      {/* Night sky (crossfade over day) */}
+      <div className="absolute inset-0" style={{
+        background: 'linear-gradient(to bottom, #0a1730 0%, #16305a 45%, #2b4a74 100%)',
+        opacity: night ? 1 : 0, ...fade,
+      }} />
+
+      {/* Stars — always rendered, only visible at night */}
+      <div className="absolute inset-0 pointer-events-none" style={{ opacity: night ? 1 : 0, ...fade }}>
+        {stars.map(s => (
+          <div key={s.id} style={{
+            position: 'absolute', left: `${s.left}%`, top: `${s.top}%`,
+            width: s.size, height: s.size, background: '#fff', borderRadius: '50%',
+            animation: `ebTwinkle ${s.dur}s ease-in-out infinite`,
+            animationDelay: `${s.delay}s`,
+          }} />
+        ))}
+      </div>
+
+      {/* Sun (fades out at night) and Moon (fades in) share the same corner. */}
+      <div className="absolute pointer-events-none" style={{ right: '6%', top: '6%', width: 170, height: 170 }}>
+        {/* Sun */}
+        <div style={{ position: 'absolute', inset: 0, opacity: night ? 0 : 1, ...fade }}>
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', animation: 'ebSunSpin 70s linear infinite', opacity: 0.55 }}>
+            <svg viewBox="0 0 170 170" width={170} height={170}>
+              <g stroke="#fbbf24" strokeWidth={6} strokeLinecap="round" opacity={0.7}>
+                <line x1="85" y1="2" x2="85" y2="22" />
+                <line x1="85" y1="148" x2="85" y2="168" />
+                <line x1="2" y1="85" x2="22" y2="85" />
+                <line x1="148" y1="85" x2="168" y2="85" />
+                <line x1="27" y1="27" x2="41" y2="41" />
+                <line x1="129" y1="129" x2="143" y2="143" />
+                <line x1="27" y1="143" x2="41" y2="129" />
+                <line x1="129" y1="41" x2="143" y2="27" />
+              </g>
+            </svg>
+          </div>
+          <div style={{
+            position: 'absolute', inset: 22, borderRadius: '50%',
+            background: 'radial-gradient(circle at 38% 32%, #fff6d6 0%, #ffd873 55%, #ffb703 100%)',
+            boxShadow: '0 0 60px 18px rgba(255,200,60,0.45)',
+          }} />
+        </div>
+        {/* Moon */}
+        <div style={{ position: 'absolute', inset: 0, opacity: night ? 1 : 0, ...fade }}>
+          <div style={{
+            position: 'absolute', inset: 22, borderRadius: '50%',
+            background: 'radial-gradient(circle at 38% 32%, #eef2fb 0%, #cfd8ea 55%, #b7c3dc 100%)',
+            boxShadow: '0 0 50px 12px rgba(180,195,230,0.35)',
+          }} />
+          <div style={{ position: 'absolute', top: 34, left: 26, width: 26, height: 26, borderRadius: '50%', background: '#b7c3dc', opacity: 0.6 }} />
+          <div style={{ position: 'absolute', top: 70, left: 78, width: 16, height: 16, borderRadius: '50%', background: '#b7c3dc', opacity: 0.5 }} />
+        </div>
+      </div>
+
+      {/* Clouds — dim smoothly at night */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {clouds.map(c => (
+          <div key={c.id} style={{
+            position: 'absolute', top: `${c.top}%`, left: `${c.left}%`, width: c.size,
+            opacity: night ? 0.18 : 0.95, ...fade,
+            animation: `${c.anim} ${c.dur}s linear infinite`,
+            animationDelay: `${c.delay}s`,
+          }}>
+            <svg viewBox="0 0 200 90" width={c.size} style={{ display: 'block' }}>
+              <ellipse cx="55" cy="55" rx="50" ry="32" fill="#fff" />
+              <ellipse cx="105" cy="40" rx="60" ry="38" fill="#fff" />
+              <ellipse cx="155" cy="58" rx="42" ry="27" fill="#fff" />
+            </svg>
+          </div>
+        ))}
+      </div>
+
+      {/* Birds — always animate, but fade out when it becomes night. The
+          negative animation-delay drops the bird into the middle of its
+          crossing so it appears already in flight instead of sitting frozen
+          on the left before the delay expires. animation-fill-mode:both
+          also holds the 0% keyframe (off-screen right, opacity 0) at rest. */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ opacity: night ? 0 : 1, ...fade }}>
+        <div style={{
+          position: 'absolute', top: '22%', left: 0, opacity: 0,
+          animation: 'ebBirdCross 70s ease-in-out infinite',
+          animationDelay: '-8s', animationFillMode: 'both',
+        }}>
+          <svg viewBox="0 0 60 24" width={46}>
+            <path d="M2 14 Q15 2 30 14 Q45 2 58 14" fill="none" stroke="#274156" strokeWidth={3} strokeLinecap="round" />
+          </svg>
+        </div>
+        <div style={{
+          position: 'absolute', top: '30%', left: 0, opacity: 0,
+          animation: 'ebBirdCross 70s ease-in-out infinite',
+          animationDelay: '-42s', animationFillMode: 'both',
+        }}>
+          <svg viewBox="0 0 60 24" width={32}>
+            <path d="M2 14 Q15 2 30 14 Q45 2 58 14" fill="none" stroke="#274156" strokeWidth={3} strokeLinecap="round" />
+          </svg>
+        </div>
+      </div>
+
+      {/* Hills — crossfade day and night colour variants. */}
+      <div className="absolute left-0 right-0 bottom-0" style={{ height: '22%' }}>
+        <svg viewBox="0 0 1600 220" preserveAspectRatio="none" width="100%" height="100%" style={{ display: 'block', position: 'absolute', inset: 0 }}>
+          <path d="M0,120 Q300,40 620,110 T1600,90 L1600,220 L0,220 Z" fill="#0e9f6e" />
+          <path d="M0,160 Q260,90 560,150 T1200,130 T1600,150 L1600,220 L0,220 Z" fill="#059669" />
+        </svg>
+        <svg viewBox="0 0 1600 220" preserveAspectRatio="none" width="100%" height="100%" style={{ display: 'block', position: 'absolute', inset: 0, opacity: night ? 1 : 0, ...fade }}>
+          <path d="M0,120 Q300,40 620,110 T1600,90 L1600,220 L0,220 Z" fill="#0f3d33" />
+          <path d="M0,160 Q260,90 560,150 T1200,130 T1600,150 L1600,220 L0,220 Z" fill="#145c46" />
+        </svg>
+        {flowers.map(f => (
+          <div key={f.id} style={{
+            position: 'absolute', left: `${f.left}%`, bottom: `${f.bottom}px`,
+            width: f.size, height: f.size, borderRadius: '50%', background: f.color,
+            opacity: night ? 0.55 : 1, ...fade,
+          }} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+// Drives `night` on/off automatically with a slow cycle so the scene breathes
+// through day → night → day on its own. `dayMs` and `nightMs` are how long
+// each phase holds steady before the CSS crossfade takes over.
+function useDayNightCycle(dayMs = 45000, nightMs = 45000) {
+  const [night, setNight] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setNight(n => !n), night ? nightMs : dayMs);
+    return () => clearTimeout(t);
+  }, [night, dayMs, nightMs]);
+  return night;
+}
+
+// Painted balloon body used inside both balloon games.
+function BalloonSVG({ color, size = 112 }: { color: string; size?: number }) {
+  return (
+    <svg viewBox="0 0 100 150" width={size} style={{ display: 'block', filter: 'drop-shadow(0 10px 14px rgba(0,0,0,0.25))' }}>
+      <path d="M50 138 L40 118 L60 118 Z" fill={color} />
+      <path d="M50 118 C20 118 8 92 8 62 C8 28 26 6 50 6 C74 6 92 28 92 62 C92 92 80 118 50 118 Z" fill={color} />
+      <ellipse cx="34" cy="38" rx="12" ry="18" fill="#ffffff" opacity={0.35} />
+      <path d="M50 138 C46 150 54 158 50 168" fill="none" stroke="#7a5230" strokeWidth={2} opacity={0.6} />
+    </svg>
+  );
+}
+
+// Keyframes for the sky scene. Injected once so both balloon games share them.
+const SKY_KEYFRAMES = `
+  @keyframes ebCloudDrift  { from { transform: translateX(0); } to { transform: translateX(-140%); } }
+  @keyframes ebCloudDriftR { from { transform: translateX(0); } to { transform: translateX( 140%); } }
+  @keyframes ebSunSpin     { from { transform: rotate(0deg);  } to { transform: rotate(360deg); } }
+  @keyframes ebBirdCross {
+    0%  { transform: translate(115vw, 0) scaleX(-1); opacity: 0; }
+    2%  { opacity: 1; }
+    22% { transform: translate(-25vw, -6vh) scaleX(-1); opacity: 1; }
+    24% { opacity: 0; }
+    100%{ transform: translate(-25vw, -6vh) scaleX(-1); opacity: 0; }
+  }
+  @keyframes ebTwinkle { 0%,100% { opacity: .25; } 50% { opacity: .9; } }
+  @keyframes ebBalloonSway {
+    0%,100% { transform: translateX(-50%) rotate(-2deg); }
+    50%     { transform: translateX(-50%) rotate( 2deg); }
+  }
+`;
+
 function BalloonPopGame({ letters, onComplete }: {
   letters: ArabicLetter[]; onComplete: (stars: number) => void;
 }) {
@@ -877,6 +1096,7 @@ function BalloonPopGame({ letters, onComplete }: {
   const [lives, setLives] = useState(3);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [frozen, setFrozen] = useState(false);
+  const night = useDayNightCycle();
   const frameRef = useRef<number>(0);
   const scoreRef = useRef(0);
   const livesRef = useRef(3);
@@ -982,6 +1202,7 @@ function BalloonPopGame({ letters, onComplete }: {
 
   return (
     <div className="flex flex-col items-center gap-3 p-4 h-full">
+      <style>{SKY_KEYFRAMES}</style>
       <div className="flex justify-between w-full items-center">
         <Hearts lives={lives} />
         <span className="text-white font-bold text-lg">🎈 {score}/{queue.length}</span>
@@ -994,17 +1215,13 @@ function BalloonPopGame({ letters, onComplete }: {
 
       <p className="text-white text-lg">Pop de ballon met: <strong>{target.nameNl}</strong></p>
 
-      <div className="relative w-full flex-1 min-h-[70vh] rounded-3xl overflow-hidden bg-gradient-to-b from-sky-300 via-sky-200 to-sky-100">
-        {/* Sky decoration: sun + clouds */}
-        <div className="absolute top-4 right-6 text-6xl select-none pointer-events-none">☀️</div>
-        <div className="absolute top-10 left-8 text-4xl opacity-80 select-none pointer-events-none">☁️</div>
-        <div className="absolute top-24 right-24 text-3xl opacity-70 select-none pointer-events-none">☁️</div>
-        <div className="absolute top-40 left-1/3 text-4xl opacity-60 select-none pointer-events-none">☁️</div>
-        {/* Grass strip at the very bottom the balloons rise from */}
-        <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-emerald-500 to-emerald-400" />
+      <div className="relative w-full flex-1 min-h-[70vh] rounded-3xl overflow-hidden">
+        <SkyScene night={night} />
+
         {balloons.filter(b => !b.popped).map(b => {
           const y = getY(b);
           if (y > 105 || y < -15) return null;
+          const size = 128;
           return (
           <button
             key={b.id}
@@ -1014,17 +1231,24 @@ function BalloonPopGame({ letters, onComplete }: {
               left: `${b.x}%`,
               bottom: `${y}%`,
               transform: 'translateX(-50%)',
+              animation: `ebBalloonSway ${3 + (b.x % 3)}s ease-in-out infinite`,
+              animationDelay: `${(b.x % 5) * 0.3}s`,
             }}
           >
-            <div className="relative flex flex-col items-center">
-              <div className="w-28 h-32 rounded-full flex items-center justify-center shadow-xl relative overflow-hidden"
-                style={{ background: b.color }}>
-                <div className="absolute top-3 left-5 w-6 h-9 bg-white/30 rounded-full rotate-[-20deg]" />
-                <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 58, color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.35)' }}>
+            <div className="relative" style={{ width: size }}>
+              <BalloonSVG color={b.color} size={size} />
+              <div style={{
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '82%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span lang="ar" dir="rtl" style={{
+                  fontFamily: ARABIC_FONT, fontSize: Math.round(size * 0.5),
+                  color: 'rgba(30,20,10,0.78)', lineHeight: 1,
+                  textShadow: '0 1px 2px rgba(255,255,255,0.4)',
+                }}>
                   {b.letter.arabic}
                 </span>
               </div>
-              <div className="w-0.5 h-8 bg-slate-600/50" />
             </div>
           </button>
           );

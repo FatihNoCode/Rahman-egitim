@@ -1633,6 +1633,163 @@ function FallingLettersGame({ letters, onComplete }: {
 
 // ─── Game: Whack-a-Mole ──────────────────────────────────────────────────────
 
+// Hand-placed hole slots so the six moles read as a scattered meadow rather
+// than a symmetric grid, and no two ever clump. Percentages of the play area.
+const MOLE_HOLE_POS: { left: number; top: number }[] = [
+  { left: 16, top: 58 },
+  { left: 38, top: 40 },
+  { left: 62, top: 56 },
+  { left: 84, top: 38 },
+  { left: 27, top: 82 },
+  { left: 72, top: 82 },
+];
+
+const MOLE_FLOWER_COLORS = ['#f87171', '#fbbf24', '#a78bfa', '#f472b6'];
+
+const MOLE_KEYFRAMES = `
+  @keyframes moleSunHalo { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes moleFlowerSway { 0%,100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+  @keyframes moleHop {
+    0%   { transform: translateX(-50%) translateY(6px)  scale(0.97); }
+    50%  { transform: translateX(-50%) translateY(-3px) scale(1.02); }
+    100% { transform: translateX(-50%) translateY(0)    scale(1); }
+  }
+  @keyframes moleWhackShake {
+    0%,100% { transform: translateX(-50%) translateY(0)  rotate(0deg); }
+    20%     { transform: translateX(-50%) translateY(8px) rotate(-6deg); }
+    40%     { transform: translateX(-50%) translateY(3px) rotate(5deg); }
+    60%     { transform: translateX(-50%) translateY(6px) rotate(-3deg); }
+    80%     { transform: translateX(-50%) translateY(4px) rotate(2deg); }
+  }
+  @keyframes moleWrongShake {
+    0%,100% { transform: translateX(-50%); }
+    25%     { transform: translateX(calc(-50% - 5px)); }
+    75%     { transform: translateX(calc(-50% + 5px)); }
+  }
+  @keyframes moleStarPop {
+    0%   { opacity: 0; transform: translateY(0)   scale(0.4); }
+    30%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-38px) scale(1.1); }
+  }
+`;
+
+// Illustrated mole with the Arabic letter drawn on its belly badge. Shows
+// dot eyes normally and X-eyes + stars once whacked.
+function Mole({ letter, state }: { letter: string; state: 'idle' | 'whacked' | 'wrong' }) {
+  const faceColor = state === 'wrong' ? '#dc2626' : '#8a5a3b';
+  const anim = state === 'whacked' ? 'moleWhackShake 0.5s ease-out'
+    : state === 'wrong' ? 'moleWrongShake 0.4s ease-in-out'
+    : 'moleHop 0.4s ease-out';
+  return (
+    <div style={{
+      position: 'absolute', left: '50%', bottom: '18%', width: '82%',
+      transformOrigin: 'bottom center',
+      transform: 'translateX(-50%)',
+      animation: anim,
+    }}>
+      <svg viewBox="0 0 180 190" width="100%" style={{ display: 'block' }}>
+        {/* body */}
+        <ellipse cx="90" cy="150" rx="66" ry="55" fill="#7d5638" />
+        {/* ears */}
+        <ellipse cx="55" cy="95" rx="20" ry="24" fill="#7d5638" />
+        <ellipse cx="125" cy="95" rx="20" ry="24" fill="#7d5638" />
+        <ellipse cx="55" cy="95" rx="10" ry="13" fill="#c78968" />
+        <ellipse cx="125" cy="95" rx="10" ry="13" fill="#c78968" />
+        {/* face */}
+        <circle cx="90" cy="128" r="46" fill={faceColor} />
+        <circle cx="90" cy="132" r="34" fill="#fdf5e6" />
+        {state !== 'whacked' ? (
+          <>
+            <circle cx="70" cy="90" r="8" fill="#1c1917" />
+            <circle cx="110" cy="90" r="8" fill="#1c1917" />
+            <circle cx="72" cy="88" r="2.5" fill="#fff" />
+            <circle cx="112" cy="88" r="2.5" fill="#fff" />
+          </>
+        ) : (
+          <>
+            <path d="M62 82 L78 98 M78 82 L62 98" stroke="#1c1917" strokeWidth={4} strokeLinecap="round" />
+            <path d="M102 82 L118 98 M118 82 L102 98" stroke="#1c1917" strokeWidth={4} strokeLinecap="round" />
+          </>
+        )}
+        {/* blush + snout */}
+        <ellipse cx="60" cy="114" rx="9" ry="6" fill="rgba(244,114,182,0.55)" />
+        <ellipse cx="120" cy="114" rx="9" ry="6" fill="rgba(244,114,182,0.55)" />
+        <ellipse cx="90" cy="110" rx="7" ry="5" fill="#4c2a17" />
+      </svg>
+      {/* Arabic letter on the belly badge. Positioned to the badge's SVG
+          box (viewBox 180×190, badge centered at 90×132, radius 34), so
+          any glyph — even ones with tails like ب / ج — sits visually
+          centred inside the cream circle instead of drifting up. */}
+      <div style={{
+        position: 'absolute',
+        left: '31%', right: '31%', top: '52%', bottom: '13%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        pointerEvents: 'none',
+      }}>
+        <span lang="ar" dir="rtl" style={{
+          fontFamily: ARABIC_FONT, fontSize: 44, lineHeight: 1,
+          color: '#2f3d2c', fontWeight: 700,
+        }}>{letter}</span>
+      </div>
+      {state === 'whacked' && (
+        <>
+          <div style={{ position: 'absolute', left: '6%', top: 0, fontSize: 22, animation: 'moleStarPop 0.7s ease-out' }}>✨</div>
+          <div style={{ position: 'absolute', right: '4%', top: '8%', fontSize: 18, animation: 'moleStarPop 0.7s ease-out 0.1s' }}>✨</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Painted meadow that stays behind every mole. Sky, halo sun, fence, hay
+// bales, ground curve, wildflowers with a gentle sway.
+function MoleMeadow({ flowers }: { flowers: { cx: number; cy: number; color: string; dur: number }[] }) {
+  return (
+    <svg viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+      <defs>
+        <linearGradient id="moleSky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#c9e9f3" />
+          <stop offset="100%" stopColor="#e6f3d8" />
+        </linearGradient>
+        <linearGradient id="moleGround" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#7bc47f" />
+          <stop offset="100%" stopColor="#3b8b5a" />
+        </linearGradient>
+        <radialGradient id="moleSun" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#ffe7a0" />
+          <stop offset="100%" stopColor="#ffbf47" />
+        </radialGradient>
+      </defs>
+      <rect width="1600" height="1000" fill="url(#moleSky)" />
+      {/* Sun halo (slow spin) */}
+      <g style={{ transformOrigin: '1360px 160px', animation: 'moleSunHalo 60s linear infinite' }}>
+        <circle cx="1360" cy="160" r="120" fill="rgba(255,205,120,0.35)" />
+      </g>
+      <circle cx="1360" cy="160" r="70" fill="url(#moleSun)" />
+      {/* Wooden fence (far left) */}
+      <g opacity={0.55}>
+        <rect x="60"  y="430" width="14" height="90"  rx="4" fill="#8b6b4a" />
+        <rect x="160" y="420" width="14" height="100" rx="4" fill="#8b6b4a" />
+        <rect x="260" y="435" width="14" height="85"  rx="4" fill="#8b6b4a" />
+        <rect x="50"  y="450" width="230" height="12" rx="4" fill="#9b7a58" />
+        <rect x="50"  y="480" width="230" height="12" rx="4" fill="#9b7a58" />
+      </g>
+      {/* Hay bales (far right) */}
+      <ellipse cx="1250" cy="500" rx="46" ry="26" fill="#c4b08a" />
+      <ellipse cx="1310" cy="512" rx="30" ry="18" fill="#b39d76" />
+      {/* Meadow curve */}
+      <path d="M0 480 Q 400 430 800 470 T 1600 460 L1600 1000 L0 1000 Z" fill="url(#moleGround)" />
+      {/* Wildflowers */}
+      {flowers.map((f, i) => (
+        <g key={i} style={{ transformOrigin: `${f.cx}px ${f.cy}px`, animation: `moleFlowerSway ${f.dur}s ease-in-out infinite` }}>
+          <rect x={f.cx} y={f.cy} width={4} height={26} fill="#3f8f4f" />
+          <circle cx={f.cx + 2} cy={f.cy} r={9} fill={f.color} />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 function WhackAMoleGame({ letters, onComplete }: {
   letters: ArabicLetter[]; onComplete: (stars: number) => void;
 }) {
@@ -1641,22 +1798,21 @@ function WhackAMoleGame({ letters, onComplete }: {
   const [lives, setLives] = useState(3);
   const [round, setRound] = useState(0);
   const maxRounds = 10;
-  // Random hole positions inside the play area, scattered rather than a
-  // clean 3-column grid. Chosen once per mount so they stay stable.
   const HOLE_COUNT = 6;
-  const holePositions = useRef<{ left: number; top: number }[]>(
-    (() => {
-      // Sample non-overlapping positions in a 100×100% area.
-      const pts: { left: number; top: number }[] = [];
-      let tries = 0;
-      while (pts.length < HOLE_COUNT && tries < 500) {
-        tries++;
-        const p = { left: 10 + Math.random() * 78, top: 10 + Math.random() * 74 };
-        if (pts.every(q => Math.hypot(p.left - q.left, p.top - q.top) > 26)) pts.push(p);
-      }
-      return pts;
-    })()
+  const holePositions = useRef<{ left: number; top: number }[]>(MOLE_HOLE_POS);
+  // Stable, per-mount flower placements over the meadow curve.
+  const flowersRef = useRef(
+    Array.from({ length: 9 }).map((_, i) => ({
+      cx: 60 + i * 175 + (i % 2 === 0 ? 0 : 60),
+      cy: 500 + (i % 3) * 90,
+      color: MOLE_FLOWER_COLORS[i % MOLE_FLOWER_COLORS.length],
+      dur: 2.4 + (i % 3) * 0.6,
+    }))
   );
+  // Mallet cursor: only tracks a fine pointer (mouse), silent on touch.
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [mallet, setMallet] = useState<{ x: number; y: number; visible: boolean; rot: number }>({ x: 0, y: 0, visible: false, rot: -20 });
+  const swingTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const prevTarget = useRef<ArabicLetter | null>(null);
   const [targetLetter, setTargetLetter] = useState<ArabicLetter>(() => {
@@ -1726,8 +1882,23 @@ function WhackAMoleGame({ letters, onComplete }: {
     }
   };
 
+  const onStageMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Fine-pointer only: don't chase the finger on touch devices.
+    if (!window.matchMedia?.('(pointer: fine)').matches) return;
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMallet(m => ({ x: e.clientX - rect.left, y: e.clientY - rect.top, visible: true, rot: m.rot }));
+  };
+  const onStageLeave = () => setMallet(m => ({ ...m, visible: false }));
+  const swingMallet = () => {
+    setMallet(m => ({ ...m, rot: 15 }));
+    clearTimeout(swingTimer.current);
+    swingTimer.current = setTimeout(() => setMallet(m => ({ ...m, rot: -20 })), 140);
+  };
+
   return (
     <div className="flex flex-col items-center gap-4 p-4 h-full">
+      <style>{MOLE_KEYFRAMES}</style>
       <div className="flex justify-between w-full items-center">
         <Hearts lives={lives} />
         <span className="text-white font-bold">Ronde {round + 1}/{maxRounds}</span>
@@ -1739,74 +1910,67 @@ function WhackAMoleGame({ letters, onComplete }: {
         🔊 Sla de letter die je hoort
       </button>
 
-      {/* Grassy field with scattered holes */}
-      <div className="relative w-full flex-1 min-h-[520px] rounded-3xl overflow-hidden"
-        style={{
-          background:
-            'radial-gradient(circle at 20% 30%, #86efac 0%, transparent 40%),' +
-            'radial-gradient(circle at 80% 60%, #a7f3d0 0%, transparent 45%),' +
-            'linear-gradient(to bottom, #4ade80, #16a34a)',
-        }}>
-        {/* Scattered grass tufts for texture */}
-        <div className="absolute top-6 left-[25%] text-2xl opacity-70 select-none pointer-events-none">🌱</div>
-        <div className="absolute bottom-8 left-[8%] text-2xl opacity-70 select-none pointer-events-none">🌿</div>
-        <div className="absolute top-[40%] right-[6%] text-2xl opacity-70 select-none pointer-events-none">🌱</div>
-        <div className="absolute bottom-[20%] right-[30%] text-2xl opacity-70 select-none pointer-events-none">🌿</div>
-        <div className="absolute top-[70%] left-[45%] text-2xl opacity-70 select-none pointer-events-none">🌱</div>
+      <div
+        ref={stageRef}
+        onMouseMove={onStageMove}
+        onMouseLeave={onStageLeave}
+        className="relative w-full flex-1 min-h-[520px] rounded-3xl overflow-hidden shadow-2xl"
+        style={{ cursor: mallet.visible ? 'none' : 'default' }}
+      >
+        <MoleMeadow flowers={flowersRef.current} />
 
         {holes.map((letter, i) => {
           const pos = holePositions.current[i];
           if (!pos) return null;
-          const isWhacked = whacked === i;
-          const isWrong = wrongHit === i;
+          const state: 'idle' | 'whacked' | 'wrong' = whacked === i ? 'whacked' : wrongHit === i ? 'wrong' : 'idle';
           return (
             <button
               key={i}
-              onClick={() => whack(i)}
+              onClick={() => { swingMallet(); whack(i); }}
               className="absolute select-none"
               style={{
                 left: `${pos.left}%`,
                 top: `${pos.top}%`,
                 transform: 'translate(-50%, -50%)',
-                width: 120,
-                height: 120,
+                width: '20%',
+                minWidth: 150,
+                aspectRatio: '1 / 1',
+                background: 'transparent',
+                border: 0,
+                cursor: mallet.visible ? 'none' : 'pointer',
               }}
             >
-              {/* Hole (dirt oval) */}
-              <div className="absolute inset-x-0 bottom-0 h-10 rounded-[50%]"
-                style={{
-                  background: 'radial-gradient(ellipse at center, #1c1917 0%, #292524 60%, #57534e 100%)',
-                  boxShadow: 'inset 0 4px 10px rgba(0,0,0,0.7), 0 4px 4px rgba(0,0,0,0.15)',
-                }} />
-              {/* Grass rim around hole */}
-              <div className="absolute inset-x-[-6px] bottom-8 flex justify-between px-2 text-emerald-800 select-none pointer-events-none text-lg">
-                <span>🌱</span><span>🌿</span><span>🌱</span>
-              </div>
-              {/* Mole with letter */}
-              <div className={`absolute left-1/2 bottom-3 -translate-x-1/2 transition-all duration-200 ${
-                isWhacked ? 'translate-y-4 scale-75 opacity-60' : isWrong ? 'animate-pulse' : 'animate-[mole-pop_0.3s_ease-out]'
-              }`}>
-                <div className="relative w-24 h-24 rounded-full flex items-center justify-center shadow-xl"
-                  style={{
-                    background: isWhacked ? '#4ade80' : isWrong ? '#f87171' : 'radial-gradient(circle at 30% 30%, #a16207, #78350f)',
-                    border: '3px solid #451a03',
-                  }}>
-                  <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 60, color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.6)' }}>
-                    {letter.arabic}
-                  </span>
-                </div>
-              </div>
+              {/* Dirt hole under each mole */}
+              <svg viewBox="0 0 150 90" style={{
+                position: 'absolute', left: '50%', bottom: '4%',
+                width: '112%', transform: 'translateX(-50%)',
+                filter: 'drop-shadow(0 6px 6px rgba(30,20,10,0.35))',
+              }}>
+                <defs>
+                  <radialGradient id={`mole-dirt-${i}`} cx="50%" cy="35%" r="70%">
+                    <stop offset="0%" stopColor="#5b3d24" />
+                    <stop offset="100%" stopColor="#3a2716" />
+                  </radialGradient>
+                </defs>
+                <ellipse cx="75" cy="50" rx="72" ry="34" fill={`url(#mole-dirt-${i})`} />
+                <ellipse cx="75" cy="40" rx="60" ry="22" fill="#26170d" />
+              </svg>
+              <Mole letter={letter.arabic} state={state} />
             </button>
           );
         })}
-      </div>
 
-      <style>{`
-        @keyframes mole-pop {
-          from { transform: translate(-50%, 30px) scale(0.5); opacity: 0; }
-          to { transform: translate(-50%, 0) scale(1); opacity: 1; }
-        }
-      `}</style>
+        {/* Mallet cursor (desktop only) */}
+        {mallet.visible && (
+          <div style={{
+            position: 'absolute', left: mallet.x, top: mallet.y,
+            width: 56, height: 56, pointerEvents: 'none',
+            transform: `translate(-30%,-70%) rotate(${mallet.rot}deg)`,
+            transition: 'transform 0.12s ease-out',
+            fontSize: 44, zIndex: 5, textShadow: '0 3px 6px rgba(0,0,0,0.35)',
+          }}>🔨</div>
+        )}
+      </div>
     </div>
   );
 }

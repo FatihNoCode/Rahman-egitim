@@ -41,6 +41,47 @@ app.use(
   }),
 );
 
+// Accounts awaiting admin approval hold a perfectly valid access token — the
+// 403 on /signin is a courtesy to the password flow, not a barrier, and it
+// never applied to Google SSO at all: an OAuth user is auto-provisioned as
+// `pending` but lands here holding a token Supabase minted directly, so every
+// per-route `verifyUser()` check would wave them through with their
+// placeholder `parent` role. Enforce the gate once, centrally, for every
+// authenticated route.
+//
+// Paths below are exempt because they must work *before* approval: /session is
+// what tells the UI to render the "awaiting approval" screen, and the invite
+// flow is how an invited user establishes their account in the first place.
+const PENDING_EXEMPT_PATHS = [
+  '/make-server-6679cacd/session',
+  '/make-server-6679cacd/signin',
+  '/make-server-6679cacd/signup',
+  '/make-server-6679cacd/health',
+  '/make-server-6679cacd/invite/',
+];
+
+app.use('/*', async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  if (PENDING_EXEMPT_PATHS.some((p) => path.startsWith(p))) return next();
+
+  // No token: the route is either public or does its own auth check. Either
+  // way there's no account status to enforce here.
+  const token = c.req.header('Authorization')?.split(' ')[1];
+  if (!token) return next();
+
+  const { user } = await verifyUser(c.req.raw);
+  // An invalid token is the route's own problem to report — don't turn a 401
+  // into a confusing 403 here.
+  if (!user) return next();
+
+  const userData = await getUserData(user.id);
+  // Accounts predating the approval flow have no `status` and are approved.
+  if (userData?.status === 'pending') {
+    return c.json({ error: 'ACCOUNT_PENDING' }, 403);
+  }
+  return next();
+});
+
 // Helper to verify user authentication
 async function verifyUser(request: Request) {
   const supabase = createClient(
@@ -87,6 +128,57 @@ function validatePassword(password: unknown): string | null {
     return 'Password must contain at least one letter and one number';
   }
   return null;
+}
+
+// Every email we send is HTML built by string interpolation, and much of what
+// goes into it (names, phone numbers, free-text remarks) is user-supplied. Run
+// it through here so a value like `<img onerror=...>` renders as text in the
+// recipient's mail client instead of as markup.
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Fixed-window rate limiter backed by KV. An in-memory counter would be
+// cheaper but the function runs across several isolates, so each one would
+// hold its own fraction of the budget and the real limit would be some
+// unknowable multiple. The KV round-trip is worth it on the handful of
+// unauthenticated endpoints that are cheap to abuse. Read-modify-write is
+// racy under concurrency, which can let a few extra requests through per
+// window — acceptable, since the goal is to make brute force impractical
+// rather than to meter exactly.
+async function rateLimited(
+  bucket: string,
+  id: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<boolean> {
+  try {
+    const key = `ratelimit:${bucket}:${id.toLowerCase().slice(0, 120)}`;
+    const now = Date.now();
+    const entry = await kv.get(key);
+    if (!entry || typeof entry.resetAt !== 'number' || entry.resetAt < now) {
+      await kv.set(key, { count: 1, resetAt: now + windowSeconds * 1000 });
+      return false;
+    }
+    if (entry.count >= limit) return true;
+    await kv.set(key, { count: entry.count + 1, resetAt: entry.resetAt });
+    return false;
+  } catch (err) {
+    // Never let a KV hiccup lock users out of signing in.
+    console.log('Rate limit check failed (allowing request):', err);
+    return false;
+  }
+}
+
+function clientIp(c: any): string {
+  const fwd = c.req.header('X-Forwarded-For');
+  if (fwd) return fwd.split(',')[0].trim();
+  return c.req.header('CF-Connecting-IP') || 'unknown';
 }
 
 // Creates an in-app notification for a user (shown in their UserMenu bell).
@@ -314,13 +406,13 @@ function buildEventCard(opts: {
   const font = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif`;
   const rowsHtml = opts.rows.map((r, i) => `
         <div style="${i > 0 ? 'margin-top:16px;' : ''}">
-          <div style="color:#5d566c;line-height:24px;font-size:14px;font-family:${font}">${r.label}</div>
-          <div style="color:#141217;line-height:24px;font-size:14px;font-family:${font}">${r.value}</div>
+          <div style="color:#5d566c;line-height:24px;font-size:14px;font-family:${font}">${escapeHtml(r.label)}</div>
+          <div style="color:#141217;line-height:24px;font-size:14px;font-family:${font}">${escapeHtml(r.value)}</div>
         </div>`).join('');
   return `
       <div style="border:1px solid #dcd8e4;border-radius:8px;background:#ffffff;max-width:420px;margin:20px 0;font-family:${font}">
         <div style="padding:16px 20px">
-          <div style="font-size:16px;font-weight:bold;line-height:24px;color:#141217;font-family:${font}">${opts.heading}</div>
+          <div style="font-size:16px;font-weight:bold;line-height:24px;color:#141217;font-family:${font}">${escapeHtml(opts.heading)}</div>
         </div>
         <div style="padding:0 20px 16px">${rowsHtml}
         </div>
@@ -361,12 +453,12 @@ async function sendConferenceConfirmationEmail(to: string, session: any, slot: a
     `Bevestiging tijdslot oudergesprek | Veli Görüşmesi Onayı - Rahman Eğitim`,
     emailWrapper('Oudergesprek bevestigd', `
       <p style="color:#374151;line-height:1.6">Beste ouder,</p>
-      <p style="color:#374151;line-height:1.6">Het tijdslot voor <strong>${studentName}</strong> is bevestigd. Hieronder vindt u de details. De afspraak zit ook als bijlage (<strong>oudergesprek.ics</strong>) bij deze e-mail — open deze om de afspraak aan uw agenda toe te voegen.</p>
+      <p style="color:#374151;line-height:1.6">Het tijdslot voor <strong>${escapeHtml(studentName)}</strong> is bevestigd. Hieronder vindt u de details. De afspraak zit ook als bijlage (<strong>oudergesprek.ics</strong>) bij deze e-mail — open deze om de afspraak aan uw agenda toe te voegen.</p>
       ${card}
       <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
       <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
       <p style="color:#374151;line-height:1.6">Sayın veli,</p>
-      <p style="color:#374151;line-height:1.6"><strong>${studentName}</strong> için görüşme saati onaylanmıştır. Detaylar yukarıdaki kartta yer almaktadır. Randevu ayrıca ek olarak (<strong>oudergesprek.ics</strong>) eklenmiştir — takviminize eklemek için açın.</p>
+      <p style="color:#374151;line-height:1.6"><strong>${escapeHtml(studentName)}</strong> için görüşme saati onaylanmıştır. Detaylar yukarıdaki kartta yer almaktadır. Randevu ayrıca ek olarak (<strong>oudergesprek.ics</strong>) eklenmiştir — takviminize eklemek için açın.</p>
     `),
     [{ filename: 'oudergesprek.ics', content: icsContent, contentType: 'text/calendar' }],
   );
@@ -483,6 +575,12 @@ app.get("/make-server-6679cacd/health", (c) => {
 
 app.post("/make-server-6679cacd/signup", async (c) => {
   try {
+    // Unauthenticated, creates an auth user and sends mail on every call — so
+    // it's both an account-flood and a Resend-quota vector. Cap it per IP.
+    if (await rateLimited('signup-ip', clientIp(c), 5, 3600)) {
+      return c.json({ error: 'Too many registrations from this connection. Please try again later.' }, 429);
+    }
+
     const { email, password, role, firstName, lastName, phone } = await c.req.json();
 
     // This endpoint is public and unauthenticated (parents self-register).
@@ -548,14 +646,14 @@ app.post("/make-server-6679cacd/signup", async (c) => {
       email,
       'Registratie ontvangen | Kaydınız alındı - Rahman Eğitim',
       emailWrapper('Registratie ontvangen', `
-        <p style="color:#374151;line-height:1.6">Beste ${name},</p>
+        <p style="color:#374151;line-height:1.6">Beste ${escapeHtml(name)},</p>
         <p style="color:#374151;line-height:1.6">Bedankt voor uw registratie bij het Rahman Eğitim leerlingvolgsysteem.</p>
         <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 16px;margin:16px 0">
           <p style="color:#92400e;margin:0;line-height:1.6"><strong>Let op:</strong> uw registratie geeft u nog geen directe toegang tot het systeem. Een beheerder moet uw account eerst goedkeuren en de juiste rol toekennen. Zodra dit is gebeurd, ontvangt u een e-mail en kunt u inloggen.</p>
         </div>
         <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
         <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-        <p style="color:#374151;line-height:1.6">Sayın ${name},</p>
+        <p style="color:#374151;line-height:1.6">Sayın ${escapeHtml(name)},</p>
         <p style="color:#374151;line-height:1.6">Rahman Eğitim öğrenci takip sistemine kaydolduğunuz için teşekkür ederiz.</p>
         <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 16px;margin:16px 0">
           <p style="color:#92400e;margin:0;line-height:1.6"><strong>Önemli:</strong> kaydınız size sisteme hemen erişim vermez. Bir yönetici önce hesabınızı onaylamalı ve size uygun rolü atamalıdır. Bu işlem tamamlandığında bir e-posta alacak ve giriş yapabileceksiniz.</p>
@@ -573,6 +671,17 @@ app.post("/make-server-6679cacd/signup", async (c) => {
 app.post("/make-server-6679cacd/signin", async (c) => {
   try {
     const { email, password } = await c.req.json();
+
+    // Throttle by IP and by account. The per-IP budget stops one host working
+    // through a password list; the per-email budget stops a distributed attempt
+    // at a single account. Both are deliberately loose enough that a person
+    // fumbling their own password won't hit them.
+    if (await rateLimited('signin-ip', clientIp(c), 20, 300)) {
+      return c.json({ error: 'Too many sign-in attempts. Please try again in a few minutes.' }, 429);
+    }
+    if (typeof email === 'string' && await rateLimited('signin-email', email, 10, 300)) {
+      return c.json({ error: 'Too many sign-in attempts. Please try again in a few minutes.' }, 429);
+    }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -655,14 +764,14 @@ app.get("/make-server-6679cacd/session", async (c) => {
             user.email,
             'Registratie ontvangen | Kaydınız alındı - Rahman Eğitim',
             emailWrapper('Registratie ontvangen', `
-              <p style="color:#374151;line-height:1.6">Beste ${name},</p>
+              <p style="color:#374151;line-height:1.6">Beste ${escapeHtml(name)},</p>
               <p style="color:#374151;line-height:1.6">Bedankt voor uw registratie bij Rahman Eğitim.</p>
               <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 16px;margin:16px 0">
                 <p style="color:#92400e;margin:0;line-height:1.6"><strong>Let op:</strong> een beheerder moet uw account eerst goedkeuren. Zodra dit is gebeurd, ontvangt u een e-mail en heeft u volledige toegang.</p>
               </div>
               <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
               <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-              <p style="color:#374151;line-height:1.6">Sayın ${name},</p>
+              <p style="color:#374151;line-height:1.6">Sayın ${escapeHtml(name)},</p>
               <p style="color:#374151;line-height:1.6">Rahman Eğitim'e kaydolduğunuz için teşekkür ederiz.</p>
               <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 16px;margin:16px 0">
                 <p style="color:#92400e;margin:0;line-height:1.6"><strong>Önemli:</strong> önce bir yönetici hesabınızı onaylamalıdır. Onaylandığında bir e-posta alacak ve tam erişime sahip olacaksınız.</p>
@@ -1113,17 +1222,17 @@ app.get("/make-server-6679cacd/schools/mine", async (c) => {
 // existing record and creates the "Haftasonu Eğitim" school for them to
 // belong to, then promotes the current sole admin to superadmin.
 //
-// Bootstrap nuance: this route is meant to be superadmin-only, but nobody
-// holds that role until this migration runs — so the auth check also
-// allows the known admin email through once. Remove this special case
-// once the migration has been run in production.
+// This route ran in production and is now superadmin-only. It previously let a
+// hardcoded email through to solve the bootstrap problem (nobody holds
+// superadmin until the migration runs); that exception is gone, since with the
+// migration done it was only a way for whoever controls that address to grant
+// themselves superadmin.
 app.post("/make-server-6679cacd/migrate/init-schools", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    const isBootstrapAdmin = userData?.email === 'fatihaltuner2004@gmail.com';
-    if (userData?.role !== 'superadmin' && !isBootstrapAdmin) {
+    if (userData?.role !== 'superadmin') {
       return c.json({ error: 'Only superadmins can run this migration' }, 403);
     }
 
@@ -3084,6 +3193,12 @@ Moskee Beheer
 
 app.get("/make-server-6679cacd/invite/:token", async (c) => {
   try {
+    // Tokens are random UUIDs, so guessing one is already impractical; this
+    // just stops an attacker burning our KV budget trying.
+    if (await rateLimited('invite-ip', clientIp(c), 30, 600)) {
+      return c.json({ error: 'Too many requests. Please try again later.' }, 429);
+    }
+
     const token = c.req.param('token');
     const inviteData = await kv.get(`invite_token:${token}`);
 
@@ -4355,11 +4470,47 @@ app.get("/make-server-6679cacd/parents/by-email", async (c) => {
 // Public POST — no auth required
 app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
   try {
+    // Public, unauthenticated, writes to KV and sends mail — cap it per IP.
+    if (await rateLimited('inschrijving-ip', clientIp(c), 10, 3600)) {
+      return c.json({ error: 'Te veel aanmeldingen vanaf deze verbinding. Probeer het later opnieuw.' }, 429);
+    }
+
     const body = await c.req.json();
     const { schoolId, geslacht, voornaam, achternaam, leeftijd, contactVoornaam, contactAchternaam, contactTelefoon, contactEmail, opmerkingen, contact2Naam, contact2Telefoon, contact2Email, vraag } = body;
 
     if (!schoolId || !geslacht || !voornaam || !achternaam || !leeftijd || !contactVoornaam || !contactAchternaam || !contactTelefoon || !contactEmail) {
       return c.json({ error: 'Alle verplichte velden moeten ingevuld zijn' }, 400);
+    }
+
+    // Presence was the only check here, so any of these could arrive as a
+    // megabyte of text (or an object) and land in JSONB and in the notification
+    // email. Bound the shape before we store or send it.
+    const textFields: [string, unknown, number][] = [
+      ['geslacht', geslacht, 20], ['voornaam', voornaam, 100], ['achternaam', achternaam, 100],
+      ['contactVoornaam', contactVoornaam, 100], ['contactAchternaam', contactAchternaam, 100],
+      ['contactTelefoon', contactTelefoon, 40], ['contactEmail', contactEmail, 200],
+      ['opmerkingen', opmerkingen, 2000], ['contact2Naam', contact2Naam, 200],
+      ['contact2Telefoon', contact2Telefoon, 40], ['contact2Email', contact2Email, 200],
+      ['vraag', vraag, 2000],
+    ];
+    for (const [field, value, max] of textFields) {
+      if (value === undefined || value === null || value === '') continue;
+      if (typeof value !== 'string' || value.length > max) {
+        return c.json({ error: `Ongeldige waarde voor ${field}` }, 400);
+      }
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(contactEmail)) {
+      return c.json({ error: 'Ongeldig e-mailadres' }, 400);
+    }
+    if (contact2Email && !emailPattern.test(contact2Email)) {
+      return c.json({ error: 'Ongeldig tweede e-mailadres' }, 400);
+    }
+
+    const leeftijdNum = Number(leeftijd);
+    if (!Number.isFinite(leeftijdNum) || leeftijdNum < 1 || leeftijdNum > 120) {
+      return c.json({ error: 'Ongeldige leeftijd' }, 400);
     }
 
     const school = await kv.get(`school:${schoolId}`);
@@ -4424,11 +4575,11 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
       'Inschrijving ontvangen | Kayıt Alındı - Rahman Eğitim',
       emailWrapper('Inschrijving ontvangen', `
         <p style="color:#374151;line-height:1.6">Beste ${contactNaam},</p>
-        <p style="color:#374151;line-height:1.6">Wij hebben de inschrijving van <strong>${voornaam} ${achternaam}</strong> in goede orde ontvangen. Wij nemen de aanvraag in behandeling en informeren u zodra hier een update in is.</p>
+        <p style="color:#374151;line-height:1.6">Wij hebben de inschrijving van <strong>${escapeHtml(voornaam)} ${escapeHtml(achternaam)}</strong> in goede orde ontvangen. Wij nemen de aanvraag in behandeling en informeren u zodra hier een update in is.</p>
         <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
         <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
         <p style="color:#374151;line-height:1.6">Sayın ${contactNaam},</p>
-        <p style="color:#374151;line-height:1.6"><strong>${voornaam} ${achternaam}</strong> için yapılan kaydı aldık. Başvurunuzu inceliyoruz ve bir gelişme olduğunda sizi bilgilendireceğiz.</p>
+        <p style="color:#374151;line-height:1.6"><strong>${escapeHtml(voornaam)} ${escapeHtml(achternaam)}</strong> için yapılan kaydı aldık. Başvurunuzu inceliyoruz ve bir gelişme olduğunda sizi bilgilendireceğiz.</p>
       `)
     );
 

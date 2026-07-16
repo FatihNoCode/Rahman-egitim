@@ -224,7 +224,13 @@ export default function InschrijvingPage() {
   // schools list, so a newly created school shows up here automatically.
   const faqs = useMemo(() => {
     const base = FAQS[language];
-    const names = schools.map(s => `<strong>${s.name}</strong>`);
+    // These strings are rendered with dangerouslySetInnerHTML below, so the
+    // school name — which comes from the API, not from this file — has to be
+    // escaped before it goes into the markup.
+    const escape = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const names = schools.map(s => `<strong>${escape(s.name ?? '')}</strong>`);
     let lessonTypesAnswer: string;
     if (names.length === 0) {
       lessonTypesAnswer = language === 'nl'

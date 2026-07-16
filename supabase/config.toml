@@ -6,4 +6,13 @@ project_id = "uriirwsjpzsjnaosqlph"
 #     --project-ref uriirwsjpzsjnaosqlph --use-api
 [functions.make-server-6679cacd]
 entrypoint = "./functions/server/index.tsx"
-verify_jwt = true
+# The CI deploy passes --no-verify-jwt, so this file previously claimed a gate
+# that was not actually active in production. Stating the real value instead of
+# a reassuring one: the function has to be reachable without a JWT because it
+# serves genuinely public routes (the /ics calendar feed, the /inschrijvingen
+# enrolment form, /invite/:token, the Elif-Ba leaderboard, and the Resend
+# webhook). Authorization is therefore per-route: every non-public handler
+# calls verifyUser(), the public ones carry their own check (webhook signature,
+# cron secret, or validation), and account status is enforced centrally by the
+# ACCOUNT_PENDING middleware in index.tsx.
+verify_jwt = false

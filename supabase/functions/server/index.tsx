@@ -5074,7 +5074,19 @@ app.get("/make-server-6679cacd/boekhouding/student/:studentId", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
     const studentId = c.req.param('studentId');
+
+    // This route had no check beyond "is logged in", so any parent could read
+    // any student's financial record by id. Parents legitimately need it for
+    // their own children (ParentDashboard fetches it alongside
+    // /boekhouding/payments/:studentId), so scope it to their own children
+    // rather than locking parents out — same rule as that sibling route.
+    if (userData?.role === 'parent') {
+      const childrenIds: string[] = await kv.get(`parent_children:${user.id}`) || [];
+      if (!childrenIds.includes(studentId)) return c.json({ error: 'Not your child' }, 403);
+    }
+
     const record = await kv.get(`boekhouding:student:${studentId}`) || defaultBoekhoudingRecord(studentId);
     return c.json({ record });
   } catch (err) {

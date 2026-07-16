@@ -2748,6 +2748,28 @@ app.post("/make-server-6679cacd/homework", async (c) => {
     }
 
     const { studentIds, classId, description, dueDate, lessonDate } = await c.req.json();
+
+    // classId and studentIds are caller-supplied. Being a teacher was the only
+    // check, so any teacher could assign homework into a class at another
+    // school. userHasClassAccess scopes teachers to teacher_classes.
+    if (!(await userHasClassAccess(user.id, userData, classId))) {
+      return c.json({ error: 'Not your class' }, 403);
+    }
+
+    // studentIds is null for whole-class homework. When present, every student
+    // must actually be in the class the homework is filed under — otherwise the
+    // class check above can be satisfied while the homework targets someone
+    // else's pupils.
+    if (studentIds != null) {
+      if (!Array.isArray(studentIds)) {
+        return c.json({ error: 'studentIds must be an array or null' }, 400);
+      }
+      const targets = await kv.mget(studentIds.map((id: string) => `student:${id}`));
+      if (targets.some((s: any) => !s || s.classId !== classId)) {
+        return c.json({ error: 'Student not in this class' }, 403);
+      }
+    }
+
     const homeworkId = crypto.randomUUID();
 
     await kv.set(`homework:${homeworkId}`, {
@@ -2814,6 +2836,14 @@ app.post("/make-server-6679cacd/homework/:homeworkId/complete", async (c) => {
 
     const homeworkId = c.req.param('homeworkId');
     const { studentId, completed } = await c.req.json();
+
+    // studentId comes straight from the request body, so without this any
+    // parent could mark any other student's homework complete or incomplete.
+    // Being a parent was the only check here.
+    const childrenIds: string[] = await kv.get(`parent_children:${user.id}`) || [];
+    if (!childrenIds.includes(studentId)) {
+      return c.json({ error: 'Not your child' }, 403);
+    }
 
     await kv.set(`homework_completion:${studentId}:${homeworkId}`, {
       studentId,
@@ -2925,6 +2955,16 @@ app.get("/make-server-6679cacd/predefined-homework", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
+
+    // These are templates teachers pick from when assigning homework; parents
+    // have no use for them. The records carry no schoolId, so this cannot be
+    // scoped per school without a data migration — and with the feature
+    // currently unused (no rows, no caller) that is not worth doing. Keeping
+    // parents out is the cheap half of the fix.
+    const userData = await getUserData(user.id);
+    if (!['admin', 'superadmin', 'teacher'].includes(userData?.role)) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
 
     const predefined = await kv.getByPrefix('predefined_homework:');
     return c.json({ predefined: predefined.filter((p: any) => p && p.id) });

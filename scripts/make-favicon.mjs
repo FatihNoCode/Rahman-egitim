@@ -11,7 +11,7 @@ const out = fileURLToPath(new URL('../src/imports/favicon.png', import.meta.url)
 
 const S = 256;
 const logo = await sharp(svg, { density: 400 })
-  .resize({ width: Math.round(S * 0.72), fit: 'inside' })
+  .resize({ width: Math.round(S * 0.96), fit: 'inside' })
   .png()
   .toBuffer();
 

@@ -42,6 +42,12 @@ interface User {
   lastCheckIn?: string;
   signature?: string | null;
   region?: 'north' | 'south';
+  mfaRequired?: boolean;
+  mfaEnrolled?: boolean;
+  // Set only by LoginPage right after a fresh sign-in whose role requires
+  // MFA but has no factor enrolled yet — a one-shot nudge for UserMenu to
+  // open its 2FA setup panel, not a persisted server field.
+  mfaSetupRequired?: boolean;
 }
 
 interface AppContextType {

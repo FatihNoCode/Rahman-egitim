@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2 } from 'lucide-react';
-import { useApp } from '../App';
+import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, ShieldCheck } from 'lucide-react';
+import { useApp, supabase } from '../App';
 
 interface Notification {
   id: string;
@@ -45,6 +45,19 @@ const t = {
     deleteConfirmWord: 'VERWIJDER',
     deleteFailed: 'Verwijderen mislukt. Probeer het opnieuw.',
     deleting: 'Bezig met verwijderen…',
+    twoFactor: 'Tweestapsverificatie',
+    twoFactorRequiredBadge: 'Verplicht',
+    twoFactorEnabled: 'Tweestapsverificatie is ingeschakeld.',
+    twoFactorDisabled: 'Tweestapsverificatie is uitgeschakeld.',
+    twoFactorSetupRequiredNote: 'Voor uw rol is tweestapsverificatie verplicht. Stel het hieronder in om door te gaan.',
+    twoFactorEnableHint: 'Scan deze QR-code met uw authenticator-app (bijv. Google Authenticator) en voer de 6-cijferige code in om te bevestigen.',
+    enable: 'Inschakelen',
+    disable: 'Uitschakelen',
+    confirm: 'Bevestigen',
+    cancel2: 'Annuleren',
+    codePlaceholder: '6-cijferige code',
+    twoFactorError: 'Er ging iets mis. Controleer de code en probeer het opnieuw.',
+    disableConfirm: 'Weet u zeker dat u tweestapsverificatie wilt uitschakelen?',
   },
   tr: {
     myInfo: 'Bilgilerim',
@@ -72,6 +85,19 @@ const t = {
     deleteConfirmWord: 'SİL',
     deleteFailed: 'Silme başarısız. Lütfen tekrar deneyin.',
     deleting: 'Siliniyor…',
+    twoFactor: 'İki adımlı doğrulama',
+    twoFactorRequiredBadge: 'Zorunlu',
+    twoFactorEnabled: 'İki adımlı doğrulama etkin.',
+    twoFactorDisabled: 'İki adımlı doğrulama kapalı.',
+    twoFactorSetupRequiredNote: 'Rolünüz için iki adımlı doğrulama zorunludur. Devam etmek için aşağıdan ayarlayın.',
+    twoFactorEnableHint: 'Bu QR kodunu kimlik doğrulayıcı uygulamanızla (ör. Google Authenticator) tarayın ve onaylamak için 6 haneli kodu girin.',
+    enable: 'Etkinleştir',
+    disable: 'Devre dışı bırak',
+    confirm: 'Onayla',
+    cancel2: 'İptal',
+    codePlaceholder: '6 haneli kod',
+    twoFactorError: 'Bir şeyler yanlış gitti. Kodu kontrol edip tekrar deneyin.',
+    disableConfirm: 'İki adımlı doğrulamayı kapatmak istediğinizden emin misiniz?',
   },
 };
 
@@ -105,7 +131,7 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
   const { language, user, setUser, apiRequest } = useApp();
   const text = t[language];
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<'menu' | 'profile' | 'notifications' | 'delete'>('menu');
+  const [view, setView] = useState<'menu' | 'profile' | 'notifications' | 'delete' | 'security'>('menu');
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -118,6 +144,116 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
   const [saved, setSaved] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const isTeacher = user?.role === 'teacher';
+  const canUseMfa = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'regional_admin';
+
+  // 2FA state. `mfaEnrolled` reflects reality straight from Supabase (not the
+  // KV-cached copy on `user`), since enrolling/unenrolling elsewhere in this
+  // same tab should be reflected without a fresh sign-in.
+  const [mfaEnrolled, setMfaEnrolled] = useState<boolean | null>(null);
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaEnrolling, setMfaEnrolling] = useState(false);
+  const [mfaQrCode, setMfaQrCode] = useState<string | null>(null);
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaBusy, setMfaBusy] = useState(false);
+  const [mfaError, setMfaError] = useState('');
+
+  const loadMfaStatus = async () => {
+    try {
+      const { data, error } = await supabase.auth.mfa.listFactors();
+      if (error) throw error;
+      const factor = data?.totp?.find((f) => f.status === 'verified');
+      setMfaEnrolled(!!factor);
+      setMfaFactorId(factor?.id || null);
+    } catch (err) {
+      console.error('Error loading MFA status:', err);
+    }
+  };
+
+  const startMfaEnroll = async () => {
+    setMfaBusy(true);
+    setMfaError('');
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' });
+      if (error) throw error;
+      setMfaFactorId(data.id);
+      setMfaQrCode(data.totp.qr_code);
+      setMfaSecret(data.totp.secret);
+      setMfaEnrolling(true);
+    } catch (err) {
+      console.error('Error starting MFA enroll:', err);
+      setMfaError(text.twoFactorError);
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const confirmMfaEnroll = async () => {
+    if (!mfaFactorId) return;
+    setMfaBusy(true);
+    setMfaError('');
+    try {
+      const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: mfaFactorId });
+      if (challengeError) throw challengeError;
+      const { error: verifyError } = await supabase.auth.mfa.verify({
+        factorId: mfaFactorId,
+        challengeId: challenge.id,
+        code: mfaCode.trim(),
+      });
+      if (verifyError) throw verifyError;
+
+      await apiRequest('/mfa/sync', { method: 'POST' });
+      if (user) setUser({ ...user, mfaEnrolled: true, mfaSetupRequired: false });
+      setMfaEnrolling(false);
+      setMfaCode('');
+      setMfaQrCode(null);
+      setMfaSecret(null);
+      await loadMfaStatus();
+    } catch (err) {
+      console.error('Error confirming MFA enroll:', err);
+      setMfaError(text.twoFactorError);
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const disableMfa = async () => {
+    if (!mfaFactorId) return;
+    if (!window.confirm(text.disableConfirm)) return;
+    setMfaBusy(true);
+    setMfaError('');
+    try {
+      const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactorId });
+      if (error) throw error;
+      await apiRequest('/mfa/sync', { method: 'POST' });
+      if (user) setUser({ ...user, mfaEnrolled: false });
+      await loadMfaStatus();
+    } catch (err) {
+      console.error('Error disabling MFA:', err);
+      setMfaError(text.twoFactorError);
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const openSecurity = async () => {
+    setView('security');
+    setMfaEnrolling(false);
+    setMfaCode('');
+    setMfaError('');
+    await loadMfaStatus();
+  };
+
+  // A fresh login flagged the account as needing MFA setup (role requires it,
+  // nothing enrolled yet) — jump straight to the panel instead of leaving the
+  // user to stumble on it.
+  useEffect(() => {
+    if (user?.mfaSetupRequired && canUseMfa) {
+      setOpen(true);
+      openSecurity();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.mfaSetupRequired]);
 
   const handleSignatureFile = async (file: File | undefined) => {
     if (!file) return;
@@ -263,6 +399,20 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
                 <Pencil className="h-4 w-4 text-gray-400" />
                 {text.myInfo}
               </button>
+              {canUseMfa && (
+                <button
+                  onClick={openSecurity}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition"
+                >
+                  <ShieldCheck className="h-4 w-4 text-gray-400" />
+                  {text.twoFactor}
+                  {user?.role === 'superadmin' && (
+                    <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                      {text.twoFactorRequiredBadge}
+                    </span>
+                  )}
+                </button>
+              )}
               <button
                 onClick={openNotifications}
                 className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition"
@@ -364,6 +514,95 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
                   {saved ? (<><Check className="h-4 w-4" />{text.saved}</>) : text.save}
                 </button>
               </div>
+            </div>
+          )}
+
+          {view === 'security' && (
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-4">
+                <button onClick={() => { setView('menu'); setMfaEnrolling(false); }} className="text-gray-400 hover:text-gray-600 text-xs font-medium">
+                  ← {text.back}
+                </button>
+                <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {user?.role !== 'superadmin' && user?.mfaRequired && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-3 text-xs text-amber-800">
+                  {text.twoFactorSetupRequiredNote}
+                </div>
+              )}
+
+              {mfaError && (
+                <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg text-xs mb-3">
+                  {mfaError}
+                </div>
+              )}
+
+              {mfaEnrolling ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-500">{text.twoFactorEnableHint}</p>
+                  {mfaQrCode && (
+                    <div className="flex justify-center">
+                      <img src={mfaQrCode} alt="TOTP QR code" className="h-40 w-40 border border-gray-200 rounded-lg p-1 bg-white" />
+                    </div>
+                  )}
+                  {mfaSecret && (
+                    <p className="text-center text-[11px] text-gray-400 break-all">{mfaSecret}</p>
+                  )}
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder={text.codePlaceholder}
+                    autoFocus
+                    className="w-full text-center tracking-[0.4em] px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setMfaEnrolling(false); setMfaCode(''); setMfaQrCode(null); setMfaSecret(null); }}
+                      className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition"
+                    >
+                      {text.cancel2}
+                    </button>
+                    <button
+                      onClick={confirmMfaEnroll}
+                      disabled={mfaBusy || mfaCode.length !== 6}
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg transition disabled:opacity-50 text-sm"
+                    >
+                      {text.confirm}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className={`text-sm ${mfaEnrolled ? 'text-emerald-700' : 'text-gray-500'}`}>
+                    {mfaEnrolled === null ? '' : mfaEnrolled ? text.twoFactorEnabled : text.twoFactorDisabled}
+                  </p>
+                  {mfaEnrolled ? (
+                    user?.role !== 'superadmin' ? (
+                      <button
+                        onClick={disableMfa}
+                        disabled={mfaBusy}
+                        className="w-full px-3 py-2 rounded-lg border border-red-200 text-sm text-red-600 hover:bg-red-50 transition disabled:opacity-50"
+                      >
+                        {text.disable}
+                      </button>
+                    ) : null
+                  ) : (
+                    <button
+                      onClick={startMfaEnroll}
+                      disabled={mfaBusy}
+                      className="w-full flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg transition disabled:opacity-50 text-sm"
+                    >
+                      {text.enable}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

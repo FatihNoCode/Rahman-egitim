@@ -35,6 +35,42 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [mfaChallenge, setMfaChallenge] = useState(false);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaSubmitting, setMfaSubmitting] = useState(false);
+
+  const handleMfaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setMfaSubmitting(true);
+    try {
+      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
+      if (factorsError) throw factorsError;
+      const factor = factorsData?.totp?.find((f) => f.status === 'verified');
+      if (!factor) throw new Error('No verified authenticator found');
+
+      const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: factor.id,
+        code: mfaCode.trim(),
+      });
+      if (verifyError) throw verifyError;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Session not found after verification');
+
+      const sessionResp = await fetch(`${API_BASE}/session`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      const sessionData = await sessionResp.json();
+      if (!sessionResp.ok) throw new Error(sessionData.error || 'Failed to load session');
+
+      onLogin(sessionData.user, session.access_token);
+    } catch (err: any) {
+      setError(err.message || (language === 'tr' ? 'Kod doğrulanamadı' : 'Code kon niet worden geverifieerd'));
+    } finally {
+      setMfaSubmitting(false);
+    }
+  };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,7 +211,19 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
           });
         }
 
-        onLogin(data.user, data.accessToken);
+        // This account has 2FA enrolled: the tokens above are only aal1
+        // (password-verified, not second-factor-verified). Hold off on
+        // treating this as a completed login until the TOTP code checks out.
+        if (data.mfaChallenge) {
+          setLoading(false);
+          setMfaChallenge(true);
+          return;
+        }
+
+        onLogin(
+          data.mfaSetupRequired ? { ...data.user, mfaSetupRequired: true } : data.user,
+          data.accessToken
+        );
       }
     } catch (err: any) {
       setError(err.message || (language === 'tr' ? 'Bir hata oluştu' : 'Er is een fout opgetreden'));
@@ -216,6 +264,56 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
       <h1 className="text-xl font-bold text-gray-800 tracking-tight">Rahman Eğitim</h1>
     </div>
   );
+
+  if (mfaChallenge) {
+    return (
+      <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
+        <Backdrop />
+        <div className="relative w-full max-w-md m-auto">
+          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-emerald-950/5 ring-1 ring-black/5 p-5 sm:p-7 md:p-9">
+            <BrandMark />
+            <h2 className="text-lg font-semibold text-gray-800 text-center mb-1">
+              {language === 'tr' ? 'İki adımlı doğrulama' : 'Tweestapsverificatie'}
+            </h2>
+            <p className="text-sm text-gray-500 text-center mb-5">
+              {language === 'tr'
+                ? 'Kimlik doğrulayıcı uygulamanızdaki 6 haneli kodu girin.'
+                : 'Voer de 6-cijferige code uit uw authenticator-app in.'}
+            </p>
+            <form onSubmit={handleMfaSubmit} className="space-y-4">
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
+                required
+                autoFocus
+                className="w-full text-center tracking-[0.5em] text-lg px-4 py-2.5 border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
+              />
+              {error && <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-2.5 rounded-xl text-sm">{error}</div>}
+              <button
+                type="submit"
+                disabled={mfaSubmitting || mfaCode.length !== 6}
+                className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-50 text-sm shadow-md shadow-emerald-900/10"
+              >
+                {mfaSubmitting ? t.loading : language === 'tr' ? 'Doğrula' : 'Verifiëren'}
+              </button>
+              <button
+                type="button"
+                onClick={async () => { await supabase.auth.signOut(); setMfaChallenge(false); setMfaCode(''); setError(''); }}
+                className="w-full flex items-center justify-center gap-1.5 text-gray-400 hover:text-gray-600 font-medium text-sm transition"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                {language === 'tr' ? 'Giriş sayfasına dön' : 'Terug naar inloggen'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (signupPending) {
     return (

@@ -26,6 +26,7 @@ interface AppUser {
   childrenIds?: string[];
   hasAccount?: boolean;
   status?: 'pending' | 'approved';
+  mfaRequired?: boolean;
 }
 
 interface UsersViewProps {
@@ -118,6 +119,7 @@ export default function UsersView({
       confirmRejectTitle: 'Kaydı reddet',
       confirmRejectBody: (name: string) => `${name} adlı kişinin kaydı reddedilecek ve hesabı silinecek. Bilgilendirme e-postası gönderilecek. Devam etmek istiyor musunuz?`,
       approved: 'Onaylandı ✓',
+      mfaRequired: '2FA zorunlu',
     },
     nl: {
       title: 'Gebruikers',
@@ -162,10 +164,27 @@ export default function UsersView({
       confirmRejectTitle: 'Registratie afwijzen',
       confirmRejectBody: (name: string) => `De registratie van ${name} wordt afgewezen en het account wordt verwijderd. Er wordt een e-mail verstuurd. Wilt u doorgaan?`,
       approved: 'Goedgekeurd ✓',
+      mfaRequired: '2FA verplicht',
     },
   };
   const text = t[language];
   const roleLabel = (role: Role) => text[role];
+  const [togglingMfaId, setTogglingMfaId] = useState<string | null>(null);
+
+  const toggleMfaRequired = async (u: AppUser) => {
+    setTogglingMfaId(u.id);
+    try {
+      await apiRequest(`/users/${u.id}/mfa-required`, {
+        method: 'PATCH',
+        body: JSON.stringify({ mfaRequired: !u.mfaRequired }),
+      });
+      onDataChange();
+    } catch (err) {
+      console.error('Error toggling MFA requirement:', err);
+    } finally {
+      setTogglingMfaId(null);
+    }
+  };
 
   useEffect(() => {
     loadUsers();
@@ -483,6 +502,18 @@ export default function UsersView({
                         )}
                         {u.role === 'teacher' && u.classCount !== undefined && (
                           <p className="text-xs text-gray-400 mt-0.5">{text.classCount(u.classCount)}</p>
+                        )}
+                        {u.role === 'admin' && isRealSuperadmin && (
+                          <label className="flex items-center gap-1.5 mt-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={!!u.mfaRequired}
+                              disabled={togglingMfaId === u.id}
+                              onChange={() => toggleMfaRequired(u)}
+                              className="h-3.5 w-3.5 accent-emerald-600"
+                            />
+                            {text.mfaRequired}
+                          </label>
                         )}
                       </td>
                       <td className="px-3 py-2">

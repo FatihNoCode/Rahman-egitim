@@ -79,6 +79,16 @@ app.use('/*', async (c, next) => {
   if (userData?.status === 'pending') {
     return c.json({ error: 'ACCOUNT_PENDING' }, 403);
   }
+
+  // A user who requires MFA and has already enrolled a factor must present
+  // an aal2 (second-factor-verified) session for every authenticated route —
+  // not just at /signin. Without this, a password-only token minted before
+  // enrollment (or replayed from before the challenge) would keep working.
+  // Someone still mid-enrollment (mfaEnrolled not yet true) is let through so
+  // they can reach the enroll flow itself.
+  if (mfaRequiredForRole(userData) && userData?.mfaEnrolled && decodeAal(token) !== 'aal2') {
+    return c.json({ error: 'MFA_REQUIRED' }, 403);
+  }
   return next();
 });
 
@@ -106,6 +116,31 @@ async function verifyUser(request: Request) {
 async function getUserData(userId: string) {
   const userData = await kv.get(`user:${userId}`);
   return userData;
+}
+
+// Two-factor (TOTP) is mandatory for superadmins, and opt-in-per-account (via
+// the `mfaRequired` flag a superadmin sets) for regional and local admins.
+// Enrollment/challenge/verify happen directly against Supabase's GoTrue API
+// from the client (supabase.auth.mfa.*) — this server only decides whether a
+// given session's assurance level is good enough to proceed.
+function mfaRequiredForRole(userData: any): boolean {
+  if (!userData) return false;
+  if (userData.role === 'superadmin') return true;
+  if ((userData.role === 'admin' || userData.role === 'regional_admin') && userData.mfaRequired === true) return true;
+  return false;
+}
+
+// The access token's `aal` claim tells us whether a second factor was
+// actually verified this session (aal2) or not (aal1). We only read it here
+// because the token has already been through supabase.auth.getUser(), which
+// validates the signature — this is not itself a trust boundary.
+function decodeAal(token: string): string {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.aal || 'aal1';
+  } catch {
+    return 'aal1';
+  }
 }
 
 // Server-side password-strength gate. Applied to every endpoint that sets a
@@ -698,7 +733,7 @@ app.post("/make-server-6679cacd/signin", async (c) => {
       return c.json({ error: error.message }, 400);
     }
 
-    const userData = await getUserData(data.user.id);
+    let userData = await getUserData(data.user.id);
 
     // Block accounts that are still awaiting admin approval. Accounts created
     // before this flow existed have no `status` field and are treated as
@@ -710,16 +745,40 @@ app.post("/make-server-6679cacd/signin", async (c) => {
 
     // Update last check-in for parents
     if (userData?.role === 'parent') {
-      await kv.set(`user:${data.user.id}`, {
-        ...userData,
-        lastCheckIn: new Date().toISOString()
+      userData = { ...userData, lastCheckIn: new Date().toISOString() };
+      await kv.set(`user:${data.user.id}`, userData);
+    }
+
+    // signInWithPassword's user object lists enrolled MFA factors even though
+    // password auth alone never elevates the session past aal1. Keep our
+    // cached `mfaEnrolled` flag (used by the route middleware) in sync.
+    const hasVerifiedTotp = (data.user.factors || []).some(
+      (f: any) => f.factor_type === 'totp' && f.status === 'verified'
+    );
+    if (userData && userData.mfaEnrolled !== hasVerifiedTotp) {
+      userData = { ...userData, mfaEnrolled: hasVerifiedTotp };
+      await kv.set(`user:${data.user.id}`, userData);
+    }
+
+    // A password match alone is not enough for a role that requires MFA and
+    // already has a verified factor: hand back the (aal1) tokens without the
+    // user payload so the client knows to prompt for a TOTP code and call
+    // supabase.auth.mfa.challengeAndVerify before treating this as a login.
+    if (mfaRequiredForRole(userData) && hasVerifiedTotp) {
+      return c.json({
+        mfaChallenge: true,
+        accessToken: data.session.access_token,
+        refreshToken: data.session.refresh_token,
       });
     }
 
     return c.json({
       accessToken: data.session.access_token,
       refreshToken: data.session.refresh_token,
-      user: { ...userData, id: data.user.id }
+      user: { ...userData, id: data.user.id },
+      // Role requires MFA but no factor is enrolled yet — the client should
+      // route straight to the enrollment screen after login.
+      mfaSetupRequired: mfaRequiredForRole(userData) && !hasVerifiedTotp,
     });
   } catch (err) {
     console.log('Signin error:', err);
@@ -788,6 +847,78 @@ app.get("/make-server-6679cacd/session", async (c) => {
   } catch (err) {
     console.log('Session error:', err);
     return c.json({ error: 'Failed to get session' }, 500);
+  }
+});
+
+// ============= TWO-FACTOR AUTHENTICATION =============
+//
+// Enrollment/challenge/verify/unenroll happen client-side against Supabase's
+// GoTrue API (supabase.auth.mfa.*) using the user's own session — there is
+// nothing for this server to broker there. This endpoint exists only to keep
+// the KV-cached `mfaEnrolled` flag (which the route middleware and /signin
+// rely on) in sync immediately after an enroll or unenroll, rather than
+// waiting for the next sign-in to pick it up from Supabase.
+app.post("/make-server-6679cacd/mfa/sync", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+    const { data, error: getErr } = await supabase.auth.admin.getUserById(user.id);
+    if (getErr || !data?.user) {
+      return c.json({ error: 'Failed to sync MFA status' }, 500);
+    }
+
+    const hasVerifiedTotp = (data.user.factors || []).some(
+      (f: any) => f.factor_type === 'totp' && f.status === 'verified'
+    );
+
+    const userData = await getUserData(user.id);
+    if (userData) {
+      await kv.set(`user:${user.id}`, { ...userData, mfaEnrolled: hasVerifiedTotp });
+    }
+
+    return c.json({ mfaEnrolled: hasVerifiedTotp });
+  } catch (err) {
+    console.log('MFA sync error:', err);
+    return c.json({ error: 'Failed to sync MFA status' }, 500);
+  }
+});
+
+// Superadmin-only: require (or stop requiring) 2FA for a regional or local
+// admin account. Superadmins themselves always require it, non-negotiably,
+// so this only ever targets 'admin' / 'regional_admin' accounts.
+app.patch("/make-server-6679cacd/users/:userId/mfa-required", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const requester = await getUserData(user.id);
+    if (requester?.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmins can change this' }, 403);
+    }
+
+    const { mfaRequired } = await c.req.json();
+    if (typeof mfaRequired !== 'boolean') {
+      return c.json({ error: 'mfaRequired must be a boolean' }, 400);
+    }
+
+    const targetUserId = c.req.param('userId');
+    const target = await kv.get(`user:${targetUserId}`);
+    if (!target) return c.json({ error: 'User not found' }, 404);
+    if (target.role !== 'admin' && target.role !== 'regional_admin') {
+      return c.json({ error: 'MFA requirement only applies to regional or local admins' }, 400);
+    }
+
+    const updated = { ...target, mfaRequired };
+    await kv.set(`user:${targetUserId}`, updated);
+    return c.json({ user: updated });
+  } catch (err) {
+    console.log('Toggle MFA required error:', err);
+    return c.json({ error: 'Failed to update MFA requirement' }, 500);
   }
 });
 
@@ -1311,7 +1442,7 @@ app.get("/make-server-6679cacd/regional-admins", async (c) => {
     const allUsers = await kv.getByPrefix('user:');
     const regionalAdmins = allUsers
       .filter((u: any) => u && u.role === 'regional_admin')
-      .map((u: any) => ({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, region: u.region, createdAt: u.createdAt }));
+      .map((u: any) => ({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, region: u.region, createdAt: u.createdAt, mfaRequired: !!u.mfaRequired }));
 
     return c.json({ regionalAdmins });
   } catch (err) {
@@ -2497,7 +2628,7 @@ app.get("/make-server-6679cacd/users", async (c) => {
 
       if (u.role === 'admin') {
         if (u.schoolId !== schoolId) continue;
-        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, status: u.status || 'approved' });
+        users.push({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, role: u.role, createdAt: u.createdAt, status: u.status || 'approved', mfaRequired: !!u.mfaRequired });
       } else if (u.role === 'superadmin') {
         // Only visible to real superadmins — a regular admin has no actionable use
         // for cross-tenant superadmin accounts.

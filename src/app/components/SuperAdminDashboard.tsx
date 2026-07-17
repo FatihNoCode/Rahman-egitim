@@ -28,6 +28,7 @@ interface RegionalAdminRecord {
   phone: string | null;
   region: 'north' | 'south';
   createdAt: string;
+  mfaRequired?: boolean;
 }
 
 interface ProposalRecord {
@@ -94,6 +95,7 @@ const rt = {
     south: 'Zuid',
     invite: 'Uitnodigen',
     noRegionalAdmins: 'Nog geen regionale beheerders',
+    mfaRequired: '2FA verplicht',
     proposalsInbox: 'Voorstellen lokale beheerders',
     noProposals: 'Geen voorstellen',
     proposedBy: 'Voorgesteld door',
@@ -141,6 +143,7 @@ const rt = {
     south: 'Güney',
     invite: 'Davet et',
     noRegionalAdmins: 'Henüz bölge yöneticisi yok',
+    mfaRequired: '2FA zorunlu',
     proposalsInbox: 'Lokal yönetici önerileri',
     noProposals: 'Öneri yok',
     proposedBy: 'Öneren',
@@ -316,6 +319,22 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
       notify.error(error.message || 'Error creating regional admin');
     } finally {
       setCreatingRA(false);
+    }
+  };
+
+  const [togglingMfaId, setTogglingMfaId] = useState<string | null>(null);
+  const toggleRegionalAdminMfa = async (ra: RegionalAdminRecord) => {
+    setTogglingMfaId(ra.id);
+    try {
+      await apiRequest(`/users/${ra.id}/mfa-required`, {
+        method: 'PATCH',
+        body: JSON.stringify({ mfaRequired: !ra.mfaRequired }),
+      });
+      await loadRegionalData();
+    } catch (error: any) {
+      notify.error(error.message || 'Error updating MFA requirement');
+    } finally {
+      setTogglingMfaId(null);
     }
   };
 
@@ -632,6 +651,16 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                         <p className="text-xs text-gray-400">{ra.email}</p>
                       </div>
                       <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={!!ra.mfaRequired}
+                            disabled={togglingMfaId === ra.id}
+                            onChange={() => toggleRegionalAdminMfa(ra)}
+                            className="h-3.5 w-3.5 accent-emerald-600"
+                          />
+                          {rtx.mfaRequired}
+                        </label>
                         <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
                           {ra.region === 'north' ? rtx.north : rtx.south}
                         </span>

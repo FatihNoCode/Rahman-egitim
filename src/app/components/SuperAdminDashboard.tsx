@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
-import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft } from 'lucide-react';
+import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2 } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import InboxView from './InboxView';
@@ -21,14 +21,98 @@ interface SchoolRecord {
   createdAt: string;
 }
 
+interface RegionalAdminRecord {
+  id: string;
+  email: string;
+  name: string | null;
+  phone: string | null;
+  region: 'north' | 'south';
+  createdAt: string;
+}
+
+interface ProposalRecord {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  schoolId: string;
+  schoolName: string;
+  region: 'north' | 'south';
+  proposedByName: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  reason?: string;
+}
+
 interface SuperAdminDashboardProps {
   onLogout: () => void;
   onEnterSchool: (schoolId: string) => void;
 }
 
+// This dashboard predates translations.ts having region-admin copy, and every
+// other new screen in this app (UserMenu, PrivacyPage) keeps its own local
+// bilingual strings rather than growing that shared file — same pattern here.
+const rt = {
+  nl: {
+    regionalTab: 'Regionale beheerders',
+    regionalAdmins: 'Regionale beheerders',
+    newRegionalAdmin: 'Nieuwe regionale beheerder',
+    name: 'Naam',
+    email: 'E-mail',
+    phone: 'Telefoonnummer',
+    region: 'Regio',
+    north: 'Noord',
+    south: 'Zuid',
+    invite: 'Uitnodigen',
+    noRegionalAdmins: 'Nog geen regionale beheerders',
+    proposalsInbox: 'Voorstellen lokale beheerders',
+    noProposals: 'Geen voorstellen',
+    proposedBy: 'Voorgesteld door',
+    forSchool: 'voor',
+    approve: 'Goedkeuren',
+    reject: 'Afwijzen',
+    pending: 'In behandeling',
+    approved: 'Goedgekeurd',
+    rejected: 'Afgewezen',
+    remove: 'Verwijderen',
+    setRegion: 'Regio instellen',
+    noRegion: 'Geen regio',
+    save: 'Opslaan',
+    confirmRemoveRegionalAdmin: 'Deze regionale beheerder verwijderen?',
+  },
+  tr: {
+    regionalTab: 'Bölge yöneticileri',
+    regionalAdmins: 'Bölge yöneticileri',
+    newRegionalAdmin: 'Yeni bölge yöneticisi',
+    name: 'Ad',
+    email: 'E-posta',
+    phone: 'Telefon numarası',
+    region: 'Bölge',
+    north: 'Kuzey',
+    south: 'Güney',
+    invite: 'Davet et',
+    noRegionalAdmins: 'Henüz bölge yöneticisi yok',
+    proposalsInbox: 'Lokal yönetici önerileri',
+    noProposals: 'Öneri yok',
+    proposedBy: 'Öneren',
+    forSchool: 'için',
+    approve: 'Onayla',
+    reject: 'Reddet',
+    pending: 'Beklemede',
+    approved: 'Onaylandı',
+    rejected: 'Reddedildi',
+    remove: 'Sil',
+    setRegion: 'Bölge ayarla',
+    noRegion: 'Bölge yok',
+    save: 'Kaydet',
+    confirmRemoveRegionalAdmin: 'Bu bölge yöneticisi silinsin mi?',
+  },
+};
+
 export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAdminDashboardProps) {
   const { language, setLanguage, apiRequest } = useApp();
   const t = translations[language];
+  const rtx = rt[language];
 
   const [schools, setSchools] = useState<SchoolRecord[]>([]);
   const [locations, setLocations] = useState<LocationRecord[]>([]);
@@ -37,10 +121,20 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   const [newSchoolName, setNewSchoolName] = useState('');
   const [creating, setCreating] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'locations' | 'inbox'>('locations');
+  const [tab, setTab] = useState<'locations' | 'inbox' | 'regional'>('locations');
+  const [savingRegion, setSavingRegion] = useState(false);
+
+  const [regionalAdmins, setRegionalAdmins] = useState<RegionalAdminRecord[]>([]);
+  const [proposals, setProposals] = useState<ProposalRecord[]>([]);
+  const [loadingRegional, setLoadingRegional] = useState(false);
+  const [newRA, setNewRA] = useState({ name: '', email: '', phone: '', region: 'north' as 'north' | 'south' });
+  const [creatingRA, setCreatingRA] = useState(false);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [removingRAId, setRemovingRAId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
+    loadRegionalData();
   }, []);
 
   const loadData = async () => {
@@ -82,6 +176,79 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
       notify.error(error.message || 'Error creating school');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const loadRegionalData = async () => {
+    setLoadingRegional(true);
+    try {
+      const [raData, propData] = await Promise.all([
+        apiRequest('/regional-admins'),
+        apiRequest('/local-admin-proposals'),
+      ]);
+      setRegionalAdmins(raData.regionalAdmins || []);
+      setProposals(propData.proposals || []);
+    } catch (error) {
+      console.error('Error loading regional admin data:', error);
+    } finally {
+      setLoadingRegional(false);
+    }
+  };
+
+  const createRegionalAdmin = async () => {
+    if (!newRA.name.trim() || !newRA.email.trim()) return;
+    setCreatingRA(true);
+    try {
+      await apiRequest('/regional-admins', {
+        method: 'POST',
+        body: JSON.stringify(newRA),
+      });
+      setNewRA({ name: '', email: '', phone: '', region: 'north' });
+      await loadRegionalData();
+    } catch (error: any) {
+      notify.error(error.message || 'Error creating regional admin');
+    } finally {
+      setCreatingRA(false);
+    }
+  };
+
+  const removeRegionalAdmin = async (id: string) => {
+    if (!window.confirm(rtx.confirmRemoveRegionalAdmin)) return;
+    setRemovingRAId(id);
+    try {
+      await apiRequest(`/users/${id}`, { method: 'DELETE' });
+      await loadRegionalData();
+    } catch (error: any) {
+      notify.error(error.message || 'Error removing regional admin');
+    } finally {
+      setRemovingRAId(null);
+    }
+  };
+
+  const decideProposal = async (id: string, action: 'approve' | 'reject') => {
+    setDecidingId(id);
+    try {
+      await apiRequest(`/local-admin-proposals/${id}/${action}`, { method: 'POST', body: JSON.stringify({}) });
+      await loadRegionalData();
+    } catch (error: any) {
+      notify.error(error.message || 'Error deciding proposal');
+    } finally {
+      setDecidingId(null);
+    }
+  };
+
+  const updateLocationRegion = async (locationId: string, region: 'north' | 'south' | null) => {
+    setSavingRegion(true);
+    try {
+      await apiRequest(`/locations/${locationId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ region }),
+      });
+      await loadData();
+    } catch (error: any) {
+      notify.error(error.message || 'Error updating region');
+    } finally {
+      setSavingRegion(false);
     }
   };
 
@@ -135,6 +302,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
             items={[
               { id: 'locations', label: t.locations, icon: MapPin },
               { id: 'inbox', label: t.inbox, icon: InboxIcon },
+              { id: 'regional', label: rtx.regionalTab, icon: Users },
             ]}
             activeId={tab}
             onSelect={(id) => setTab(id as typeof tab)}
@@ -187,6 +355,23 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                   <h2 className="text-lg font-semibold text-gray-800 leading-tight">{selectedLocation.name}</h2>
                   <p className="text-xs text-gray-400">{selectedLocation.city}</p>
                 </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-gray-500">{rtx.region}</label>
+                <select
+                  value={selectedLocation.region || ''}
+                  disabled={savingRegion}
+                  onChange={(e) => {
+                    const region = (e.target.value || null) as 'north' | 'south' | null;
+                    setSelectedLocation({ ...selectedLocation, region });
+                    updateLocationRegion(selectedLocation.id, region);
+                  }}
+                  className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+                >
+                  <option value="">{rtx.noRegion}</option>
+                  <option value="north">{rtx.north}</option>
+                  <option value="south">{rtx.south}</option>
+                </select>
               </div>
             </div>
 
@@ -275,6 +460,138 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
         )}
 
         {tab === 'inbox' && <InboxView t={t} apiRequest={apiRequest} />}
+
+        {tab === 'regional' && (
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">{rtx.newRegionalAdmin}</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+                <input
+                  type="text"
+                  value={newRA.name}
+                  onChange={(e) => setNewRA({ ...newRA, name: e.target.value })}
+                  placeholder={rtx.name}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <input
+                  type="email"
+                  value={newRA.email}
+                  onChange={(e) => setNewRA({ ...newRA, email: e.target.value })}
+                  placeholder={rtx.email}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <input
+                  type="tel"
+                  value={newRA.phone}
+                  onChange={(e) => setNewRA({ ...newRA, phone: e.target.value })}
+                  placeholder={rtx.phone}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <select
+                  value={newRA.region}
+                  onChange={(e) => setNewRA({ ...newRA, region: e.target.value as 'north' | 'south' })}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="north">{rtx.north}</option>
+                  <option value="south">{rtx.south}</option>
+                </select>
+              </div>
+              <button
+                onClick={createRegionalAdmin}
+                disabled={creatingRA || !newRA.name.trim() || !newRA.email.trim()}
+                className="flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+                {rtx.invite}
+              </button>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">{rtx.regionalAdmins}</h2>
+              {loadingRegional ? (
+                <div className="text-center py-8 text-gray-400">
+                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                  {t.loading}
+                </div>
+              ) : regionalAdmins.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">{rtx.noRegionalAdmins}</div>
+              ) : (
+                <div className="space-y-2">
+                  {regionalAdmins.map((ra) => (
+                    <div key={ra.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100">
+                      <div>
+                        <p className="font-semibold text-gray-800 text-sm">{ra.name || ra.email}</p>
+                        <p className="text-xs text-gray-400">{ra.email}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                          {ra.region === 'north' ? rtx.north : rtx.south}
+                        </span>
+                        <button
+                          onClick={() => removeRegionalAdmin(ra.id)}
+                          disabled={removingRAId === ra.id}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-50"
+                          title={rtx.remove}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">{rtx.proposalsInbox}</h2>
+              {loadingRegional ? (
+                <div className="text-center py-8 text-gray-400">
+                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                  {t.loading}
+                </div>
+              ) : proposals.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">{rtx.noProposals}</div>
+              ) : (
+                <div className="space-y-2">
+                  {proposals.map((p) => (
+                    <div key={p.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border border-gray-100">
+                      <div>
+                        <p className="font-semibold text-gray-800 text-sm">{p.name} <span className="text-gray-400 font-normal">({p.email})</span></p>
+                        <p className="text-xs text-gray-400">
+                          {rtx.forSchool} {p.schoolName} · {rtx.proposedBy} {p.proposedByName}
+                        </p>
+                      </div>
+                      {p.status === 'pending' ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => decideProposal(p.id, 'approve')}
+                            disabled={decidingId === p.id}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            {rtx.approve}
+                          </button>
+                          <button
+                            onClick={() => decideProposal(p.id, 'reject')}
+                            disabled={decidingId === p.id}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200 transition disabled:opacity-50"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            {rtx.reject}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full self-start sm:self-auto ${p.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {p.status === 'approved' ? rtx.approved : rtx.rejected}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
           </div>
         </div>

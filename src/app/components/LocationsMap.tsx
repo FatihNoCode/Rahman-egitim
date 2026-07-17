@@ -14,6 +14,7 @@ export interface LocationRecord {
   lng: number;
   active: boolean;
   schoolCount?: number;
+  region?: 'north' | 'south' | null;
 }
 
 interface LocationsMapProps {

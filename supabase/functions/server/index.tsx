@@ -891,49 +891,50 @@ app.post("/make-server-6679cacd/notifications/read-all", async (c) => {
 // publishes no street addresses, so those coordinates are city-level starting
 // points; the southern ones are geocoded from their real addresses. A
 // superadmin can correct any pin afterwards.
+// IGMG Noord-Nederland
 const SEED_LOCATIONS = [
-  { name: 'Almere Erkam', city: 'Almere', website: 'https://mgalmere.nl', lat: 52.3508, lng: 5.2647 },
-  { name: 'Amersfoort Rahman Moskee', city: 'Amersfoort', website: 'https://mgamersfoort.nl', lat: 52.1561, lng: 5.3878 },
-  { name: 'Ayasofya', city: 'Amsterdam', website: 'https://mgwestermoskee.nl', lat: 52.3676, lng: 4.9041 },
-  { name: 'Cafer-i Sadik', city: 'Amsterdam', website: 'https://mgcaferisadik.nl', lat: 52.3600, lng: 4.9200 },
-  { name: 'Ensar', city: 'Amsterdam', website: 'https://mgensar.nl', lat: 52.3750, lng: 4.8900 },
-  { name: 'Mevlana', city: 'Amsterdam', website: 'https://mgmevlana.nl', lat: 52.3550, lng: 4.8850 },
-  { name: 'Selimiye', city: 'Amsterdam', website: 'https://mgselimiye.nl', lat: 52.3800, lng: 4.9300 },
-  { name: 'Barneveld', city: 'Barneveld', website: 'https://mgbarneveld.nl', lat: 52.1401, lng: 5.5843 },
-  { name: 'Fatih', city: 'Beverwijk', website: 'https://mgbeverwijk.nl', lat: 52.4873, lng: 4.6564 },
-  { name: 'Deventer', city: 'Deventer', website: 'https://mgdeventer.nl', lat: 52.2551, lng: 6.1639 },
-  { name: 'Enschede', city: 'Enschede', website: 'https://mgenschede.nl', lat: 52.2215, lng: 6.8937 },
-  { name: 'Fatih', city: 'Haarlem', website: 'https://mghaarlemfatih.nl', lat: 52.3874, lng: 4.6462 },
-  { name: 'Furkan', city: 'Haarlem', website: 'https://mgfurkan.nl', lat: 52.3800, lng: 4.6600 },
-  { name: 'Heemskerk', city: 'Heemskerk', website: 'https://mgheemskerk.nl', lat: 52.5100, lng: 4.6714 },
-  { name: 'Hilversum', city: 'Hilversum', website: 'https://mghilversum.nl', lat: 52.2233, lng: 5.1719 },
-  { name: 'Hoofddorp', city: 'Hoofddorp', website: 'https://mghoofddorp.nl', lat: 52.3061, lng: 4.6907 },
-  { name: 'Hoogezand', city: 'Hoogezand', website: 'https://mghoogezand.nl', lat: 53.1622, lng: 6.7594 },
-  { name: 'Oldenzaal', city: 'Oldenzaal', website: 'https://mgoldenzaal.nl', lat: 52.3131, lng: 6.9289 },
-  { name: 'Soest', city: 'Soest', website: 'https://mgsoest.nl', lat: 52.1736, lng: 5.2919 },
-  { name: 'Utrecht', city: 'Utrecht', website: 'https://mgutrecht.nl', lat: 52.0907, lng: 5.1214 },
-  { name: 'Weesp', city: 'Weesp', website: 'https://mgweesp.nl', lat: 52.3080, lng: 5.0418 },
-  { name: 'Zaandam', city: 'Zaandam', website: 'https://mgzaandam.nl', lat: 52.4390, lng: 4.8294 },
+  { name: 'Almere Erkam', city: 'Almere', website: 'https://mgalmere.nl', lat: 52.3508, lng: 5.2647, region: 'north' },
+  { name: 'Amersfoort Rahman Moskee', city: 'Amersfoort', website: 'https://mgamersfoort.nl', lat: 52.1561, lng: 5.3878, region: 'north' },
+  { name: 'Ayasofya', city: 'Amsterdam', website: 'https://mgwestermoskee.nl', lat: 52.3676, lng: 4.9041, region: 'north' },
+  { name: 'Cafer-i Sadik', city: 'Amsterdam', website: 'https://mgcaferisadik.nl', lat: 52.3600, lng: 4.9200, region: 'north' },
+  { name: 'Ensar', city: 'Amsterdam', website: 'https://mgensar.nl', lat: 52.3750, lng: 4.8900, region: 'north' },
+  { name: 'Mevlana', city: 'Amsterdam', website: 'https://mgmevlana.nl', lat: 52.3550, lng: 4.8850, region: 'north' },
+  { name: 'Selimiye', city: 'Amsterdam', website: 'https://mgselimiye.nl', lat: 52.3800, lng: 4.9300, region: 'north' },
+  { name: 'Barneveld', city: 'Barneveld', website: 'https://mgbarneveld.nl', lat: 52.1401, lng: 5.5843, region: 'north' },
+  { name: 'Fatih', city: 'Beverwijk', website: 'https://mgbeverwijk.nl', lat: 52.4873, lng: 4.6564, region: 'north' },
+  { name: 'Deventer', city: 'Deventer', website: 'https://mgdeventer.nl', lat: 52.2551, lng: 6.1639, region: 'north' },
+  { name: 'Enschede', city: 'Enschede', website: 'https://mgenschede.nl', lat: 52.2215, lng: 6.8937, region: 'north' },
+  { name: 'Fatih', city: 'Haarlem', website: 'https://mghaarlemfatih.nl', lat: 52.3874, lng: 4.6462, region: 'north' },
+  { name: 'Furkan', city: 'Haarlem', website: 'https://mgfurkan.nl', lat: 52.3800, lng: 4.6600, region: 'north' },
+  { name: 'Heemskerk', city: 'Heemskerk', website: 'https://mgheemskerk.nl', lat: 52.5100, lng: 4.6714, region: 'north' },
+  { name: 'Hilversum', city: 'Hilversum', website: 'https://mghilversum.nl', lat: 52.2233, lng: 5.1719, region: 'north' },
+  { name: 'Hoofddorp', city: 'Hoofddorp', website: 'https://mghoofddorp.nl', lat: 52.3061, lng: 4.6907, region: 'north' },
+  { name: 'Hoogezand', city: 'Hoogezand', website: 'https://mghoogezand.nl', lat: 53.1622, lng: 6.7594, region: 'north' },
+  { name: 'Oldenzaal', city: 'Oldenzaal', website: 'https://mgoldenzaal.nl', lat: 52.3131, lng: 6.9289, region: 'north' },
+  { name: 'Soest', city: 'Soest', website: 'https://mgsoest.nl', lat: 52.1736, lng: 5.2919, region: 'north' },
+  { name: 'Utrecht', city: 'Utrecht', website: 'https://mgutrecht.nl', lat: 52.0907, lng: 5.1214, region: 'north' },
+  { name: 'Weesp', city: 'Weesp', website: 'https://mgweesp.nl', lat: 52.3080, lng: 5.0418, region: 'north' },
+  { name: 'Zaandam', city: 'Zaandam', website: 'https://mgzaandam.nl', lat: 52.4390, lng: 4.8294, region: 'north' },
 
   // IGMG Zuid-Nederland
-  { name: 'Ayasofya Moskee', city: 'Arnhem', address: 'Sonsbeeksingel 110, 6822 BJ Arnhem', website: 'https://arnhemayasofya.nl', lat: 51.9860, lng: 5.9151 },
-  { name: 'Mimar Sinan Moskee', city: 'Den Haag', address: 'Tenierstraat 13, 2526 NX Den Haag', website: 'http://moskeemimarsinan.nl', lat: 52.0685, lng: 4.3049 },
-  { name: 'Aksa Moskee', city: 'Dordrecht', address: 'Willem de Zwijgerlaan 1, 3314 NX Dordrecht', website: 'https://aksamoskee.nl', lat: 51.7990, lng: 4.6722 },
-  { name: 'Ede MGT Moskee', city: 'Ede', address: 'Molenstraat 169, 6712 CV Ede', website: 'http://edemgt.nl', lat: 52.0460, lng: 5.6561 },
-  { name: 'Mevlana Moskee', city: 'Eindhoven', address: 'Jan van Riebeecklaan 2, 5642 MD Eindhoven', website: 'https://mevlanamoskee.com', lat: 51.4391, lng: 5.5160 },
-  { name: 'Yunus Emre Moskee', city: 'Eindhoven', address: 'Franklinplein 4, 5621 GA Eindhoven', website: '', lat: 51.4537, lng: 5.4597 },
-  { name: 'SCC De Brug', city: 'Leerdam', address: 'Tiendweg 11, 4142 EG Leerdam', website: 'http://debrugleerdam.nl', lat: 51.8911, lng: 5.0870 },
-  { name: 'Stichting Fatih', city: 'Leiden', address: 'Noachstraat 2, 2324 LT Leiden', website: 'https://www.stichtingfatih.nl', lat: 52.1521, lng: 4.4704 },
-  { name: 'Mescid-i Cuma Moskee', city: 'Oss', address: 'Industriepark Oost 5, 5348 GM Oss', website: '', lat: 51.7707, lng: 5.5388 },
-  { name: 'Ayasofya Moskee', city: 'Rotterdam', address: 'Mathenesserdijk 357, 3026 GD Rotterdam', website: 'https://www.ayasofya.nl', lat: 51.9138, lng: 4.4448 },
-  { name: 'Birlik Moskee', city: 'Rotterdam', address: 'Putseplein 26, 3073 HT Rotterdam', website: 'https://stichtingbirlik.nl', lat: 51.8967, lng: 4.4998 },
-  { name: 'Iskender Paşa Moskee', city: 'Rotterdam', address: 'Insulindestraat 236, 3037 BK Rotterdam', website: 'https://www.iskenderpasa.nl', lat: 51.9326, lng: 4.4693 },
-  { name: 'Mescid-i Ravza Moskee', city: 'Rotterdam', address: 'Adrianaplein 24, 3014 XK Rotterdam', website: '', lat: 51.9169, lng: 4.4649 },
-  { name: 'Islamitisch Centrum Yıldız', city: 'Schiedam', address: 'Dr. Schaepmansingel 5, 3118 XH Schiedam', website: 'https://www.sicy.nl', lat: 51.9157, lng: 4.3811 },
-  { name: 'Sultanahmet Moskee', city: 'Tilburg', address: 'Smidspad 6, 5046 JC Tilburg', website: 'http://www.tilburgsultanahmet.nl', lat: 51.5704, lng: 5.0788 },
-  { name: 'Selahaddin-i Eyyubi Moskee', city: 'Ulft', address: 'Debbeshoek 9B, 7071 XK Ulft', website: 'http://www.milligorusulft.nl', lat: 51.8909, lng: 6.3785 },
-  { name: 'Milli Görüş Islamitische en Culturele Unie', city: 'Veenendaal', address: 'Nieuweweg 52, 3905 LN Veenendaal', website: '', lat: 52.0318, lng: 5.5545 },
-  { name: 'Süleymaniye Moskee', city: 'Uden', address: 'Pres. Kennedylaan 22A, 5402 KD Uden', website: 'https://www.suleymaniyemoskeeuden.nl', lat: 51.6619, lng: 5.6265 },
+  { name: 'Ayasofya Moskee', city: 'Arnhem', address: 'Sonsbeeksingel 110, 6822 BJ Arnhem', website: 'https://arnhemayasofya.nl', lat: 51.9860, lng: 5.9151, region: 'south' },
+  { name: 'Mimar Sinan Moskee', city: 'Den Haag', address: 'Tenierstraat 13, 2526 NX Den Haag', website: 'http://moskeemimarsinan.nl', lat: 52.0685, lng: 4.3049, region: 'south' },
+  { name: 'Aksa Moskee', city: 'Dordrecht', address: 'Willem de Zwijgerlaan 1, 3314 NX Dordrecht', website: 'https://aksamoskee.nl', lat: 51.7990, lng: 4.6722, region: 'south' },
+  { name: 'Ede MGT Moskee', city: 'Ede', address: 'Molenstraat 169, 6712 CV Ede', website: 'http://edemgt.nl', lat: 52.0460, lng: 5.6561, region: 'south' },
+  { name: 'Mevlana Moskee', city: 'Eindhoven', address: 'Jan van Riebeecklaan 2, 5642 MD Eindhoven', website: 'https://mevlanamoskee.com', lat: 51.4391, lng: 5.5160, region: 'south' },
+  { name: 'Yunus Emre Moskee', city: 'Eindhoven', address: 'Franklinplein 4, 5621 GA Eindhoven', website: '', lat: 51.4537, lng: 5.4597, region: 'south' },
+  { name: 'SCC De Brug', city: 'Leerdam', address: 'Tiendweg 11, 4142 EG Leerdam', website: 'http://debrugleerdam.nl', lat: 51.8911, lng: 5.0870, region: 'south' },
+  { name: 'Stichting Fatih', city: 'Leiden', address: 'Noachstraat 2, 2324 LT Leiden', website: 'https://www.stichtingfatih.nl', lat: 52.1521, lng: 4.4704, region: 'south' },
+  { name: 'Mescid-i Cuma Moskee', city: 'Oss', address: 'Industriepark Oost 5, 5348 GM Oss', website: '', lat: 51.7707, lng: 5.5388, region: 'south' },
+  { name: 'Ayasofya Moskee', city: 'Rotterdam', address: 'Mathenesserdijk 357, 3026 GD Rotterdam', website: 'https://www.ayasofya.nl', lat: 51.9138, lng: 4.4448, region: 'south' },
+  { name: 'Birlik Moskee', city: 'Rotterdam', address: 'Putseplein 26, 3073 HT Rotterdam', website: 'https://stichtingbirlik.nl', lat: 51.8967, lng: 4.4998, region: 'south' },
+  { name: 'Iskender Paşa Moskee', city: 'Rotterdam', address: 'Insulindestraat 236, 3037 BK Rotterdam', website: 'https://www.iskenderpasa.nl', lat: 51.9326, lng: 4.4693, region: 'south' },
+  { name: 'Mescid-i Ravza Moskee', city: 'Rotterdam', address: 'Adrianaplein 24, 3014 XK Rotterdam', website: '', lat: 51.9169, lng: 4.4649, region: 'south' },
+  { name: 'Islamitisch Centrum Yıldız', city: 'Schiedam', address: 'Dr. Schaepmansingel 5, 3118 XH Schiedam', website: 'https://www.sicy.nl', lat: 51.9157, lng: 4.3811, region: 'south' },
+  { name: 'Sultanahmet Moskee', city: 'Tilburg', address: 'Smidspad 6, 5046 JC Tilburg', website: 'http://www.tilburgsultanahmet.nl', lat: 51.5704, lng: 5.0788, region: 'south' },
+  { name: 'Selahaddin-i Eyyubi Moskee', city: 'Ulft', address: 'Debbeshoek 9B, 7071 XK Ulft', website: 'http://www.milligorusulft.nl', lat: 51.8909, lng: 6.3785, region: 'south' },
+  { name: 'Milli Görüş Islamitische en Culturele Unie', city: 'Veenendaal', address: 'Nieuweweg 52, 3905 LN Veenendaal', website: '', lat: 52.0318, lng: 5.5545, region: 'south' },
+  { name: 'Süleymaniye Moskee', city: 'Uden', address: 'Pres. Kennedylaan 22A, 5402 KD Uden', website: 'https://www.suleymaniyemoskeeuden.nl', lat: 51.6619, lng: 5.6265, region: 'south' },
 ];
 
 // A seeded location is identified by its branch and city rather than by id, so
@@ -956,6 +957,23 @@ async function ensureLocationsSeeded(): Promise<any[]> {
     const stamped = unstamped.map((l: any) => ({ ...l, seedKey: seedKeyOf(l) }));
     await kv.mset(stamped.map((l: any) => `location:${l.id}`), stamped);
     locations = locations.map((l: any) => stamped.find((s: any) => s.id === l.id) || l);
+  }
+
+  // Locations seeded before the region field existed are back-filled from
+  // SEED_LOCATIONS by seedKey, rather than requiring a superadmin to set each
+  // one by hand — the north/south split is already implicit in that list.
+  const needsRegion = locations.filter((l: any) => !l.region);
+  if (needsRegion.length > 0) {
+    const patched = needsRegion
+      .map((l: any) => {
+        const seed = SEED_LOCATIONS.find((s) => seedKeyOf(s) === l.seedKey);
+        return seed ? { ...l, region: seed.region } : null;
+      })
+      .filter((l): l is any => l !== null);
+    if (patched.length > 0) {
+      await kv.mset(patched.map((l: any) => `location:${l.id}`), patched);
+      locations = locations.map((l: any) => patched.find((p: any) => p.id === l.id) || l);
+    }
   }
 
   const known = new Set(locations.map((l: any) => l.seedKey));
@@ -1025,8 +1043,11 @@ app.post("/make-server-6679cacd/locations", async (c) => {
     const userData = await getUserData(user.id);
     if (userData?.role !== 'superadmin') return c.json({ error: 'Only superadmins can create locations' }, 403);
 
-    const { name, city, address, website, lat, lng } = await c.req.json();
+    const { name, city, address, website, lat, lng, region } = await c.req.json();
     if (!name || !name.trim()) return c.json({ error: 'name is required' }, 400);
+    if (region !== undefined && region !== null && region !== 'north' && region !== 'south') {
+      return c.json({ error: 'region must be north, south, or omitted' }, 400);
+    }
 
     await ensureLocationsSeeded();
 
@@ -1041,6 +1062,7 @@ app.post("/make-server-6679cacd/locations", async (c) => {
       // always placed somewhere the superadmin can find and drag it.
       lat: typeof lat === 'number' ? lat : 52.1326,
       lng: typeof lng === 'number' ? lng : 5.2913,
+      region: region || null,
       active: true,
       createdAt: new Date().toISOString(),
     };
@@ -1066,7 +1088,10 @@ app.put("/make-server-6679cacd/locations/:locationId", async (c) => {
     const existing = await kv.get(`location:${locationId}`);
     if (!existing) return c.json({ error: 'Location not found' }, 404);
 
-    const { name, city, address, website, lat, lng, active } = await c.req.json();
+    const { name, city, address, website, lat, lng, active, region } = await c.req.json();
+    if (region !== undefined && region !== null && region !== 'north' && region !== 'south') {
+      return c.json({ error: 'region must be north, south, or null' }, 400);
+    }
     const updated = {
       ...existing,
       ...(name !== undefined ? { name: String(name).trim() } : {}),
@@ -1076,6 +1101,7 @@ app.put("/make-server-6679cacd/locations/:locationId", async (c) => {
       ...(typeof lat === 'number' ? { lat } : {}),
       ...(typeof lng === 'number' ? { lng } : {}),
       ...(active !== undefined ? { active: !!active } : {}),
+      ...(region !== undefined ? { region } : {}),
       updatedAt: new Date().toISOString(),
     };
     await kv.set(`location:${locationId}`, updated);
@@ -1155,6 +1181,430 @@ app.put("/make-server-6679cacd/schools/:schoolId", async (c) => {
   } catch (err) {
     console.log('Update school error:', err);
     return c.json({ error: 'Failed to update school' }, 500);
+  }
+});
+
+// ============= REGIONAL ADMIN MANAGEMENT =============
+//
+// A regional admin sits between superadmin and local (school) admin: they get
+// read-only, aggregated insight into every school in their assigned region
+// (north or south, per SEED_LOCATIONS) and can propose a local admin for a
+// school there, which a superadmin must approve before the account is
+// created. They gain no write access to any existing per-school endpoint —
+// that keeps this additive rather than requiring every existing route's
+// permission check to be re-audited.
+
+const REGIONS = ['north', 'south'] as const;
+type Region = typeof REGIONS[number];
+
+function isRegion(v: unknown): v is Region {
+  return v === 'north' || v === 'south';
+}
+
+// Every school located at a location in the given region, with the location
+// attached for display.
+async function getSchoolsInRegion(region: Region) {
+  const locations = (await kv.getByPrefix('location:')).filter((l: any) => l && l.id && l.region === region);
+  const locationIds = new Set(locations.map((l: any) => l.id));
+  const locationById = new Map(locations.map((l: any) => [l.id, l]));
+  const schools = (await kv.getByPrefix('school:')).filter((s: any) => s && s.id && locationIds.has(s.locationId));
+  return { locations, schools, locationById };
+}
+
+app.post("/make-server-6679cacd/regional-admins", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmins can create regional admins' }, 403);
+    }
+
+    const { name, email, phone, region } = await c.req.json();
+    if (!name?.trim() || !email?.trim()) {
+      return c.json({ error: 'name and email are required' }, 400);
+    }
+    if (!isRegion(region)) {
+      return c.json({ error: 'region must be north or south' }, 400);
+    }
+
+    const allUsers = await kv.getByPrefix('user:');
+    if (allUsers.some((u: any) => u && u.email === email)) {
+      return c.json({ error: 'Email already registered' }, 400);
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+
+    const inviteToken = crypto.randomUUID();
+    const tokenExpiry = new Date();
+    tokenExpiry.setDate(tokenExpiry.getDate() + 7);
+
+    const tempPassword = crypto.randomUUID();
+    const { data, error: createError } = await supabase.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      user_metadata: { role: 'regional_admin', inviteToken, needsPasswordSetup: true },
+      email_confirm: false,
+    });
+    if (createError) {
+      console.log('Create regional admin error:', createError);
+      return c.json({ error: createError.message }, 400);
+    }
+
+    await kv.set(`invite_token:${inviteToken}`, {
+      userId: data.user.id,
+      email,
+      role: 'regional_admin',
+      expiresAt: tokenExpiry.toISOString(),
+      used: false,
+    });
+
+    await kv.set(`user:${data.user.id}`, {
+      id: data.user.id,
+      email,
+      name: name.trim(),
+      phone: (phone || '').trim(),
+      role: 'regional_admin',
+      region,
+      createdAt: new Date().toISOString(),
+    });
+
+    const inviteLink = `https://rahmanegitim.com/invite/${inviteToken}`;
+    const regionLabel = region === 'north' ? 'Noord-Nederland' : 'Zuid-Nederland';
+    await sendEmail(
+      email,
+      'Uitnodiging Regionale Beheerder',
+      emailWrapper('Uitnodiging Regionale Beheerder', `
+        <p style="color:#374151;line-height:1.6">Hallo ${name.trim()},</p>
+        <p style="color:#374151;line-height:1.6">U bent uitgenodigd als regionale beheerder (${regionLabel}) voor Rahman Eğitim.</p>
+        <p style="color:#374151;line-height:1.6">Klik op de onderstaande link om uw account te activeren en uw wachtwoord aan te maken (7 dagen geldig):</p>
+        <p style="margin:20px 0"><a href="${inviteLink}" style="background:#059669;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Account activeren</a></p>
+      `),
+    );
+
+    return c.json({ success: true, regionalAdminId: data.user.id });
+  } catch (err) {
+    console.log('Create regional admin error:', err);
+    return c.json({ error: 'Failed to create regional admin' }, 500);
+  }
+});
+
+app.get("/make-server-6679cacd/regional-admins", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmins can list regional admins' }, 403);
+    }
+
+    const allUsers = await kv.getByPrefix('user:');
+    const regionalAdmins = allUsers
+      .filter((u: any) => u && u.role === 'regional_admin')
+      .map((u: any) => ({ id: u.id, email: u.email, name: u.name || null, phone: u.phone || null, region: u.region, createdAt: u.createdAt }));
+
+    return c.json({ regionalAdmins });
+  } catch (err) {
+    console.log('List regional admins error:', err);
+    return c.json({ error: 'Failed to get regional admins' }, 500);
+  }
+});
+
+// Aggregated, read-only performance snapshot for every school in a region.
+// Accessible to the superadmin (any region) and to a regional admin for their
+// own assigned region only.
+app.get("/make-server-6679cacd/regions/:region/summary", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+
+    const region = c.req.param('region');
+    if (!isRegion(region)) return c.json({ error: 'Invalid region' }, 400);
+
+    const isSuperadmin = userData?.role === 'superadmin';
+    const isOwnRegionalAdmin = userData?.role === 'regional_admin' && userData.region === region;
+    if (!isSuperadmin && !isOwnRegionalAdmin) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const { locations, schools, locationById } = await getSchoolsInRegion(region);
+    const schoolIds = new Set(schools.map((s: any) => s.id));
+
+    const allStudents = await kv.getByPrefix('student:');
+    const students = allStudents.filter((s: any) => s && s.id && schoolIds.has(s.schoolId));
+    const studentsBySchool = new Map<string, number>();
+    for (const s of students) {
+      studentsBySchool.set(s.schoolId, (studentsBySchool.get(s.schoolId) || 0) + 1);
+    }
+
+    const allClasses = await kv.getByPrefix('class:');
+    const classes = allClasses.filter((cl: any) => cl && cl.id && schoolIds.has(cl.schoolId));
+    const classIds = new Set(classes.map((cl: any) => cl.id));
+    const classesBySchool = new Map<string, any[]>();
+    for (const cl of classes) {
+      const list = classesBySchool.get(cl.schoolId) || [];
+      list.push(cl);
+      classesBySchool.set(cl.schoolId, list);
+    }
+    const teacherIds = new Set(classes.filter((cl: any) => cl.teacherId).map((cl: any) => cl.teacherId));
+
+    const allAttendance = await kv.getByPrefix('attendance:');
+    const attendance = allAttendance.filter((a: any) => a && a.classId && classIds.has(a.classId));
+    let present = 0, total = 0;
+    const attendanceBySchool = new Map<string, { present: number; total: number }>();
+    const classToSchool = new Map(classes.map((cl: any) => [cl.id, cl.schoolId]));
+    for (const a of attendance) {
+      const schoolId = classToSchool.get(a.classId);
+      for (const rec of a.records || []) {
+        total++;
+        if (rec.present) present++;
+        if (schoolId) {
+          const agg = attendanceBySchool.get(schoolId) || { present: 0, total: 0 };
+          agg.total++;
+          if (rec.present) agg.present++;
+          attendanceBySchool.set(schoolId, agg);
+        }
+      }
+    }
+
+    const allInschrijvingen = await kv.getByPrefix('inschrijving:');
+    const pendingEnrollments = allInschrijvingen.filter((r: any) => r && r.status === 'nieuw' && schoolIds.has(r.schoolId));
+    const pendingBySchool = new Map<string, number>();
+    for (const r of pendingEnrollments) {
+      pendingBySchool.set(r.schoolId, (pendingBySchool.get(r.schoolId) || 0) + 1);
+    }
+
+    const schoolBreakdown = schools.map((s: any) => {
+      const loc = locationById.get(s.locationId);
+      const att = attendanceBySchool.get(s.id);
+      const schoolClasses = classesBySchool.get(s.id) || [];
+      return {
+        id: s.id,
+        name: s.name,
+        active: s.active,
+        locationName: loc?.name || null,
+        city: loc?.city || null,
+        studentCount: studentsBySchool.get(s.id) || 0,
+        classCount: schoolClasses.length,
+        teacherCount: new Set(schoolClasses.filter((cl: any) => cl.teacherId).map((cl: any) => cl.teacherId)).size,
+        attendanceRate: att && att.total > 0 ? Math.round((att.present / att.total) * 100) : null,
+        pendingEnrollments: pendingBySchool.get(s.id) || 0,
+      };
+    });
+
+    return c.json({
+      region,
+      locations: locations.map((l: any) => ({ id: l.id, name: l.name, city: l.city, active: l.active })),
+      schools: schoolBreakdown,
+      totals: {
+        locations: locations.length,
+        schools: schools.length,
+        students: students.length,
+        teachers: teacherIds.size,
+        classes: classes.length,
+        attendanceRate: total > 0 ? Math.round((present / total) * 100) : null,
+        pendingEnrollments: pendingEnrollments.length,
+      },
+    });
+  } catch (err) {
+    console.log('Get region summary error:', err);
+    return c.json({ error: 'Failed to get region summary' }, 500);
+  }
+});
+
+// A regional admin cannot create a local admin directly — they propose one,
+// scoped to a school in their own region, and a superadmin approves or
+// rejects it. Keeps the "mostly read rights" boundary from the spec real:
+// the only write regional admins get is submitting a proposal.
+app.post("/make-server-6679cacd/local-admin-proposals", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'regional_admin') {
+      return c.json({ error: 'Only regional admins can propose local admins' }, 403);
+    }
+
+    const { name, email, phone, schoolId } = await c.req.json();
+    if (!name?.trim() || !email?.trim() || !schoolId) {
+      return c.json({ error: 'name, email and schoolId are required' }, 400);
+    }
+
+    const school = await kv.get(`school:${schoolId}`);
+    if (!school) return c.json({ error: 'School not found' }, 404);
+    const location = school.locationId ? await kv.get(`location:${school.locationId}`) : null;
+    if (!location || location.region !== userData.region) {
+      return c.json({ error: 'That school is not in your region' }, 403);
+    }
+
+    const allUsers = await kv.getByPrefix('user:');
+    if (allUsers.some((u: any) => u && u.email === email)) {
+      return c.json({ error: 'Email already registered' }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    const proposal = {
+      id,
+      name: name.trim(),
+      email,
+      phone: (phone || '').trim(),
+      schoolId,
+      schoolName: school.name,
+      region: userData.region,
+      proposedBy: userData.id,
+      proposedByName: userData.name || userData.email,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    await kv.set(`proposal:${id}`, proposal);
+    const ids: string[] = await kv.get('proposal_ids') || [];
+    await kv.set('proposal_ids', [...ids, id]);
+
+    return c.json({ success: true, proposal });
+  } catch (err) {
+    console.log('Create local admin proposal error:', err);
+    return c.json({ error: 'Failed to create proposal' }, 500);
+  }
+});
+
+app.get("/make-server-6679cacd/local-admin-proposals", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+
+    const ids: string[] = await kv.get('proposal_ids') || [];
+    let proposals = (await kv.mget(ids.map((id: string) => `proposal:${id}`))).filter((p: any) => p && p.id);
+
+    if (userData?.role === 'regional_admin') {
+      proposals = proposals.filter((p: any) => p.proposedBy === userData.id);
+    } else if (userData?.role !== 'superadmin') {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    proposals.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return c.json({ proposals });
+  } catch (err) {
+    console.log('List local admin proposals error:', err);
+    return c.json({ error: 'Failed to get proposals' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/local-admin-proposals/:id/approve", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmins can approve proposals' }, 403);
+    }
+
+    const proposalId = c.req.param('id');
+    const proposal = await kv.get(`proposal:${proposalId}`);
+    if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
+    if (proposal.status !== 'pending') return c.json({ error: 'Proposal already decided' }, 400);
+
+    const allUsers = await kv.getByPrefix('user:');
+    if (allUsers.some((u: any) => u && u.email === proposal.email)) {
+      return c.json({ error: 'Email already registered' }, 400);
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+
+    const inviteToken = crypto.randomUUID();
+    const tokenExpiry = new Date();
+    tokenExpiry.setDate(tokenExpiry.getDate() + 7);
+
+    const tempPassword = crypto.randomUUID();
+    const { data, error: createError } = await supabase.auth.admin.createUser({
+      email: proposal.email,
+      password: tempPassword,
+      user_metadata: { role: 'admin', inviteToken, needsPasswordSetup: true },
+      email_confirm: false,
+    });
+    if (createError) {
+      console.log('Approve proposal - create user error:', createError);
+      return c.json({ error: createError.message }, 400);
+    }
+
+    await kv.set(`invite_token:${inviteToken}`, {
+      userId: data.user.id,
+      email: proposal.email,
+      role: 'admin',
+      expiresAt: tokenExpiry.toISOString(),
+      used: false,
+    });
+
+    await kv.set(`user:${data.user.id}`, {
+      id: data.user.id,
+      email: proposal.email,
+      name: proposal.name,
+      phone: proposal.phone,
+      role: 'admin',
+      schoolId: proposal.schoolId,
+      createdAt: new Date().toISOString(),
+    });
+
+    const inviteLink = `https://rahmanegitim.com/invite/${inviteToken}`;
+    await sendEmail(
+      proposal.email,
+      'Uitnodiging Lokale Beheerder',
+      emailWrapper('Uitnodiging Lokale Beheerder', `
+        <p style="color:#374151;line-height:1.6">Hallo ${proposal.name},</p>
+        <p style="color:#374151;line-height:1.6">U bent uitgenodigd als lokale beheerder voor ${proposal.schoolName} op Rahman Eğitim.</p>
+        <p style="color:#374151;line-height:1.6">Klik op de onderstaande link om uw account te activeren en uw wachtwoord aan te maken (7 dagen geldig):</p>
+        <p style="margin:20px 0"><a href="${inviteLink}" style="background:#059669;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Account activeren</a></p>
+      `),
+    );
+
+    await kv.set(`proposal:${proposalId}`, {
+      ...proposal,
+      status: 'approved',
+      decidedAt: new Date().toISOString(),
+      decidedBy: userData.id,
+    });
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Approve local admin proposal error:', err);
+    return c.json({ error: 'Failed to approve proposal' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/local-admin-proposals/:id/reject", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmins can reject proposals' }, 403);
+    }
+
+    const proposalId = c.req.param('id');
+    const proposal = await kv.get(`proposal:${proposalId}`);
+    if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
+    if (proposal.status !== 'pending') return c.json({ error: 'Proposal already decided' }, 400);
+
+    const { reason } = await c.req.json().catch(() => ({ reason: '' }));
+    await kv.set(`proposal:${proposalId}`, {
+      ...proposal,
+      status: 'rejected',
+      reason: (reason || '').trim(),
+      decidedAt: new Date().toISOString(),
+      decidedBy: userData.id,
+    });
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Reject local admin proposal error:', err);
+    return c.json({ error: 'Failed to reject proposal' }, 500);
   }
 });
 

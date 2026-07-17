@@ -19,6 +19,7 @@ const InschrijvingPage = lazy(() => import('./components/InschrijvingPage'));
 const ResetPasswordPage = lazy(() => import('./components/ResetPasswordPage'));
 const ElifBaPage = lazy(() => import('./components/ElifBaPage'));
 const PrivacyPage = lazy(() => import('./components/PrivacyPage'));
+const RegionalAdminDashboard = lazy(() => import('./components/RegionalAdminDashboard'));
 
 const supabase = getSupabaseClient();
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
@@ -32,10 +33,11 @@ interface User {
   email: string;
   name: string;
   phone?: string;
-  role: 'parent' | 'teacher' | 'admin' | 'superadmin';
+  role: 'parent' | 'teacher' | 'admin' | 'superadmin' | 'regional_admin';
   status?: 'pending' | 'approved';
   lastCheckIn?: string;
   signature?: string | null;
+  region?: 'north' | 'south';
 }
 
 interface AppContextType {
@@ -416,6 +418,8 @@ export default function App() {
             <ParentDashboard onLogout={handleLogout} />
           ) : user.role === 'teacher' ? (
             <TeacherDashboard onLogout={handleLogout} />
+          ) : user.role === 'regional_admin' ? (
+            <RegionalAdminDashboard onLogout={handleLogout} />
           ) : user.role === 'superadmin' && viewMode === 'superadmin' ? (
             <SuperAdminDashboard onLogout={handleLogout} onEnterSchool={handleEnterSchool} />
           ) : (

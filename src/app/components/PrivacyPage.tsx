@@ -203,7 +203,7 @@ export default function PrivacyPage() {
         </div>
 
         <div className="flex flex-col items-center text-center mb-6">
-          <img src={logo} alt="Rahman Eğitim" className="h-16 w-16 object-contain mb-3" />
+          <img src={logo} alt="Rahman Eğitim" className="h-[77px] w-[77px] object-contain mb-3" />
           <h1 className="text-2xl font-bold text-gray-800">{text.title}</h1>
           <p className="text-xs text-gray-400 mt-1">{text.updated}</p>
         </div>

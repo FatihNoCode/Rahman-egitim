@@ -105,7 +105,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
           <div className="flex items-center gap-3">
-            <img src={booksLogo} alt="Rahman Eğitim" className="h-9 w-9 sm:h-11 sm:w-11 object-contain" />
+            <img src={booksLogo} alt="Rahman Eğitim" className="h-[43px] w-[43px] sm:h-[53px] sm:w-[53px] object-contain" />
             <div>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 leading-tight">{t.superAdminDashboard}</h1>
               <p className="text-xs text-gray-400 hidden sm:block">Rahman Eğitim</p>

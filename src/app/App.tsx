@@ -63,7 +63,7 @@ function PendingApprovalScreen({ email, language, onSignOut }: { email: string; 
         <div className="absolute -bottom-24 -right-16 w-80 h-80 bg-teal-300/30 rounded-full blur-3xl" />
       </div>
       <div className="relative w-full max-w-md bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl ring-1 ring-black/5 p-7 text-center">
-        <img src={faviconUrl} alt="Rahman Eğitim" className="h-14 w-14 object-contain mx-auto mb-3" />
+        <img src={faviconUrl} alt="Rahman Eğitim" className="h-[67px] w-[67px] object-contain mx-auto mb-3" />
         <h1 className="text-xl font-bold text-gray-800 mb-4">Rahman Eğitim</h1>
         <div className="bg-emerald-100 rounded-full p-4 inline-flex mb-3">
           <svg className="h-8 w-8 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4l3 2M12 22a10 10 0 100-20 10 10 0 000 20z"/></svg>

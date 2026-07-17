@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const svg = readFileSync(new URL('../src/imports/logo.svg', import.meta.url));
 mkdirSync(fileURLToPath(new URL('../assets/', import.meta.url)), { recursive: true });
 
-const BG = '#f4f7f6';   // near-white, matches the app's light chrome
+const BG = '#ffffff';   // pure white, for contrast against colored home-screen wallpapers
 const S = 1024;
 
 // Render the logo to a transparent PNG sized to `frac` of the square.

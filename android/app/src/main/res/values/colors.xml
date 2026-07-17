@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the emerald the web app themes on (Tailwind emerald-600/700/500),
+         so the system chrome doesn't clash with the page it frames. -->
+    <color name="colorPrimary">#059669</color>
+    <color name="colorPrimaryDark">#047857</color>
+    <color name="colorAccent">#10B981</color>
+</resources>

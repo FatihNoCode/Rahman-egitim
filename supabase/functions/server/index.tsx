@@ -1202,12 +1202,19 @@ function isRegion(v: unknown): v is Region {
 }
 
 // Every school located at a location in the given region, with the location
-// attached for display.
-async function getSchoolsInRegion(region: Region) {
-  const locations = (await kv.getByPrefix('location:')).filter((l: any) => l && l.id && l.region === region);
+// attached for display. Scope 'all' (superadmin only, checked by the caller)
+// returns every school regardless of region, for the org-wide overview.
+async function getSchoolsInRegion(scope: Region | 'all') {
+  const allLocations = await kv.getByPrefix('location:');
+  const locations = scope === 'all'
+    ? allLocations.filter((l: any) => l && l.id)
+    : allLocations.filter((l: any) => l && l.id && l.region === scope);
   const locationIds = new Set(locations.map((l: any) => l.id));
-  const locationById = new Map(locations.map((l: any) => [l.id, l]));
-  const schools = (await kv.getByPrefix('school:')).filter((s: any) => s && s.id && locationIds.has(s.locationId));
+  const locationById = new Map(allLocations.filter((l: any) => l && l.id).map((l: any) => [l.id, l]));
+  const allSchools = await kv.getByPrefix('school:');
+  const schools = scope === 'all'
+    ? allSchools.filter((s: any) => s && s.id)
+    : allSchools.filter((s: any) => s && s.id && locationIds.has(s.locationId));
   return { locations, schools, locationById };
 }
 
@@ -1314,24 +1321,26 @@ app.get("/make-server-6679cacd/regional-admins", async (c) => {
 });
 
 // Aggregated, read-only performance snapshot for every school in a region.
-// Accessible to the superadmin (any region) and to a regional admin for their
-// own assigned region only.
+// Accessible to the superadmin (any region, or 'all' for the org-wide
+// overview) and to a regional admin for their own assigned region only.
 app.get("/make-server-6679cacd/regions/:region/summary", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
 
-    const region = c.req.param('region');
-    if (!isRegion(region)) return c.json({ error: 'Invalid region' }, 400);
-
+    const regionParam = c.req.param('region');
     const isSuperadmin = userData?.role === 'superadmin';
-    const isOwnRegionalAdmin = userData?.role === 'regional_admin' && userData.region === region;
+    if (regionParam !== 'all' && !isRegion(regionParam)) return c.json({ error: 'Invalid region' }, 400);
+    if (regionParam === 'all' && !isSuperadmin) return c.json({ error: 'Unauthorized' }, 403);
+
+    const scope: Region | 'all' = regionParam as Region | 'all';
+    const isOwnRegionalAdmin = userData?.role === 'regional_admin' && isRegion(scope) && userData.region === scope;
     if (!isSuperadmin && !isOwnRegionalAdmin) {
       return c.json({ error: 'Unauthorized' }, 403);
     }
 
-    const { locations, schools, locationById } = await getSchoolsInRegion(region);
+    const { locations, schools, locationById } = await getSchoolsInRegion(scope);
     const schoolIds = new Set(schools.map((s: any) => s.id));
 
     const allStudents = await kv.getByPrefix('student:');
@@ -1388,6 +1397,7 @@ app.get("/make-server-6679cacd/regions/:region/summary", async (c) => {
         active: s.active,
         locationName: loc?.name || null,
         city: loc?.city || null,
+        region: loc?.region || null,
         studentCount: studentsBySchool.get(s.id) || 0,
         classCount: schoolClasses.length,
         teacherCount: new Set(schoolClasses.filter((cl: any) => cl.teacherId).map((cl: any) => cl.teacherId)).size,
@@ -1396,9 +1406,46 @@ app.get("/make-server-6679cacd/regions/:region/summary", async (c) => {
       };
     });
 
+    // For the superadmin's org-wide overview, also roll the same numbers up
+    // by region so "north vs south" is visible without opening each region's
+    // own dashboard. Attendance is re-derived from each school's raw
+    // present/total counts rather than averaging per-school percentages,
+    // which would over-weight small schools.
+    let regionTotals: Record<string, any> | undefined;
+    if (scope === 'all') {
+      const buckets: Record<string, { schools: number; students: number; classes: number; teacherIds: Set<string>; present: number; total: number; pendingEnrollments: number }> = {
+        north: { schools: 0, students: 0, classes: 0, teacherIds: new Set(), present: 0, total: 0, pendingEnrollments: 0 },
+        south: { schools: 0, students: 0, classes: 0, teacherIds: new Set(), present: 0, total: 0, pendingEnrollments: 0 },
+        unassigned: { schools: 0, students: 0, classes: 0, teacherIds: new Set(), present: 0, total: 0, pendingEnrollments: 0 },
+      };
+      for (const s of schools as any[]) {
+        const loc = locationById.get(s.locationId);
+        const key = loc?.region === 'north' || loc?.region === 'south' ? loc.region : 'unassigned';
+        const bucket = buckets[key];
+        bucket.schools++;
+        bucket.students += studentsBySchool.get(s.id) || 0;
+        const schoolClasses = classesBySchool.get(s.id) || [];
+        bucket.classes += schoolClasses.length;
+        for (const cl of schoolClasses) if (cl.teacherId) bucket.teacherIds.add(cl.teacherId);
+        const att = attendanceBySchool.get(s.id);
+        if (att) { bucket.present += att.present; bucket.total += att.total; }
+        bucket.pendingEnrollments += pendingBySchool.get(s.id) || 0;
+      }
+      regionTotals = Object.fromEntries(
+        Object.entries(buckets).map(([key, b]) => [key, {
+          schools: b.schools,
+          students: b.students,
+          teachers: b.teacherIds.size,
+          classes: b.classes,
+          attendanceRate: b.total > 0 ? Math.round((b.present / b.total) * 100) : null,
+          pendingEnrollments: b.pendingEnrollments,
+        }]),
+      );
+    }
+
     return c.json({
-      region,
-      locations: locations.map((l: any) => ({ id: l.id, name: l.name, city: l.city, active: l.active })),
+      region: scope,
+      locations: locations.map((l: any) => ({ id: l.id, name: l.name, city: l.city, active: l.active, region: l.region || null })),
       schools: schoolBreakdown,
       totals: {
         locations: locations.length,
@@ -1409,6 +1456,7 @@ app.get("/make-server-6679cacd/regions/:region/summary", async (c) => {
         attendanceRate: total > 0 ? Math.round((present / total) * 100) : null,
         pendingEnrollments: pendingEnrollments.length,
       },
+      ...(regionTotals ? { regionTotals } : {}),
     });
   } catch (err) {
     console.log('Get region summary error:', err);

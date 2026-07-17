@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
-import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2 } from 'lucide-react';
+import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2, BarChart3, GraduationCap, BookOpen, CalendarCheck, Send } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import InboxView from './InboxView';
@@ -44,6 +44,35 @@ interface ProposalRecord {
   reason?: string;
 }
 
+interface SchoolBreakdownRecord {
+  id: string;
+  name: string;
+  active: boolean;
+  locationName: string | null;
+  city: string | null;
+  region: 'north' | 'south' | null;
+  studentCount: number;
+  classCount: number;
+  teacherCount: number;
+  attendanceRate: number | null;
+  pendingEnrollments: number;
+}
+
+interface RegionTotal {
+  schools: number;
+  students: number;
+  teachers: number;
+  classes: number;
+  attendanceRate: number | null;
+  pendingEnrollments: number;
+}
+
+interface OrgSummary {
+  schools: SchoolBreakdownRecord[];
+  totals: RegionTotal & { locations: number };
+  regionTotals?: { north: RegionTotal; south: RegionTotal; unassigned: RegionTotal };
+}
+
 interface SuperAdminDashboardProps {
   onLogout: () => void;
   onEnterSchool: (schoolId: string) => void;
@@ -79,6 +108,26 @@ const rt = {
     noRegion: 'Geen regio',
     save: 'Opslaan',
     confirmRemoveRegionalAdmin: 'Deze regionale beheerder verwijderen?',
+    performanceTab: 'Prestaties',
+    orgOverview: 'Organisatiebreed overzicht',
+    schools: 'Scholen',
+    schoolsHint: 'Aantal actieve leslocaties.',
+    students: 'Leerlingen',
+    studentsHint: 'Totaal aantal ingeschreven leerlingen.',
+    teachers: 'Leerkrachten',
+    teachersHint: 'Leerkrachten met minstens één klas.',
+    classes: 'Klassen',
+    classesHint: 'Totaal aantal klassen.',
+    attendance: 'Aanwezigheid',
+    attendanceHint: 'Percentage aanwezigheid over alle geregistreerde lessen.',
+    pendingEnrollments: 'Nieuwe inschrijvingen',
+    pendingEnrollmentsHint: 'Inschrijvingen die nog niet zijn beoordeeld.',
+    byRegion: 'Per regio',
+    unassigned: 'Niet toegewezen',
+    schoolBreakdown: 'Overzicht per school',
+    school: 'School',
+    location: 'Vestiging',
+    noSchools: 'Nog geen scholen',
   },
   tr: {
     regionalTab: 'Bölge yöneticileri',
@@ -106,8 +155,43 @@ const rt = {
     noRegion: 'Bölge yok',
     save: 'Kaydet',
     confirmRemoveRegionalAdmin: 'Bu bölge yöneticisi silinsin mi?',
+    performanceTab: 'Performans',
+    orgOverview: 'Kurum genelinde genel bakış',
+    schools: 'Okullar',
+    schoolsHint: 'Aktif ders lokasyonu sayısı.',
+    students: 'Öğrenciler',
+    studentsHint: 'Kayıtlı toplam öğrenci sayısı.',
+    teachers: 'Öğretmenler',
+    teachersHint: 'En az bir sınıfı olan öğretmenler.',
+    classes: 'Sınıflar',
+    classesHint: 'Toplam sınıf sayısı.',
+    attendance: 'Devam durumu',
+    attendanceHint: 'Kayıtlı tüm derslerdeki devam yüzdesi.',
+    pendingEnrollments: 'Yeni kayıtlar',
+    pendingEnrollmentsHint: 'Henüz değerlendirilmemiş kayıt başvuruları.',
+    byRegion: 'Bölgeye göre',
+    unassigned: 'Atanmamış',
+    schoolBreakdown: 'Okul bazında genel bakış',
+    school: 'Okul',
+    location: 'Şube',
+    noSchools: 'Henüz okul yok',
   },
 };
+
+function MetricCard({ icon: Icon, label, hint, value }: { icon: any; label: string; hint: string; value: string | number }) {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-4">
+      <div className="flex items-center gap-2 mb-1.5">
+        <div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+          <Icon className="h-4 w-4 text-emerald-600" />
+        </div>
+        <p className="text-xs font-medium text-gray-500">{label}</p>
+      </div>
+      <p className="text-2xl font-bold text-gray-800 mb-1">{value}</p>
+      <p className="text-[11px] text-gray-400 leading-snug">{hint}</p>
+    </div>
+  );
+}
 
 export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAdminDashboardProps) {
   const { language, setLanguage, apiRequest } = useApp();
@@ -121,8 +205,11 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   const [newSchoolName, setNewSchoolName] = useState('');
   const [creating, setCreating] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'locations' | 'inbox' | 'regional'>('locations');
+  const [tab, setTab] = useState<'locations' | 'inbox' | 'regional' | 'performance'>('locations');
   const [savingRegion, setSavingRegion] = useState(false);
+
+  const [orgSummary, setOrgSummary] = useState<OrgSummary | null>(null);
+  const [loadingOrgSummary, setLoadingOrgSummary] = useState(false);
 
   const [regionalAdmins, setRegionalAdmins] = useState<RegionalAdminRecord[]>([]);
   const [proposals, setProposals] = useState<ProposalRecord[]>([]);
@@ -136,6 +223,26 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
     loadData();
     loadRegionalData();
   }, []);
+
+  // Scans every school/student/class/attendance record, so it's fetched only
+  // once the superadmin actually opens the tab rather than on every login.
+  useEffect(() => {
+    if (tab === 'performance' && !orgSummary) {
+      loadOrgSummary();
+    }
+  }, [tab]);
+
+  const loadOrgSummary = async () => {
+    setLoadingOrgSummary(true);
+    try {
+      const data = await apiRequest('/regions/all/summary');
+      setOrgSummary(data);
+    } catch (error) {
+      console.error('Error loading org summary:', error);
+    } finally {
+      setLoadingOrgSummary(false);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -303,6 +410,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
               { id: 'locations', label: t.locations, icon: MapPin },
               { id: 'inbox', label: t.inbox, icon: InboxIcon },
               { id: 'regional', label: rtx.regionalTab, icon: Users },
+              { id: 'performance', label: rtx.performanceTab, icon: BarChart3 },
             ]}
             activeId={tab}
             onSelect={(id) => setTab(id as typeof tab)}
@@ -590,6 +698,113 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {tab === 'performance' && (
+          <div className="space-y-4 sm:space-y-6">
+            <h2 className="text-lg font-semibold text-gray-800">{rtx.orgOverview}</h2>
+            {loadingOrgSummary ? (
+              <div className="text-center py-24 text-gray-400">
+                <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                {t.loading}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <MetricCard icon={School} label={rtx.schools} hint={rtx.schoolsHint} value={orgSummary?.totals.schools ?? 0} />
+                  <MetricCard icon={Users} label={rtx.students} hint={rtx.studentsHint} value={orgSummary?.totals.students ?? 0} />
+                  <MetricCard icon={GraduationCap} label={rtx.teachers} hint={rtx.teachersHint} value={orgSummary?.totals.teachers ?? 0} />
+                  <MetricCard icon={BookOpen} label={rtx.classes} hint={rtx.classesHint} value={orgSummary?.totals.classes ?? 0} />
+                  <MetricCard
+                    icon={CalendarCheck}
+                    label={rtx.attendance}
+                    hint={rtx.attendanceHint}
+                    value={orgSummary?.totals.attendanceRate !== null && orgSummary?.totals.attendanceRate !== undefined ? `${orgSummary.totals.attendanceRate}%` : '—'}
+                  />
+                  <MetricCard icon={Send} label={rtx.pendingEnrollments} hint={rtx.pendingEnrollmentsHint} value={orgSummary?.totals.pendingEnrollments ?? 0} />
+                </div>
+
+                {orgSummary?.regionTotals && (
+                  <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+                    <h3 className="text-base font-semibold text-gray-800 mb-4">{rtx.byRegion}</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                            <th className="pb-2 pr-3 font-medium">{rtx.region}</th>
+                            <th className="pb-2 pr-3 font-medium">{rtx.schools}</th>
+                            <th className="pb-2 pr-3 font-medium">{rtx.students}</th>
+                            <th className="pb-2 pr-3 font-medium">{rtx.teachers}</th>
+                            <th className="pb-2 pr-3 font-medium">{rtx.classes}</th>
+                            <th className="pb-2 pr-3 font-medium">{rtx.attendance}</th>
+                            <th className="pb-2 font-medium">{rtx.pendingEnrollments}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(['north', 'south', 'unassigned'] as const)
+                            .filter((key) => key !== 'unassigned' || orgSummary.regionTotals![key].schools > 0)
+                            .map((key) => {
+                              const r = orgSummary.regionTotals![key];
+                              return (
+                                <tr key={key} className="border-b border-gray-50 last:border-0">
+                                  <td className="py-2.5 pr-3 font-medium text-gray-800">
+                                    {key === 'north' ? rtx.north : key === 'south' ? rtx.south : rtx.unassigned}
+                                  </td>
+                                  <td className="py-2.5 pr-3 text-gray-700">{r.schools}</td>
+                                  <td className="py-2.5 pr-3 text-gray-700">{r.students}</td>
+                                  <td className="py-2.5 pr-3 text-gray-700">{r.teachers}</td>
+                                  <td className="py-2.5 pr-3 text-gray-700">{r.classes}</td>
+                                  <td className="py-2.5 pr-3 text-gray-700">{r.attendanceRate !== null ? `${r.attendanceRate}%` : '—'}</td>
+                                  <td className="py-2.5 text-gray-700">{r.pendingEnrollments}</td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+                  <h3 className="text-base font-semibold text-gray-800 mb-4">{rtx.schoolBreakdown}</h3>
+                  {!orgSummary || orgSummary.schools.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">{rtx.noSchools}</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                            <th className="pb-2 pr-3 font-medium">{rtx.school}</th>
+                            <th className="pb-2 pr-3 font-medium">{rtx.location}</th>
+                            <th className="pb-2 pr-3 font-medium">{rtx.region}</th>
+                            <th className="pb-2 pr-3 font-medium">{rtx.students}</th>
+                            <th className="pb-2 pr-3 font-medium">{rtx.teachers}</th>
+                            <th className="pb-2 pr-3 font-medium">{rtx.classes}</th>
+                            <th className="pb-2 pr-3 font-medium">{rtx.attendance}</th>
+                            <th className="pb-2 font-medium">{rtx.pendingEnrollments}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {orgSummary.schools.map((s) => (
+                            <tr key={s.id} className="border-b border-gray-50 last:border-0">
+                              <td className="py-2.5 pr-3 font-medium text-gray-800">{s.name}</td>
+                              <td className="py-2.5 pr-3 text-gray-500">{s.city || s.locationName || '—'}</td>
+                              <td className="py-2.5 pr-3 text-gray-500">{s.region === 'north' ? rtx.north : s.region === 'south' ? rtx.south : rtx.unassigned}</td>
+                              <td className="py-2.5 pr-3 text-gray-700">{s.studentCount}</td>
+                              <td className="py-2.5 pr-3 text-gray-700">{s.teacherCount}</td>
+                              <td className="py-2.5 pr-3 text-gray-700">{s.classCount}</td>
+                              <td className="py-2.5 pr-3 text-gray-700">{s.attendanceRate !== null ? `${s.attendanceRate}%` : '—'}</td>
+                              <td className="py-2.5 text-gray-700">{s.pendingEnrollments}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 

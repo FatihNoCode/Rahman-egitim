@@ -219,9 +219,9 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
 
   if (signupPending) {
     return (
-      <div className="relative size-full flex items-center justify-center p-3 sm:p-4">
+      <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
         <Backdrop />
-        <div className="relative w-full max-w-md">
+        <div className="relative w-full max-w-md m-auto">
           <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-emerald-950/5 ring-1 ring-black/5 p-5 sm:p-7 md:p-9">
             <BrandMark />
             <div className="py-2">
@@ -265,9 +265,9 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
 
   if (isForgot) {
     return (
-      <div className="relative size-full flex items-center justify-center p-3 sm:p-4">
+      <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
         <Backdrop />
-        <div className="relative w-full max-w-md">
+        <div className="relative w-full max-w-md m-auto">
           <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-emerald-950/5 ring-1 ring-black/5 p-5 sm:p-7 md:p-9">
             <BrandMark />
             <div className="flex items-center justify-between gap-3 mb-6">
@@ -351,9 +351,9 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
   }
 
   return (
-    <div className="relative size-full flex items-center justify-center p-3 sm:p-4">
+    <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
       <Backdrop />
-      <div className="relative w-full max-w-md">
+      <div className="relative w-full max-w-md m-auto">
         <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-emerald-950/5 ring-1 ring-black/5 p-5 sm:p-7 md:p-9">
           <div className="flex items-center justify-end mb-1">
             <LanguageToggle />

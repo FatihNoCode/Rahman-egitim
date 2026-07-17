@@ -18,6 +18,7 @@ const InvitePage = lazy(() => import('./components/InvitePage'));
 const InschrijvingPage = lazy(() => import('./components/InschrijvingPage'));
 const ResetPasswordPage = lazy(() => import('./components/ResetPasswordPage'));
 const ElifBaPage = lazy(() => import('./components/ElifBaPage'));
+const PrivacyPage = lazy(() => import('./components/PrivacyPage'));
 
 const supabase = getSupabaseClient();
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
@@ -123,6 +124,11 @@ export default function App() {
     pathSegments.includes('elif-ba') ||
     pageParam === 'elif-ba';
 
+  // Public privacy policy — required by Google Play and reachable without login.
+  const isPrivacyPage =
+    pathSegments.includes('privacy') ||
+    pageParam === 'privacy';
+
   const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
     // Prefer the live Supabase session token (auto-refreshed) so long
     // sessions don't fail with an expired token; fall back to state/anon.
@@ -211,6 +217,12 @@ export default function App() {
 
     // Elif-Ba learning app — no login needed
     if (pathParts.includes('elif-ba') || urlParams.get('page') === 'elif-ba') {
+      setLoading(false);
+      return;
+    }
+
+    // Privacy policy — public, no login needed
+    if (pathParts.includes('privacy') || urlParams.get('page') === 'privacy') {
       setLoading(false);
       return;
     }
@@ -375,7 +387,9 @@ export default function App() {
             </div>
           }
         >
-          {isRecovery ? (
+          {isPrivacyPage ? (
+            <PrivacyPage />
+          ) : isRecovery ? (
             <ResetPasswordPage language={language} onDone={() => setIsRecovery(false)} />
           ) : isElifBaPage ? (
             <ElifBaPage onBack={() => { window.location.href = '/'; }} />

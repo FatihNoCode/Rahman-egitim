@@ -571,6 +571,12 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
           <UserPlus className="h-4 w-4" />
           {language === 'tr' ? 'Çocuğumu/çocuklarımı kaydettirmek istiyorum' : 'Ik wil mijn kind(eren) inschrijven'}
         </button>
+
+        <div className="mt-4 text-center">
+          <a href="/privacy" className="text-gray-400 hover:text-gray-600 text-xs transition">
+            {language === 'tr' ? 'Gizlilik Politikası' : 'Privacybeleid'}
+          </a>
+        </div>
       </div>
     </div>
   );

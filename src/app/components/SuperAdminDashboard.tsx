@@ -111,10 +111,9 @@ const rt = {
     south: 'Zuid',
     invite: 'Uitnodigen',
     noRegionalAdmins: 'Nog geen regionale beheerders',
-    mfaPolicyTitle: '2FA-vereiste per rol',
-    mfaPolicyHint: 'Verplicht tweestapsverificatie voor alle accounts met deze rol, nu en bij nieuwe uitnodigingen.',
-    mfaPolicyRegional: 'Verplicht voor regionale beheerders',
-    mfaPolicyLocal: 'Verplicht voor lokale beheerders',
+    mfaToggleLabel: '2FA verplicht',
+    mfaPolicyRegionalHint: 'Verplicht tweestapsverificatie voor alle regionale beheerders, nu en bij nieuwe uitnodigingen.',
+    mfaPolicyLocalHint: 'Verplicht tweestapsverificatie voor alle lokale beheerders, nu en bij nieuwe uitnodigingen.',
     proposalsInbox: 'Voorstellen lokale beheerders',
     noProposals: 'Geen voorstellen',
     proposedBy: 'Voorgesteld door',
@@ -162,10 +161,9 @@ const rt = {
     south: 'Güney',
     invite: 'Davet et',
     noRegionalAdmins: 'Henüz bölge yöneticisi yok',
-    mfaPolicyTitle: 'Role göre 2FA zorunluluğu',
-    mfaPolicyHint: 'Bu role sahip tüm hesaplar için iki adımlı doğrulamayı zorunlu kılar; hem şimdi hem yeni davetlerde.',
-    mfaPolicyRegional: 'Bölge yöneticileri için zorunlu',
-    mfaPolicyLocal: 'Lokal yöneticiler için zorunlu',
+    mfaToggleLabel: '2FA zorunlu',
+    mfaPolicyRegionalHint: 'Tüm bölge yöneticileri için iki adımlı doğrulamayı zorunlu kılar; hem şimdi hem yeni davetlerde.',
+    mfaPolicyLocalHint: 'Tüm lokal yöneticiler için iki adımlı doğrulamayı zorunlu kılar; hem şimdi hem yeni davetlerde.',
     proposalsInbox: 'Lokal yönetici önerileri',
     noProposals: 'Öneri yok',
     proposedBy: 'Öneren',
@@ -215,6 +213,25 @@ function MetricCard({ icon: Icon, label, hint, value }: { icon: any; label: stri
       <p className="text-2xl font-bold text-gray-800 mb-1">{value}</p>
       <p className="text-[11px] text-gray-400 leading-snug">{hint}</p>
     </div>
+  );
+}
+
+function ToggleSwitch({ checked, disabled, onChange, label, title }: { checked: boolean; disabled?: boolean; onChange: () => void; label: string; title?: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      title={title}
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${checked ? 'bg-emerald-600' : 'bg-gray-200'}`}
+    >
+      <span
+        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-[18px]' : 'translate-x-1'}`}
+      />
+    </button>
   );
 }
 
@@ -594,25 +611,6 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
         {tab === 'regional' && (
           <div className="space-y-4 sm:space-y-6">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-1">{rtx.mfaPolicyTitle}</h2>
-              <p className="text-xs text-gray-400 mb-4">{rtx.mfaPolicyHint}</p>
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-6">
-                {(['regional_admin', 'admin'] as const).map((role) => (
-                  <label key={role} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={!!mfaPolicy?.[role]}
-                      disabled={!mfaPolicy || savingMfaPolicyRole === role}
-                      onChange={() => toggleMfaPolicy(role)}
-                      className="h-4 w-4 accent-emerald-600"
-                    />
-                    {role === 'regional_admin' ? rtx.mfaPolicyRegional : rtx.mfaPolicyLocal}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">{rtx.newRegionalAdmin}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
                 <input
@@ -656,7 +654,19 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">{rtx.regionalAdmins}</h2>
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <h2 className="text-lg font-semibold text-gray-800">{rtx.regionalAdmins}</h2>
+                <label className="flex items-center gap-2 text-xs font-medium text-gray-500 cursor-pointer select-none" title={rtx.mfaPolicyRegionalHint}>
+                  {rtx.mfaToggleLabel}
+                  <ToggleSwitch
+                    checked={!!mfaPolicy?.regional_admin}
+                    disabled={!mfaPolicy || savingMfaPolicyRole === 'regional_admin'}
+                    onChange={() => toggleMfaPolicy('regional_admin')}
+                    label={rtx.mfaToggleLabel}
+                    title={rtx.mfaPolicyRegionalHint}
+                  />
+                </label>
+              </div>
               {loadingRegional ? (
                 <div className="text-center py-8 text-gray-400">
                   <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
@@ -692,7 +702,19 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">{rtx.proposalsInbox}</h2>
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <h2 className="text-lg font-semibold text-gray-800">{rtx.proposalsInbox}</h2>
+                <label className="flex items-center gap-2 text-xs font-medium text-gray-500 cursor-pointer select-none" title={rtx.mfaPolicyLocalHint}>
+                  {rtx.mfaToggleLabel}
+                  <ToggleSwitch
+                    checked={!!mfaPolicy?.admin}
+                    disabled={!mfaPolicy || savingMfaPolicyRole === 'admin'}
+                    onChange={() => toggleMfaPolicy('admin')}
+                    label={rtx.mfaToggleLabel}
+                    title={rtx.mfaPolicyLocalHint}
+                  />
+                </label>
+              </div>
               {loadingRegional ? (
                 <div className="text-center py-8 text-gray-400">
                   <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />

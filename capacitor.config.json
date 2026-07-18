@@ -1,5 +1,10 @@
 {
   "appId": "com.rahmanegitim.app",
   "appName": "Rahman Eğitim",
-  "webDir": "dist"
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#059669",
+    "limitsNavigationsToAppBoundDomains": false
+  }
 }

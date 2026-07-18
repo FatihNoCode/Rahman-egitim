@@ -4,7 +4,13 @@
     <head>
       
       <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <!-- viewport-fit=cover is what makes env(safe-area-inset-*) resolve to
+           real values on iOS. Without it iOS reports every inset as 0, so the
+           bottom tab bar sits under the home indicator and content runs into
+           the notch. Android/Capacitor is unaffected either way.
+           user-scalable=no stops the double-tap/pinch zoom that otherwise
+           makes the native shell feel like a web page. -->
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
       <title>Rahman Eğitim</title>
       <meta name="description" content="Leerlingsysteem Rahman Camii Amersfoort" />
       <meta name="robots" content="noindex, nofollow" />

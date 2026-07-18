@@ -1215,7 +1215,7 @@ function BalloonPopGame({ letters, onComplete }: {
 
       <p className="text-white text-lg">Pop de ballon met: <strong>{target.nameNl}</strong></p>
 
-      <div className="relative w-full flex-1 min-h-[70vh] rounded-3xl overflow-hidden">
+      <div className="relative w-full flex-1 min-h-[240px] rounded-3xl overflow-hidden">
         <SkyScene night={night} />
 
         {balloons.filter(b => !b.popped).map(b => {
@@ -1397,7 +1397,7 @@ function HarakatBalloonPopGame({ letters, onComplete }: {
         Pop de ballon: <strong>{target.letter.nameNl} + {target.harakat.nameNl}</strong>
       </p>
 
-      <div className="relative w-full flex-1 min-h-[70vh] rounded-3xl overflow-hidden bg-gradient-to-b from-sky-300 via-sky-200 to-sky-100">
+      <div className="relative w-full flex-1 min-h-[240px] rounded-3xl overflow-hidden bg-gradient-to-b from-sky-300 via-sky-200 to-sky-100">
         <div className="absolute top-4 right-6 text-6xl select-none pointer-events-none">☀️</div>
         <div className="absolute top-10 left-8 text-4xl opacity-80 select-none pointer-events-none">☁️</div>
         <div className="absolute top-24 right-24 text-3xl opacity-70 select-none pointer-events-none">☁️</div>
@@ -1595,7 +1595,7 @@ function FallingLettersGame({ letters, onComplete }: {
 
       <div
         ref={gameAreaRef}
-        className={`relative w-full flex-1 min-h-[65vh] rounded-3xl overflow-hidden transition-colors duration-200`}
+        className={`relative w-full flex-1 min-h-[240px] rounded-3xl overflow-hidden transition-colors duration-200`}
         style={{
           background:
             (flash === 'good' ? 'linear-gradient(rgba(74,222,128,0.15),rgba(74,222,128,0.15)),' :
@@ -2541,7 +2541,7 @@ function StageView({ stageId, progress, onComplete, onBack, onNext, lang }: {
   };
 
   return (
-    <div className={`min-h-full bg-gradient-to-b ${section.bg} flex flex-col relative`}>
+    <div className={`h-full min-h-full bg-gradient-to-b ${section.bg} flex flex-col relative`}>
       <Confetti show={showConfetti} />
 
       {/* Header */}

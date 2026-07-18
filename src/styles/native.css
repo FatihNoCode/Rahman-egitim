@@ -1,0 +1,99 @@
+/* Styling that only applies inside the Capacitor shell (and the `?app=1` web
+   preview). The classes on <html> are set by src/lib/native.ts:
+     .native-app   — running the app layout (native shell or forced preview)
+     .platform-ios / .platform-android — the concrete platform
+
+   Most of this exists because iOS' WKWebView defaults make a bundled app feel
+   like a web page: rubber-band scrolling past the content, a grey flash on
+   every tap, the long-press copy/share callout, and text that inflates in
+   landscape. Android's WebView needs far less of it, so the rules that are
+   purely about iOS feel are scoped to .platform-ios rather than applied to
+   both — no reason to change Android behaviour that already looks right. */
+
+/* Safe-area insets as variables so components can compose them (e.g. a tab bar
+   that wants its own padding *plus* the home-indicator gap). On Android and on
+   the web these resolve to 0, so the same expression is safe everywhere. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+.native-app {
+  /* Stop the whole document rubber-banding. Individual scroll containers
+     still scroll normally; this only kills the bounce past their limits,
+     which on iOS otherwise exposes a blank strip above/below the app. */
+  overscroll-behavior: none;
+}
+
+.native-app body {
+  overscroll-behavior: none;
+  /* iOS inflates text in landscape unless this is pinned. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+.platform-ios body {
+  /* The grey overlay iOS paints on every tapped element reads as "web page". */
+  -webkit-tap-highlight-color: transparent;
+  /* Long-press on iOS pops a copy/share callout over buttons and images. Text
+     the user may legitimately want to copy opts back in below. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* …but never disable selection where the user is actually entering or reading
+   text — inputs must stay selectable for the caret and copy/paste to work. */
+.platform-ios input,
+.platform-ios textarea,
+.platform-ios [contenteditable='true'],
+.platform-ios .selectable {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* iOS zooms the viewport when a focused input's font-size is under 16px. The
+   app uses text-sm (14px) on most form fields, which triggers it on every tap
+   into a field and leaves the page zoomed. 16px is the smallest size that
+   suppresses it. */
+.platform-ios input,
+.platform-ios select,
+.platform-ios textarea {
+  font-size: max(16px, 1rem);
+}
+
+/* Momentum scrolling for the app's scroll containers. */
+.native-app .overflow-auto,
+.native-app .overflow-y-auto,
+.native-app .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Top inset for the app layout. On iOS with viewport-fit=cover the WebView
+   extends under the status bar and notch, so the scroll container needs to
+   start below them. Full-bleed destinations that position themselves with
+   `fixed inset-0` escape this and opt in with .safe-top instead. */
+.native-app #root {
+  padding-top: var(--safe-top);
+  box-sizing: border-box;
+}
+
+/* Opt-in helpers for elements that sit outside the #root padding (fixed
+   overlays, full-bleed views, bottom bars). */
+.safe-top {
+  padding-top: var(--safe-top);
+}
+
+.safe-bottom {
+  padding-bottom: var(--safe-bottom);
+}
+
+/* Disable the pull-to-refresh-style drag on the app shell; the app has no
+   refresh gesture and the drag just detaches the page from the status bar. */
+.native-app,
+.native-app body {
+  touch-action: manipulation;
+}

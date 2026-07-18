@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { ArrowLeft, Layers, Users, Upload, BellRing, Wallet, ClipboardList, MessageSquare, CalendarDays, Send, Settings, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Layers, Users, Upload, BellRing, Wallet, ClipboardList, MessageSquare, CalendarDays, Send, Settings, AlertTriangle, BarChart3 } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import booksLogo from '../../imports/logo.svg';
@@ -16,6 +16,17 @@ import ImportView from './ImportView';
 import AgendaView from './AgendaView';
 import CommunicationView from './CommunicationView';
 import { notify, confirmDialog } from './ui/feedback';
+import { isAppLayout } from '../../lib/native';
+import MobileNav from './mobile/MobileNav';
+import AccountPanel from './mobile/AccountPanel';
+import SettingsPanel from './mobile/SettingsPanel';
+import {
+  useNavOrder,
+  mobileExtraNavItems,
+  MOBILE_ACCOUNT_ID,
+  MOBILE_PREFS_ID,
+  type MobileNavItem,
+} from './mobile/navPrefs';
 
 interface Metrics {
   totalStudents: number;
@@ -70,10 +81,25 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashboardProps) {
   const { language, setLanguage, apiRequest, user: currentUser } = useApp();
   const t = translations[language];
-  const [activeTab, setActiveTab] = useHashTab<'metrics' | 'entities' | 'users' | 'import' | 'meldingen' | 'settings' | 'boekhouding' | 'inschrijvingen' | 'oudergesprekken' | 'agenda' | 'communicatie'>(
+  const app = isAppLayout();
+  const [activeTab, setActiveTab] = useHashTab<string>(
     'entities',
-    ['entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'oudergesprekken', 'agenda', 'communicatie', 'settings'] as const,
+    ['entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'oudergesprekken', 'agenda', 'communicatie', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
+  const [navOrder, setNavOrder] = useNavOrder('admin', [
+    'entities',
+    'users',
+    'import',
+    'meldingen',
+    'boekhouding',
+    'inschrijvingen',
+    'oudergesprekken',
+    'agenda',
+    'communicatie',
+    'settings',
+    MOBILE_ACCOUNT_ID,
+    MOBILE_PREFS_ID,
+  ]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [classes, setClasses] = useState<Class[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -302,9 +328,44 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
     { id: 'settings', label: language === 'tr' ? 'Ayarlar' : 'Instellingen', icon: Settings },
   ];
 
+  // App layout: the sidebar's destinations plus Account/Preferences become the
+  // bottom tab bar, in the user's saved order. With this many sections most of
+  // them live behind the "More" button.
+  const allMobileItems: MobileNavItem[] = [...navItems, ...mobileExtraNavItems(language)];
+  const mobileById = Object.fromEntries(allMobileItems.map((i) => [i.id, i]));
+  const mobileItems = navOrder.map((id) => mobileById[id]).filter(Boolean) as MobileNavItem[];
+  const mobileNav = <MobileNav items={mobileItems} active={activeTab} onChange={setActiveTab} language={language} />;
+  const onExtraTab = activeTab === MOBILE_ACCOUNT_ID || activeTab === MOBILE_PREFS_ID;
+
+  if (app && onExtraTab) {
+    return (
+      <div
+        className="size-full overflow-auto bg-gray-50 px-4 pt-6"
+        style={{ paddingBottom: 'calc(5.5rem + var(--safe-bottom))' }}
+      >
+        {activeTab === MOBILE_ACCOUNT_ID ? (
+          <AccountPanel onLogout={onLogout} />
+        ) : (
+          <SettingsPanel navItems={mobileItems} onReorder={setNavOrder} />
+        )}
+        {mobileNav}
+      </div>
+    );
+  }
+
   return (
-    <div className="size-full overflow-auto p-3 sm:p-4 md:p-6">
+    <div
+      className={`size-full overflow-auto ${app ? 'px-3 pt-5' : 'p-3 sm:p-4 md:p-6'}`}
+      style={app ? { paddingBottom: 'calc(5.5rem + var(--safe-bottom))' } : undefined}
+    >
+      {app && mobileNav}
       <div className="max-w-7xl mx-auto">
+        {app && (
+          <h1 className="mb-4 text-2xl font-bold text-gray-800 leading-tight">
+            {mobileById[activeTab]?.label ?? t.adminDashboard}
+          </h1>
+        )}
+        {!app && (
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
           <div className="flex items-center gap-3">
             <img src={booksLogo} alt="Rahman Eğitim" className="h-[52px] w-[52px] sm:h-[64px] sm:w-[64px] object-contain" />
@@ -331,6 +392,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
             <UserMenu onLogout={onLogout} />
           </div>
         </div>
+        )}
 
         {onExitAdminMode && (
           <button
@@ -342,17 +404,19 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
           </button>
         )}
 
-        <div className="flex gap-4 sm:gap-6 items-start">
+        <div className={app ? '' : 'flex gap-4 sm:gap-6 items-start'}>
+          {!app && (
           <Sidebar
             items={navItems}
             activeId={activeTab}
-            onSelect={(id) => setActiveTab(id as typeof activeTab)}
+            onSelect={(id) => setActiveTab(id)}
             storageKey="ilimyolu:admin-sidebar-collapsed"
             collapseLabel={language === 'tr' ? 'Daralt' : 'Inklappen'}
             expandLabel={language === 'tr' ? 'Genişlet' : 'Uitklappen'}
           />
+          )}
 
-          <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
+          <div className={`flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-200 mb-4 sm:mb-6 ${app ? 'p-3' : 'p-3 sm:p-4 md:p-6'}`}>
 
           {activeTab === 'metrics' && metrics && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">

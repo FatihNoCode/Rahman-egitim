@@ -1,13 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, PlayCircle, AlertTriangle, Check } from 'lucide-react';
+import { Euro, Moon, PlayCircle, AlertTriangle, Check, Home, Receipt, Sparkles } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import ProductTour from './ProductTour';
 import AgendaCalendar from './AgendaCalendar';
 import { notify } from './ui/feedback';
+import { isAppLayout } from '../../lib/native';
+import MobileNav from './mobile/MobileNav';
+import AccountPanel from './mobile/AccountPanel';
+import SettingsPanel from './mobile/SettingsPanel';
+import {
+  useNavOrder,
+  mobileExtraNavItems,
+  MOBILE_ACCOUNT_ID,
+  MOBILE_PREFS_ID,
+  type MobileNavItem,
+} from './mobile/navPrefs';
+
+const ElifBaPage = lazy(() => import('./ElifBaPage'));
 
 interface Student {
   id: string;
@@ -89,7 +102,21 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [stats, setStats] = useState<any>(null);
   const [notificationDeadlineTime, setNotificationDeadlineTime] = useState('09:00');
   const [deadlinePassed, setDeadlinePassed] = useState(false);
-  const [activeTab, setActiveTab] = useHashTab<'overview' | 'billing'>('overview', ['overview', 'billing'] as const);
+  const app = isAppLayout();
+
+  // In the app layout the bottom tab bar adds Elif-Ba, Account and Settings as
+  // top-level destinations; on the web only the overview/billing split exists.
+  const [activeTab, setActiveTab] = useHashTab<string>(
+    'overview',
+    ['overview', 'billing', 'alifba', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+  );
+  const [navOrder, setNavOrder] = useNavOrder('parent', [
+    'overview',
+    'billing',
+    'alifba',
+    MOBILE_ACCOUNT_ID,
+    MOBILE_PREFS_ID,
+  ]);
   const [billingSettings, setBillingSettings] = useState<BoekhoudingSettings | null>(null);
   const [billingRecord, setBillingRecord] = useState<any>(null);
   const [billingPayments, setBillingPayments] = useState<PaymentLogEntry[]>([]);
@@ -372,12 +399,95 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
   const selectedChild = students.find((s) => s.id === selectedChildId);
 
+  const allNavItems: MobileNavItem[] = [
+    { id: 'overview', label: language === 'tr' ? 'Ana Sayfa' : 'Start', icon: Home },
+    { id: 'billing', label: language === 'tr' ? 'Ödemeler' : 'Facturatie', icon: Receipt },
+    { id: 'alifba', label: 'Elif-Ba', icon: Sparkles },
+    ...mobileExtraNavItems(language),
+  ];
+  const byId = Object.fromEntries(allNavItems.map((i) => [i.id, i]));
+  const orderedIds = navOrder.filter((id) => byId[id]);
+  const navItems = orderedIds.map((id) => byId[id]);
+
+  const mobileNav = (floating = true) => (
+    <MobileNav
+      items={navItems}
+      active={activeTab}
+      onChange={setActiveTab}
+      language={language}
+      floating={floating}
+    />
+  );
+
+  // App layout: Elif-Ba is a full-bleed destination with its own dark theme,
+  // rendered edge-to-edge above the bottom tab bar rather than inside the
+  // padded gray dashboard shell.
+  if (app && activeTab === 'alifba') {
+    return (
+      // safe-top: `fixed inset-0` opts out of the safe-area padding #root
+      // carries, so on iOS this view has to add the status-bar gap itself.
+      <div className="safe-top fixed inset-0 flex flex-col bg-slate-700">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <Suspense
+            fallback={
+              <div className="flex size-full items-center justify-center">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+              </div>
+            }
+          >
+            <ElifBaPage />
+          </Suspense>
+        </div>
+        {mobileNav(false)}
+      </div>
+    );
+  }
+
+  // App layout: Account and Preferences are their own tab-bar destinations.
+  if (app && (activeTab === MOBILE_ACCOUNT_ID || activeTab === MOBILE_PREFS_ID)) {
+    return (
+      <div className="size-full overflow-auto bg-gray-50 px-4 pt-6" style={{ paddingBottom: 'calc(5.5rem + var(--safe-bottom))' }}>
+        {showDemo && (
+          <ProductTour role="parent" language={language} onClose={() => setShowDemo(false)} />
+        )}
+        {activeTab === MOBILE_ACCOUNT_ID ? (
+          <AccountPanel onLogout={onLogout} />
+        ) : (
+          <SettingsPanel
+            onShowDemo={() => setShowDemo(true)}
+            navItems={navItems}
+            onReorder={setNavOrder}
+          />
+        )}
+        {mobileNav()}
+      </div>
+    );
+  }
+
   return (
-    <div className="size-full overflow-auto p-3 sm:p-4 md:p-6">
+    <div
+      className={`size-full overflow-auto ${app ? 'px-3 pt-5' : 'p-3 sm:p-4 md:p-6'}`}
+      style={app ? { paddingBottom: 'calc(5.5rem + var(--safe-bottom))' } : undefined}
+    >
       {showDemo && (
         <ProductTour role="parent" language={language} onClose={() => setShowDemo(false)} />
       )}
+      {app && mobileNav()}
       <div className="max-w-7xl mx-auto">
+        {/* App layout drops the logo/toolbar header — navigation lives in the
+            bottom tab bar — and shows only a compact greeting. */}
+        {app && (
+          <div className="mb-4">
+            <h1 className="text-2xl font-bold text-gray-800 leading-tight">
+              {activeTab === 'billing' ? (language === 'tr' ? 'Ödemeler' : 'Facturatie') : t.parentDashboard}
+            </h1>
+            <p className="flex items-center gap-1 text-xs text-emerald-700 font-medium">
+              <Moon className="h-3.5 w-3.5 fill-emerald-700" />
+              {language === 'tr' ? 'Selamün Aleyküm' : 'Assalamu alaikum'}{user?.name ? `, ${user.name}` : ''}
+            </p>
+          </div>
+        )}
+        {!app && (
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
           <div className="flex items-center gap-3">
             <img src={booksLogo} alt="Rahman Eğitim" className="h-[52px] w-[52px] sm:h-[64px] sm:w-[64px] object-contain" />
@@ -414,6 +524,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             <UserMenu onLogout={onLogout} />
           </div>
         </div>
+        )}
 
         {students.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 md:p-8 text-center text-sm sm:text-base text-gray-500">
@@ -469,7 +580,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           </>
         )}
 
-        {selectedChild && (
+        {selectedChild && !app && (
           <div className="flex gap-1 sm:gap-1.5 mb-4 sm:mb-6 bg-gray-100 rounded-xl p-1 overflow-x-auto w-fit">
             <button
               onClick={() => setActiveTab('overview')}

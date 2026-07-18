@@ -12,6 +12,17 @@ import AgendaCalendar from './AgendaCalendar';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import { notify } from './ui/feedback';
+import { isAppLayout } from '../../lib/native';
+import MobileNav from './mobile/MobileNav';
+import AccountPanel from './mobile/AccountPanel';
+import SettingsPanel from './mobile/SettingsPanel';
+import {
+  useNavOrder,
+  mobileExtraNavItems,
+  MOBILE_ACCOUNT_ID,
+  MOBILE_PREFS_ID,
+  type MobileNavItem,
+} from './mobile/navPrefs';
 
 interface Class {
   id: string;
@@ -37,11 +48,22 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [students, setStudents] = useState<Student[]>([]);
   const [studentsWithStats, setStudentsWithStats] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useHashTab<'attendance' | 'meldingen' | 'beheer' | 'oudergesprekken' | 'agenda' | 'diploma'>(
+  const app = isAppLayout();
+  const [activeTab, setActiveTab] = useHashTab<string>(
     'attendance',
-    ['attendance', 'meldingen', 'beheer', 'oudergesprekken', 'agenda', 'diploma'] as const,
+    ['attendance', 'meldingen', 'beheer', 'oudergesprekken', 'agenda', 'diploma', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   const [diplomaVisible, setDiplomaVisible] = useState(false);
+  const [navOrder, setNavOrder] = useNavOrder('teacher', [
+    'attendance',
+    'agenda',
+    'meldingen',
+    'oudergesprekken',
+    ...(diplomaVisible ? ['diploma'] : []),
+    'beheer',
+    MOBILE_ACCOUNT_ID,
+    MOBILE_PREFS_ID,
+  ]);
   const [conferSessions, setConferSessions] = useState<any[]>([]);
   const [conferExpanded, setConferExpanded] = useState<string | null>(null);
 
@@ -436,9 +458,49 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     { id: 'beheer', label: 'Beheer', icon: Settings },
   ];
 
+  // App layout: the sidebar's destinations plus Account/Preferences become the
+  // bottom tab bar, in the user's saved order.
+  const allMobileItems: MobileNavItem[] = [...navItems, ...mobileExtraNavItems(language)];
+  const mobileById = Object.fromEntries(allMobileItems.map((i) => [i.id, i]));
+  const mobileItems = navOrder.map((id) => mobileById[id]).filter(Boolean) as MobileNavItem[];
+  const mobileNav = <MobileNav items={mobileItems} active={activeTab} onChange={setActiveTab} language={language} />;
+  const onExtraTab = activeTab === MOBILE_ACCOUNT_ID || activeTab === MOBILE_PREFS_ID;
+
+  if (app && onExtraTab) {
+    return (
+      <div
+        className="size-full overflow-auto bg-gray-50 px-4 pt-6"
+        style={{ paddingBottom: 'calc(5.5rem + var(--safe-bottom))' }}
+      >
+        {activeTab === MOBILE_ACCOUNT_ID ? (
+          <AccountPanel onLogout={onLogout} />
+        ) : (
+          <SettingsPanel navItems={mobileItems} onReorder={setNavOrder} />
+        )}
+        {mobileNav}
+      </div>
+    );
+  }
+
   return (
-    <div className="size-full overflow-auto p-3 sm:p-4 md:p-6">
+    <div
+      className={`size-full overflow-auto ${app ? 'px-3 pt-5' : 'p-3 sm:p-4 md:p-6'}`}
+      style={app ? { paddingBottom: 'calc(5.5rem + var(--safe-bottom))' } : undefined}
+    >
+      {app && mobileNav}
       <div className="max-w-7xl mx-auto">
+        {app && (
+          <div className="mb-4">
+            <h1 className="text-2xl font-bold text-gray-800 leading-tight">
+              {mobileById[activeTab]?.label ?? t.teacherDashboard}
+            </h1>
+            <p className="flex items-center gap-1 text-xs text-emerald-700 font-medium">
+              <Moon className="h-3.5 w-3.5 fill-emerald-700" />
+              {language === 'tr' ? 'Selamün Aleyküm' : 'Assalamu alaikum'}{user?.name ? `, ${user.name}` : ''}
+            </p>
+          </div>
+        )}
+        {!app && (
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
           <div className="flex items-center gap-3">
             <img src={booksLogo} alt="Rahman Eğitim" className="h-[52px] w-[52px] sm:h-[64px] sm:w-[64px] object-contain" />
@@ -468,6 +530,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             <UserMenu onLogout={onLogout} />
           </div>
         </div>
+        )}
 
         {classes.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 md:p-8 text-center">
@@ -476,17 +539,19 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             </p>
           </div>
         ) : (
-        <div className="flex gap-4 sm:gap-6 items-start">
+        <div className={app ? '' : 'flex gap-4 sm:gap-6 items-start'}>
+          {!app && (
           <Sidebar
             items={navItems}
             activeId={activeTab}
-            onSelect={(id) => setActiveTab(id as typeof activeTab)}
+            onSelect={(id) => setActiveTab(id)}
             storageKey="ilimyolu:teacher-sidebar-collapsed"
             collapseLabel={language === 'tr' ? 'Daralt' : 'Inklappen'}
             expandLabel={language === 'tr' ? 'Genişlet' : 'Uitklappen'}
           />
+          )}
 
-          <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
+          <div className={`flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-200 mb-4 sm:mb-6 ${app ? 'p-3' : 'p-3 sm:p-4 md:p-6'}`}>
 
             {/* ─── COMBINED ATTENDANCE + BEHAVIOR + HOMEWORK TAB ─── */}
             {activeTab === 'attendance' && (

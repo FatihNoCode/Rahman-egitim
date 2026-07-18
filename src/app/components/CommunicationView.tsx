@@ -319,7 +319,10 @@ export default function CommunicationView({ language, apiRequest }: Communicatio
                   <div className="px-4 pb-4 text-sm text-gray-600">
                     <p className="whitespace-pre-wrap mb-2">{log.content}</p>
                     {log.attachmentNames.length > 0 && (
-                      <p className="text-xs text-gray-400 mb-2">📎 {log.attachmentNames.join(', ')}</p>
+                      <p className="flex items-center gap-1 text-xs text-gray-400 mb-2">
+                        <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                        {log.attachmentNames.join(', ')}
+                      </p>
                     )}
                     <div className="flex flex-wrap gap-1">
                       {log.recipients.map(r => (

@@ -124,7 +124,7 @@ const t = {
 
 function MetricCard({ icon: Icon, label, hint, value }: { icon: any; label: string; hint: string; value: string | number }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-4">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
       <div className="flex items-center gap-2 mb-1.5">
         <div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
           <Icon className="h-4 w-4 text-emerald-600" />
@@ -219,7 +219,7 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
         </div>
 
         {!region ? (
-          <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-6 text-center text-gray-500 text-sm">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center text-gray-500 text-sm">
             {text.noRegion}
           </div>
         ) : loading ? (
@@ -243,7 +243,7 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
               <MetricCard icon={Send} label={text.pending} hint={text.pendingHint} value={summary?.totals.pendingEnrollments ?? 0} />
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">{text.schoolBreakdown}</h2>
               {!summary || summary.schools.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">{text.noSchools}</div>
@@ -279,7 +279,7 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
               )}
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-1">{text.proposeLocalAdmin}</h2>
               <p className="text-xs text-gray-400 mb-4">{text.proposeHint}</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
@@ -325,7 +325,7 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
               </button>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">{text.myProposals}</h2>
               {proposals.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">{text.noProposals}</div>

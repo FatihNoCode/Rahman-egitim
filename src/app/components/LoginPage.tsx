@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, Lock, ArrowLeft, CheckCircle2, Circle, UserPlus, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, CheckCircle2, Circle, UserPlus, Eye, EyeOff, Clock, AlertTriangle, Sparkles } from 'lucide-react';
 import { translations } from './translations';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../../lib/supabase';
@@ -232,14 +232,8 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
     }
   };
 
-  // Decorative blurred backdrop shapes, shared by both screens.
-  const Backdrop = () => (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <div className="absolute -top-24 -left-20 w-72 h-72 bg-emerald-300/30 rounded-full blur-3xl" />
-      <div className="absolute -bottom-24 -right-16 w-80 h-80 bg-teal-300/30 rounded-full blur-3xl" />
-      <div className="absolute top-1/3 right-1/4 w-40 h-40 bg-amber-200/20 rounded-full blur-3xl" />
-    </div>
-  );
+  // Shared plain background for both screens.
+  const Backdrop = () => <div className="absolute inset-0 bg-gray-50 pointer-events-none" />;
 
   const LanguageToggle = () => (
     <div className="flex gap-1 bg-gray-100 rounded-full p-1">
@@ -270,7 +264,7 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
       <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
         <Backdrop />
         <div className="relative w-full max-w-md m-auto">
-          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-emerald-950/5 ring-1 ring-black/5 p-5 sm:p-7 md:p-9">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
             <BrandMark />
             <h2 className="text-lg font-semibold text-gray-800 text-center mb-1">
               {language === 'tr' ? 'İki adımlı doğrulama' : 'Tweestapsverificatie'}
@@ -296,7 +290,7 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
               <button
                 type="submit"
                 disabled={mfaSubmitting || mfaCode.length !== 6}
-                className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-50 text-sm shadow-md shadow-emerald-900/10"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-50 text-sm shadow-md shadow-emerald-900/10"
               >
                 {mfaSubmitting ? t.loading : language === 'tr' ? 'Doğrula' : 'Verifiëren'}
               </button>
@@ -320,7 +314,7 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
       <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
         <Backdrop />
         <div className="relative w-full max-w-md m-auto">
-          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-emerald-950/5 ring-1 ring-black/5 p-5 sm:p-7 md:p-9">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
             <BrandMark />
             <div className="py-2">
               <div className="flex justify-center mb-4">
@@ -338,8 +332,9 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
               </p>
               <p className="text-sm font-semibold text-emerald-700 text-center mb-4 break-all">{email}</p>
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6">
-                <p className="text-amber-800 text-sm font-semibold mb-0.5">
-                  {language === 'tr' ? '⏳ Henüz giriş yapamazsınız' : '⏳ U kunt nog niet inloggen'}
+                <p className="flex items-center gap-1.5 text-amber-800 text-sm font-semibold mb-0.5">
+                  <Clock className="h-4 w-4 shrink-0" />
+                  {language === 'tr' ? 'Henüz giriş yapamazsınız' : 'U kunt nog niet inloggen'}
                 </p>
                 <p className="text-amber-700 text-xs">
                   {language === 'tr'
@@ -366,7 +361,7 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
       <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
         <Backdrop />
         <div className="relative w-full max-w-md m-auto">
-          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-emerald-950/5 ring-1 ring-black/5 p-5 sm:p-7 md:p-9">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
             <BrandMark />
             <div className="flex items-center justify-between gap-3 mb-6">
               <h2 className="text-lg font-semibold text-gray-800">
@@ -392,8 +387,9 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
                 </p>
                 <p className="text-sm font-semibold text-emerald-700 text-center mb-4 break-all">{forgotEmail}</p>
                 <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6">
-                  <p className="text-amber-800 text-sm font-semibold mb-0.5">
-                    {language === 'tr' ? '⚠️ Spam klasörünüzü kontrol edin!' : '⚠️ Controleer uw spammap!'}
+                  <p className="flex items-center gap-1.5 text-amber-800 text-sm font-semibold mb-0.5">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    {language === 'tr' ? 'Spam klasörünüzü kontrol edin!' : 'Controleer uw spammap!'}
                   </p>
                   <p className="text-amber-700 text-xs">
                     {language === 'tr'
@@ -433,7 +429,7 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-50 text-sm shadow-md shadow-emerald-900/10"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-50 text-sm shadow-md shadow-emerald-900/10"
                 >
                   {loading ? t.loading : language === 'tr' ? 'Bağlantı Gönder' : 'Link versturen'}
                 </button>
@@ -452,7 +448,7 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
     <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
       <Backdrop />
       <div className="relative w-full max-w-md m-auto">
-        <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl shadow-emerald-950/5 ring-1 ring-black/5 p-5 sm:p-7 md:p-9">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
           <div className="flex items-center justify-end mb-1">
             <LanguageToggle />
           </div>
@@ -611,7 +607,7 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold py-2.5 sm:py-3 rounded-xl transition disabled:opacity-50 text-sm sm:text-base shadow-md shadow-emerald-900/10"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 sm:py-3 rounded-xl transition disabled:opacity-50 text-sm sm:text-base shadow-md shadow-emerald-900/10"
             >
               {loading ? t.loading : isSignup ? t.signup : t.login}
             </button>
@@ -655,16 +651,17 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
         {/* Elif-Ba learning game — no login needed */}
         <button
           onClick={() => { window.location.href = '/elif-ba'; }}
-          className="w-full flex items-center justify-center gap-2 mt-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold py-3 rounded-2xl shadow-lg transition text-sm sm:text-base"
+          className="w-full flex items-center justify-center gap-2 mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-sm transition text-sm sm:text-base"
         >
           <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', fontSize: 20 }}>أ ب</span>
-          {language === 'tr' ? 'Elif-Be Öğren 🌟' : 'Elif-Ba leren 🌟'}
+          {language === 'tr' ? 'Elif-Be Öğren' : 'Elif-Ba leren'}
+          <Sparkles className="h-4 w-4" />
         </button>
 
         {/* Prospective parents — link out to the public enrollment form */}
         <button
           onClick={() => { window.location.href = '/inschrijven'; }}
-          className="w-full flex items-center justify-center gap-2 mt-3 bg-white/80 backdrop-blur-sm hover:bg-white text-emerald-700 font-semibold py-3 rounded-2xl shadow-md shadow-emerald-950/5 ring-1 ring-black/5 transition text-sm sm:text-base"
+          className="w-full flex items-center justify-center gap-2 mt-3 bg-white hover:bg-gray-50 text-emerald-700 font-semibold py-3 rounded-xl shadow-sm border border-gray-200 transition text-sm sm:text-base"
         >
           <UserPlus className="h-4 w-4" />
           {language === 'tr' ? 'Çocuğumu/çocuklarımı kaydettirmek istiyorum' : 'Ik wil mijn kind(eren) inschrijven'}

@@ -58,7 +58,7 @@ export default function InboxView({ t, apiRequest }: InboxViewProps) {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
           <InboxIcon className="h-4.5 w-4.5 text-emerald-600" />

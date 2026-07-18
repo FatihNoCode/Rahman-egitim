@@ -343,7 +343,7 @@ export default function InschrijvingPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-100 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white shadow-sm">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -377,7 +377,7 @@ export default function InschrijvingPage() {
         <div className="w-full max-w-2xl space-y-6">
           <>
               {/* Registration form */}
-              <div className="bg-white rounded-2xl shadow-lg p-6 sm:p-8">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
                 <div className="mb-7 text-center">
                   <h1 className="text-2xl sm:text-3xl font-bold text-emerald-800 mb-1">{t.title}</h1>
                   <p className="text-gray-500 text-sm">{t.subtitle}</p>
@@ -433,7 +433,7 @@ export default function InschrijvingPage() {
                               : 'border-gray-200 text-gray-600 hover:border-emerald-300'
                           }`}
                         >
-                          {val === 'jongen' ? '👦' : '👧'} {label}
+                          {label}
                         </button>
                       ))}
                     </div>
@@ -539,7 +539,7 @@ export default function InschrijvingPage() {
                       <div className="mt-3 space-y-3">
                         {/* Clever nudge toward the FAQ before they ask */}
                         <div className="flex items-start gap-2 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2.5">
-                          <span className="text-base leading-none mt-0.5">💡</span>
+                          <Info className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
                           <div className="text-xs text-emerald-800">
                             <p>{t.faqNudge}</p>
                             <button
@@ -579,7 +579,7 @@ export default function InschrijvingPage() {
               </div>
 
               {/* FAQ section */}
-              <div id="inschrijven-faq" className="bg-white rounded-2xl shadow-lg p-6 sm:p-8 scroll-mt-4">
+              <div id="inschrijven-faq" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8 scroll-mt-4">
                 <div className="mb-6 text-center">
                   <h2 className="text-xl sm:text-2xl font-bold text-emerald-800 mb-1">{t.faqTitle}</h2>
                   <p className="text-gray-500 text-sm">{t.faqSubtitle}</p>
@@ -614,12 +614,12 @@ export default function InschrijvingPage() {
       {/* Confirmation modal */}
       {submitted && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
           style={{ animation: 'iy-overlay-in 0.2s ease-out' }}
           onClick={reset}
         >
           <div
-            className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 text-center"
+            className="relative w-full max-w-md bg-white rounded-xl shadow-xl p-8 text-center"
             style={{ animation: 'iy-modal-in 0.28s cubic-bezier(0.16, 1, 0.3, 1)' }}
             onClick={e => e.stopPropagation()}
           >

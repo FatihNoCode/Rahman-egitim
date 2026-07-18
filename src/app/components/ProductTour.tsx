@@ -51,7 +51,7 @@ export default function ProductTour({ role, language, onClose }: ProductTourProp
   };
 
   const t = {
-    title: language === 'tr' ? 'Hoş geldiniz 👋' : 'Welkom 👋',
+    title: language === 'tr' ? 'Hoş geldiniz' : 'Welkom',
     subtitle: language === 'tr'
       ? 'Bir çocuğu derslere nasıl kaydedeceğinizi gösteren kısa bir tur.'
       : 'Een korte rondleiding: hoe u een kind inschrijft voor lessen.',
@@ -60,9 +60,9 @@ export default function ProductTour({ role, language, onClose }: ProductTourProp
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-6xl rounded-3xl bg-white shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-6xl rounded-xl bg-white shadow-xl overflow-hidden">
         {/* Header band */}
-        <div className="bg-gradient-to-br from-emerald-600 to-teal-600 px-6 py-3 text-white relative">
+        <div className="bg-emerald-600 px-6 py-3 text-white relative">
           <button
             onClick={finish}
             className="absolute top-3 right-4 text-white/80 hover:text-white"
@@ -75,7 +75,7 @@ export default function ProductTour({ role, language, onClose }: ProductTourProp
         </div>
 
         <div className="p-4 sm:p-6">
-          <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
+          <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
             <ArcadeEmbed />
           </div>
         </div>

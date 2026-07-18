@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, X, Clock, Sun, PartyPopper, Calendar as CalendarIcon, BookOpen, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Clock, Sun, PartyPopper, Calendar as CalendarIcon, BookOpen, FileText, Frown, Meh, Smile, Check } from 'lucide-react';
 
 interface Lesstructuur {
   id: string;
@@ -176,7 +176,11 @@ export default function AgendaCalendar({
     return (ymd: string) => (behaviorList || []).find(b => b.date === ymd);
   }, [behaviorList]);
 
-  const behaviorEmoji = (rating: number) => (rating <= 2 ? '😢' : rating <= 4 ? '😐' : '😊');
+  const BehaviorIcon = ({ rating }: { rating: number }) => {
+    if (rating <= 2) return <Frown className="h-5 w-5 text-red-500" />;
+    if (rating <= 4) return <Meh className="h-5 w-5 text-amber-500" />;
+    return <Smile className="h-5 w-5 text-emerald-500" />;
+  };
 
   const homeworkForDate = useMemo(() => {
     return (ymd: string) => homework.filter(hw => hw.dueDate === ymd);
@@ -362,7 +366,7 @@ export default function AgendaCalendar({
               )}
               {selected.behavior && (
                 <div className="flex items-start gap-2 bg-gray-50 rounded-lg p-3">
-                  <span className="text-xl leading-none">{behaviorEmoji(selected.behavior.rating)}</span>
+                  <BehaviorIcon rating={selected.behavior.rating} />
                   <div>
                     <p className="text-xs font-semibold text-gray-600 mb-0.5">{language === 'tr' ? 'Davranış' : 'Gedrag'}</p>
                     {selected.behavior.notes?.trim() ? (
@@ -397,12 +401,13 @@ export default function AgendaCalendar({
                       {role === 'parent' && selectedChildId && onToggleHomeworkCompletion && (
                         <button
                           onClick={() => onToggleHomeworkCompletion(selectedChildId, hw.id)}
-                          className={`mt-2 px-2.5 py-1 rounded-md text-xs font-semibold transition ${
+                          className={`mt-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition ${
                             completed ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                           }`}
                         >
+                          {completed && <Check className="h-3.5 w-3.5" />}
                           {completed
-                            ? (language === 'tr' ? '✓ Ödev Tamamlandı' : '✓ Huiswerk Voltooid')
+                            ? (language === 'tr' ? 'Ödev Tamamlandı' : 'Huiswerk Voltooid')
                             : (language === 'tr' ? 'Tamamlandı Olarak İşaretle' : 'Markeer als Voltooid')}
                         </button>
                       )}

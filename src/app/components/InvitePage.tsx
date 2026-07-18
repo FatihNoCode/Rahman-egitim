@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, XCircle, PartyPopper } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { notify } from './ui/feedback';
 import { validatePassword } from '../../lib/password';
@@ -121,7 +121,7 @@ export default function InvitePage({ token, onComplete }: InvitePageProps) {
 
   if (loading) {
     return (
-      <div className="size-full flex items-center justify-center bg-gradient-to-br from-emerald-50 to-teal-100">
+      <div className="size-full flex items-center justify-center bg-gray-50">
         <div className="text-lg text-emerald-800">{texts.loading}</div>
       </div>
     );
@@ -129,10 +129,10 @@ export default function InvitePage({ token, onComplete }: InvitePageProps) {
 
   if (!valid) {
     return (
-      <div className="size-full flex items-center justify-center bg-gradient-to-br from-emerald-50 to-teal-100 p-3 sm:p-4">
-        <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 max-w-md w-full">
+      <div className="size-full flex items-center justify-center bg-gray-50 p-3 sm:p-4">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 md:p-8 max-w-md w-full">
           <div className="text-center">
-            <div className="text-5xl sm:text-6xl mb-3 sm:mb-4">❌</div>
+            <XCircle className="h-14 w-14 sm:h-16 sm:w-16 text-red-500 mx-auto mb-3 sm:mb-4" />
             <h2 className="text-xl sm:text-2xl font-bold text-red-800 mb-3 sm:mb-4">{texts.invalidToken}</h2>
             <p className="text-sm sm:text-base text-gray-600">
               {language === 'tr'
@@ -146,9 +146,9 @@ export default function InvitePage({ token, onComplete }: InvitePageProps) {
   }
 
   return (
-    <div className="size-full flex items-center justify-center bg-gradient-to-br from-emerald-50 to-teal-100 p-3 sm:p-4">
+    <div className="size-full flex items-center justify-center bg-gray-50 p-3 sm:p-4">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 md:p-8">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 md:p-8">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 sm:mb-6">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-emerald-800 leading-tight">{texts.title}</h1>
             <div className="flex gap-2">
@@ -169,7 +169,7 @@ export default function InvitePage({ token, onComplete }: InvitePageProps) {
 
           <div className="mb-4 sm:mb-6">
             <div className="text-center">
-              <div className="text-4xl sm:text-5xl mb-2 sm:mb-3">👋</div>
+              <PartyPopper className="h-10 w-10 sm:h-12 sm:w-12 text-emerald-600 mx-auto mb-2 sm:mb-3" />
               <h2 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-2">{texts.welcome}</h2>
               <p className="text-sm sm:text-base text-gray-600 mb-1 break-all">{email}</p>
               <p className="text-xs sm:text-sm text-gray-500">{texts.instruction}</p>

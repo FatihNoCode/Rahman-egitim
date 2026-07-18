@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, ClipboardList, BellRing, Settings, MessageSquare, CalendarDays, Award } from 'lucide-react';
+import { Moon, ClipboardList, BellRing, Settings, MessageSquare, CalendarDays, Award, Check, AlertTriangle, X, Frown, Meh, Smile } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
@@ -470,7 +470,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
         </div>
 
         {classes.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-4 sm:p-6 md:p-8 text-center">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 md:p-8 text-center">
             <p className="text-gray-500 text-base sm:text-lg">
               {language === 'tr' ? 'Size atanmış sınıf bulunamadı.' : 'Geen klassen toegewezen.'}
             </p>
@@ -486,7 +486,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             expandLabel={language === 'tr' ? 'Genişlet' : 'Uitklappen'}
           />
 
-          <div className="flex-1 min-w-0 bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
+          <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
 
             {/* ─── COMBINED ATTENDANCE + BEHAVIOR + HOMEWORK TAB ─── */}
             {activeTab === 'attendance' && (
@@ -598,8 +598,9 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
 
                           {isAbsent && absenceNotifications[student.id] && (
                             <div className="mt-2 p-2 bg-blue-50 rounded text-xs">
-                              <span className={absenceNotifications[student.id].onTime ? 'text-green-700' : 'text-orange-700'}>
-                                {absenceNotifications[student.id].onTime ? '✓ ' + t.onTime : '⚠ ' + t.late}
+                              <span className={`inline-flex items-center gap-1 ${absenceNotifications[student.id].onTime ? 'text-green-700' : 'text-orange-700'}`}>
+                                {absenceNotifications[student.id].onTime ? <Check className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                                {absenceNotifications[student.id].onTime ? t.onTime : t.late}
                               </span>
                               {absenceNotifications[student.id].reason && (
                                 <span className="ml-2 text-gray-600">- {absenceNotifications[student.id].reason}</span>
@@ -608,8 +609,9 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                           )}
 
                           {isAbsent && !absenceNotifications[student.id] && (
-                            <div className="mt-2 p-2 bg-red-50 rounded text-xs text-red-700">
-                              ✗ {t.notReported}
+                            <div className="mt-2 p-2 bg-red-50 rounded text-xs text-red-700 inline-flex items-center gap-1">
+                              <X className="h-3.5 w-3.5" />
+                              {t.notReported}
                             </div>
                           )}
 
@@ -621,25 +623,25 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                               <div className="flex gap-2 sm:gap-3 justify-center">
                                 <button
                                   onClick={() => setBehaviorRecords({ ...behaviorRecords, [student.id]: 'sad' })}
-                                  className={`text-3xl sm:text-4xl transition-transform hover:scale-110 ${
-                                    behaviorRecords[student.id] === 'sad' ? 'scale-125' : 'opacity-50'
+                                  className={`p-2 rounded-full text-red-500 transition-transform hover:scale-110 ${
+                                    behaviorRecords[student.id] === 'sad' ? 'scale-125 bg-red-50' : 'opacity-50'
                                   }`}
                                   title={language === 'tr' ? 'Üzgün' : 'Verdrietig'}
-                                >😢</button>
+                                ><Frown className="h-7 w-7 sm:h-8 sm:w-8" /></button>
                                 <button
                                   onClick={() => setBehaviorRecords({ ...behaviorRecords, [student.id]: 'neutral' })}
-                                  className={`text-3xl sm:text-4xl transition-transform hover:scale-110 ${
-                                    behaviorRecords[student.id] === 'neutral' ? 'scale-125' : 'opacity-50'
+                                  className={`p-2 rounded-full text-amber-500 transition-transform hover:scale-110 ${
+                                    behaviorRecords[student.id] === 'neutral' ? 'scale-125 bg-amber-50' : 'opacity-50'
                                   }`}
                                   title={language === 'tr' ? 'Normal' : 'Neutraal'}
-                                >😐</button>
+                                ><Meh className="h-7 w-7 sm:h-8 sm:w-8" /></button>
                                 <button
                                   onClick={() => setBehaviorRecords({ ...behaviorRecords, [student.id]: 'happy' })}
-                                  className={`text-3xl sm:text-4xl transition-transform hover:scale-110 ${
-                                    behaviorRecords[student.id] === 'happy' ? 'scale-125' : 'opacity-50'
+                                  className={`p-2 rounded-full text-emerald-500 transition-transform hover:scale-110 ${
+                                    behaviorRecords[student.id] === 'happy' ? 'scale-125 bg-emerald-50' : 'opacity-50'
                                   }`}
                                   title={language === 'tr' ? 'Mutlu' : 'Blij'}
-                                >😊</button>
+                                ><Smile className="h-7 w-7 sm:h-8 sm:w-8" /></button>
                               </div>
 
                               {/* Optional behaviour explanation */}
@@ -790,10 +792,11 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                         {/* Custom homework fields */}
                         {homeworkCategory === 'custom' && (
                           <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-                            <p className="text-xs text-emerald-700">
+                            <p className="flex items-center gap-1.5 text-xs text-emerald-700">
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                               {language === 'tr'
-                                ? '⚠️ Ödevi hem Türkçe hem de Hollandaca girin'
-                                : '⚠️ Voer het huiswerk in zowel Turks als Nederlands in'}
+                                ? 'Ödevi hem Türkçe hem de Hollandaca girin'
+                                : 'Voer het huiswerk in zowel Turks als Nederlands in'}
                             </p>
                             <div>
                               <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">

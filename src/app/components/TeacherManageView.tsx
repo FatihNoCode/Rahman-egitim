@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, X } from 'lucide-react';
+import { ArrowLeft, X, Check, Frown, Meh, Smile, Circle, BookOpen } from 'lucide-react';
 import { notify } from './ui/feedback';
 
 interface Class {
@@ -298,9 +298,13 @@ export default function TeacherManageView({
                       <p className="text-sm font-medium text-gray-600 mb-1">{text.behavior}</p>
                       {dayData.behavior !== null ? (
                         <div className="flex items-center gap-2">
-                          <span className="text-2xl">
-                            {dayData.behavior <= 2 ? '😢' : dayData.behavior <= 4 ? '😐' : '😊'}
-                          </span>
+                          {dayData.behavior <= 2 ? (
+                            <Frown className="h-5 w-5 text-red-500" />
+                          ) : dayData.behavior <= 4 ? (
+                            <Meh className="h-5 w-5 text-amber-500" />
+                          ) : (
+                            <Smile className="h-5 w-5 text-emerald-500" />
+                          )}
                           <span className="font-semibold">{dayData.behavior}/5</span>
                         </div>
                       ) : (
@@ -318,11 +322,11 @@ export default function TeacherManageView({
                               <li key={idx} className="text-gray-700 flex items-start gap-2">
                                 <span className="flex-shrink-0">
                                   {hw.completed ? (
-                                    <span className="text-green-600 font-bold" title={language === 'tr' ? 'Tamamlandı' : 'Voltooid'}>✓</span>
+                                    <Check className="h-4 w-4 text-green-600" aria-label={language === 'tr' ? 'Tamamlandı' : 'Voltooid'} />
                                   ) : hwOverdue ? (
-                                    <span className="text-red-600 font-bold" title={language === 'tr' ? 'Yapılmadı' : 'Niet gedaan'}>✗</span>
+                                    <X className="h-4 w-4 text-red-600" aria-label={language === 'tr' ? 'Yapılmadı' : 'Niet gedaan'} />
                                   ) : (
-                                    <span className="text-gray-400">○</span>
+                                    <Circle className="h-3.5 w-3.5 text-gray-400" />
                                   )}
                                 </span>
                                 <span className={hw.completed ? 'line-through text-gray-500' : hwOverdue ? 'text-red-600 font-medium' : ''}>
@@ -502,7 +506,13 @@ export default function TeacherManageView({
                       <td className="px-4 py-3 text-sm">
                         {student.avgBehavior !== undefined ? (
                           <span className="flex items-center gap-2">
-                            {student.avgBehavior <= 2 ? '😢' : student.avgBehavior <= 4 ? '😐' : '😊'}
+                            {student.avgBehavior <= 2 ? (
+                              <Frown className="h-4 w-4 text-red-500" />
+                            ) : student.avgBehavior <= 4 ? (
+                              <Meh className="h-4 w-4 text-amber-500" />
+                            ) : (
+                              <Smile className="h-4 w-4 text-emerald-500" />
+                            )}
                             <span>{student.avgBehavior.toFixed(1)}</span>
                           </span>
                         ) : '-'}
@@ -539,7 +549,7 @@ export default function TeacherManageView({
               const isForAll = !hw.studentIds || hw.studentIds.length === 0;
               return (
                 <div key={hw.id} className="flex items-start gap-3 p-3 bg-emerald-50 rounded-lg border border-emerald-100">
-                  <span className="text-emerald-600 text-lg mt-0.5">📚</span>
+                  <BookOpen className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800">{desc}</p>
                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">

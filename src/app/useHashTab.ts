@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 
 /**
- * Syncs a dashboard tab with the URL hash (e.g. #tab=teachers) so each tab is
- * a real browser history entry. The browser back/forward buttons then navigate
- * between tabs instead of leaving the app, and reloading keeps the same tab.
+ * Syncs a dashboard tab with the URL hash (e.g. #tab=teachers) so reloading
+ * keeps the same tab open. Switching tabs replaces the current history entry
+ * rather than pushing a new one — otherwise every tab click stacks up, and a
+ * single back gesture (or Android's hardware back button, which has no other
+ * gate) unwinds through every tab visited that session, landing far earlier
+ * than expected instead of leaving the dashboard.
  */
 export function useHashTab<T extends string>(
   defaultTab: T,
@@ -28,7 +31,7 @@ export function useHashTab<T extends string>(
     setTabState(next);
     const hash = `#tab=${next}`;
     if (window.location.hash !== hash) {
-      window.history.pushState(null, '', hash);
+      window.history.replaceState(null, '', hash);
     }
   };
 

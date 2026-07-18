@@ -183,7 +183,7 @@ const rt = {
 
 function MetricCard({ icon: Icon, label, hint, value }: { icon: any; label: string; hint: string; value: string | number }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-4">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
       <div className="flex items-center gap-2 mb-1.5">
         <div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
           <Icon className="h-4 w-4 text-emerald-600" />
@@ -502,7 +502,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">{t.createSchool}</h2>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
@@ -524,7 +524,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-800">
                   {t.lessonTypesAt} {selectedLocation.name}
@@ -590,7 +590,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
 
         {tab === 'regional' && (
           <div className="space-y-4 sm:space-y-6">
-            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">{rtx.newRegionalAdmin}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
                 <input
@@ -633,7 +633,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
               </button>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">{rtx.regionalAdmins}</h2>
               {loadingRegional ? (
                 <div className="text-center py-8 text-gray-400">
@@ -679,7 +679,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
               )}
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">{rtx.proposalsInbox}</h2>
               {loadingRegional ? (
                 <div className="text-center py-8 text-gray-400">
@@ -755,7 +755,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                 </div>
 
                 {orgSummary?.regionTotals && (
-                  <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
                     <h3 className="text-base font-semibold text-gray-800 mb-4">{rtx.byRegion}</h3>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
@@ -795,7 +795,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                   </div>
                 )}
 
-                <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
                   <h3 className="text-base font-semibold text-gray-800 mb-4">{rtx.schoolBreakdown}</h3>
                   {!orgSummary || orgSummary.schools.length === 0 ? (
                     <div className="text-center py-8 text-gray-400">{rtx.noSchools}</div>

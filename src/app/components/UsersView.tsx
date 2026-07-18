@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Check, X, Users as UsersIcon, Search, Trash2 } from 'lucide-react';
+import { Pencil, Check, X, Users as UsersIcon, Search, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { notify } from './ui/feedback';
 
 interface Class {
@@ -54,6 +54,17 @@ export default function UsersView({
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<'email' | 'role' | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const toggleSort = (key: 'email' | 'role') => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
 
   // Inline name/phone edit
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -118,7 +129,7 @@ export default function UsersView({
       registeredOn: 'Kayıt tarihi',
       confirmRejectTitle: 'Kaydı reddet',
       confirmRejectBody: (name: string) => `${name} adlı kişinin kaydı reddedilecek ve hesabı silinecek. Bilgilendirme e-postası gönderilecek. Devam etmek istiyor musunuz?`,
-      approved: 'Onaylandı ✓',
+      approved: 'Onaylandı',
       mfaRequired: '2FA zorunlu',
     },
     nl: {
@@ -163,7 +174,7 @@ export default function UsersView({
       registeredOn: 'Geregistreerd op',
       confirmRejectTitle: 'Registratie afwijzen',
       confirmRejectBody: (name: string) => `De registratie van ${name} wordt afgewezen en het account wordt verwijderd. Er wordt een e-mail verstuurd. Wilt u doorgaan?`,
-      approved: 'Goedgekeurd ✓',
+      approved: 'Goedgekeurd',
       mfaRequired: '2FA verplicht',
     },
   };
@@ -331,6 +342,21 @@ export default function UsersView({
     return (u.name || '').toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
   });
 
+  const sortedUsers = sortKey
+    ? [...filteredUsers].sort((a, b) => {
+        const cmp =
+          sortKey === 'email'
+            ? a.email.localeCompare(b.email)
+            : ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role);
+        return sortDir === 'asc' ? cmp : -cmp;
+      })
+    : filteredUsers;
+
+  const SortIcon = ({ column }: { column: 'email' | 'role' }) => {
+    if (sortKey !== column) return <ArrowUpDown className="h-3 w-3 text-emerald-400" />;
+    return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+  };
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
@@ -422,21 +448,39 @@ export default function UsersView({
             <thead className="bg-emerald-50">
               <tr>
                 <th className="px-3 py-2 text-left text-emerald-800 text-xs sm:text-sm">{text.name}</th>
-                <th className="px-3 py-2 text-left text-emerald-800 text-xs sm:text-sm">{text.email}</th>
+                <th className="px-3 py-2 text-left text-emerald-800 text-xs sm:text-sm">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort('email')}
+                    className="flex items-center gap-1 hover:text-emerald-900"
+                  >
+                    {text.email}
+                    <SortIcon column="email" />
+                  </button>
+                </th>
                 <th className="px-3 py-2 text-left text-emerald-800 text-xs sm:text-sm">{text.phone}</th>
-                <th className="px-3 py-2 text-left text-emerald-800 text-xs sm:text-sm">{text.role}</th>
+                <th className="px-3 py-2 text-left text-emerald-800 text-xs sm:text-sm">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort('role')}
+                    className="flex items-center gap-1 hover:text-emerald-900"
+                  >
+                    {text.role}
+                    <SortIcon column="role" />
+                  </button>
+                </th>
                 <th className="px-3 py-2 text-left text-emerald-800 text-xs sm:text-sm">{text.actions}</th>
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.length === 0 ? (
+              {sortedUsers.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-3 py-8 text-center text-gray-500">
                     {text.noUsers}
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((u) => {
+                sortedUsers.map((u) => {
                   const isSelf = u.id === currentUserId;
                   const canChangeRole = !isSelf && isRealSuperadmin;
                   const roleOptions = isRealSuperadmin

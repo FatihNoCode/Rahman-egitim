@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Plus, Trash2, ArrowLeft, X } from 'lucide-react';
+import { Pencil, Plus, Trash2, ArrowLeft, X, Check, Frown, Meh, Smile, Circle } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
 
 interface Class {
@@ -490,9 +490,13 @@ export default function ManageEntitiesView({
                       </p>
                       {dayData.behavior !== null ? (
                         <div className="flex items-center gap-2">
-                          <span className="text-2xl">
-                            {dayData.behavior <= 2 ? '😢' : dayData.behavior <= 4 ? '😐' : '😊'}
-                          </span>
+                          {dayData.behavior <= 2 ? (
+                            <Frown className="h-5 w-5 text-red-500" />
+                          ) : dayData.behavior <= 4 ? (
+                            <Meh className="h-5 w-5 text-amber-500" />
+                          ) : (
+                            <Smile className="h-5 w-5 text-emerald-500" />
+                          )}
                           <span className="font-semibold">{dayData.behavior}/5</span>
                         </div>
                       ) : (
@@ -513,11 +517,11 @@ export default function ManageEntitiesView({
                               <li key={idx} className="text-gray-700 flex items-start gap-2">
                                 <span className="flex-shrink-0">
                                   {hw.completed ? (
-                                    <span className="text-green-600 font-bold">✓</span>
+                                    <Check className="h-4 w-4 text-green-600" />
                                   ) : hwOverdue ? (
-                                    <span className="text-red-600 font-bold">✗</span>
+                                    <X className="h-4 w-4 text-red-600" />
                                   ) : (
-                                    <span className="text-gray-400">○</span>
+                                    <Circle className="h-3.5 w-3.5 text-gray-400" />
                                   )}
                                 </span>
                                 <span className={hw.completed ? 'line-through text-gray-500' : hwOverdue ? 'text-red-600 font-medium' : ''}>
@@ -993,7 +997,13 @@ export default function ManageEntitiesView({
                     <td className="px-4 py-3 text-sm">
                       {student.avgBehavior !== undefined ? (
                         <span className="flex items-center gap-2">
-                          {student.avgBehavior <= 2 ? '😢' : student.avgBehavior <= 4 ? '😐' : '😊'}
+                          {student.avgBehavior <= 2 ? (
+                            <Frown className="h-4 w-4 text-red-500" />
+                          ) : student.avgBehavior <= 4 ? (
+                            <Meh className="h-4 w-4 text-amber-500" />
+                          ) : (
+                            <Smile className="h-4 w-4 text-emerald-500" />
+                          )}
                           <span>{student.avgBehavior.toFixed(1)}</span>
                         </span>
                       ) : '-'}

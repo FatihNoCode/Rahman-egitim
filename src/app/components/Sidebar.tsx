@@ -39,7 +39,7 @@ export default function Sidebar({ items, activeId, onSelect, storageKey, collaps
 
   return (
     <aside
-      className={`shrink-0 bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 h-fit sticky top-3 sm:top-4 md:top-6 transition-all duration-200 ${
+      className={`shrink-0 bg-white rounded-xl shadow-sm border border-gray-200 h-fit sticky top-3 sm:top-4 md:top-6 transition-all duration-200 ${
         collapsed ? 'w-14' : 'w-56'
       }`}
     >

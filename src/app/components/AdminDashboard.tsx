@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { ArrowLeft, Layers, Users, Upload, BellRing, Wallet, ClipboardList, MessageSquare, CalendarDays, Send, Settings } from 'lucide-react';
+import { ArrowLeft, Layers, Users, Upload, BellRing, Wallet, ClipboardList, MessageSquare, CalendarDays, Send, Settings, AlertTriangle } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import booksLogo from '../../imports/logo.svg';
@@ -352,7 +352,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
             expandLabel={language === 'tr' ? 'Genişlet' : 'Uitklappen'}
           />
 
-          <div className="flex-1 min-w-0 bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
+          <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
 
           {activeTab === 'metrics' && metrics && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
@@ -509,10 +509,11 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
                   <div className="border-t pt-6">
                     <h4 className="text-lg font-semibold text-gray-700 mb-3">{t.startNewYear}</h4>
                     <div className="bg-yellow-50 p-4 rounded-lg mb-4">
-                      <p className="text-sm text-yellow-800">
+                      <p className="flex items-start gap-1.5 text-sm text-yellow-800">
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                         {language === 'tr'
-                          ? '⚠️ Yeni yıl başlatmak mevcut yılı kapatıp istatistikleri sıfırlayacaktır. Tüm veriler arşivlenir ve korunur.'
-                          : '⚠️ Een nieuw jaar starten sluit het huidige jaar af en reset statistieken. Alle gegevens worden gearchiveerd en bewaard.'}
+                          ? 'Yeni yıl başlatmak mevcut yılı kapatıp istatistikleri sıfırlayacaktır. Tüm veriler arşivlenir ve korunur.'
+                          : 'Een nieuw jaar starten sluit het huidige jaar af en reset statistieken. Alle gegevens worden gearchiveerd en bewaard.'}
                       </p>
                     </div>
                     <div className="flex gap-3">

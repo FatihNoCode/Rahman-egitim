@@ -45,8 +45,8 @@ export default function ResetPasswordPage({ language, onDone }: ResetPasswordPag
   };
 
   return (
-    <div className="size-full flex items-center justify-center p-4 bg-gradient-to-br from-emerald-50 to-teal-100">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 sm:p-8">
+    <div className="size-full flex items-center justify-center p-4 bg-gray-50">
+      <div className="w-full max-w-md bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
         {done ? (
           <div className="text-center py-4">
             <div className="bg-emerald-100 rounded-full p-4 inline-flex mb-4">

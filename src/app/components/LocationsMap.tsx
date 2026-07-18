@@ -36,6 +36,10 @@ const NL_BOUNDS = L.latLngBounds([50.6, 3.1], [53.7, 7.3]);
 // crops stays reachable and no pin is stranded.
 const ZOOM_OUT_BOUNDS = NL_BOUNDS.pad(-0.08);
 
+// Zoom is logarithmic (each whole level doubles the scale), so a "4% tighter"
+// default/floor is +log2(1.04) levels, not a 4% change to a bounds fraction.
+const ZOOM_BOOST = Math.log2(1.04);
+
 // Outer ring of the dimming mask. Spans the whole world so the mask still
 // covers the corners at the furthest-out zoom, whatever the pane's shape.
 const WORLD_RING: [number, number][] = [
@@ -103,7 +107,7 @@ export default function LocationsMap({ locations, selectedId, onSelect, t }: Loc
     // Derive the furthest-out zoom from the container rather than hardcoding a
     // level, so the limit holds at any pane size. Recomputed on resize.
     const clampZoomOut = () => {
-      const min = map.getBoundsZoom(ZOOM_OUT_BOUNDS);
+      const min = map.getBoundsZoom(ZOOM_OUT_BOUNDS) + ZOOM_BOOST;
       map.setMinZoom(min);
       if (map.getZoom() < min) map.setZoom(min);
     };
@@ -170,7 +174,7 @@ export default function LocationsMap({ locations, selectedId, onSelect, t }: Loc
 
   return (
     <div className="flex flex-col md:flex-row gap-4">
-      <div className="md:w-72 flex-shrink-0 bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-3 flex flex-col">
+      <div className="md:w-72 flex-shrink-0 bg-white rounded-xl shadow-sm border border-gray-200 p-3 flex flex-col">
         <div className="relative mb-2">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
@@ -214,7 +218,7 @@ export default function LocationsMap({ locations, selectedId, onSelect, t }: Loc
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 overflow-hidden">
+      <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div ref={containerRef} className="h-[24rem] md:h-[34rem] w-full z-0" />
       </div>
     </div>

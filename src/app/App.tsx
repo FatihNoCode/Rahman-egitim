@@ -1,4 +1,5 @@
 import { useState, useEffect, createContext, useContext, lazy, Suspense } from 'react';
+import { Mail } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../lib/supabase';
 import LoginPage from './components/LoginPage';
@@ -69,12 +70,8 @@ export const useApp = () => {
 
 function PendingApprovalScreen({ email, language, onSignOut }: { email: string; language: Language; onSignOut: () => void }) {
   return (
-    <div className="relative size-full flex items-center justify-center p-4">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-24 -left-20 w-72 h-72 bg-emerald-300/30 rounded-full blur-3xl" />
-        <div className="absolute -bottom-24 -right-16 w-80 h-80 bg-teal-300/30 rounded-full blur-3xl" />
-      </div>
-      <div className="relative w-full max-w-md bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl ring-1 ring-black/5 p-7 text-center">
+    <div className="relative size-full flex items-center justify-center p-4 bg-gray-50">
+      <div className="relative w-full max-w-md bg-white rounded-xl shadow-sm border border-gray-200 p-7 text-center">
         <img src={logoUrl} alt="Rahman Eğitim" className="h-[80px] w-[80px] object-contain mx-auto mb-3" />
         <h1 className="text-xl font-bold text-gray-800 mb-4">Rahman Eğitim</h1>
         <div className="bg-emerald-100 rounded-full p-4 inline-flex mb-3">
@@ -90,8 +87,9 @@ function PendingApprovalScreen({ email, language, onSignOut }: { email: string; 
         </p>
         <p className="text-sm font-semibold text-emerald-700 mb-4 break-all">{email}</p>
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6 text-left">
-          <p className="text-amber-800 text-sm font-semibold mb-0.5">
-            {language === 'tr' ? '📧 Bilgilendirme e-postası' : '📧 Bevestigingsmail'}
+          <p className="flex items-center gap-1.5 text-amber-800 text-sm font-semibold mb-0.5">
+            <Mail className="h-4 w-4 shrink-0" />
+            {language === 'tr' ? 'Bilgilendirme e-postası' : 'Bevestigingsmail'}
           </p>
           <p className="text-amber-700 text-xs">
             {language === 'tr'
@@ -101,7 +99,7 @@ function PendingApprovalScreen({ email, language, onSignOut }: { email: string; 
         </div>
         <button
           onClick={onSignOut}
-          className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold py-2.5 rounded-xl transition text-sm"
+          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition text-sm"
         >
           {language === 'tr' ? 'Çıkış yap' : 'Uitloggen'}
         </button>
@@ -172,6 +170,17 @@ export default function App() {
     }
 
     if (!response.ok) {
+      if (data.error === 'MFA_REQUIRED') {
+        // A superadmin flipped this account's MFA requirement mid-session, or
+        // the cached session otherwise fell out of sync with an aal2 need.
+        // Every other route will 403 the same way, so there's nothing useful
+        // to keep showing — sign out and send the user back through login,
+        // where the TOTP code will be asked for again.
+        await supabase.auth.signOut();
+        clearSessionStart();
+        setUser(null);
+        setAccessToken(null);
+      }
       throw new Error(data.error || 'Request failed');
     }
     return data;
@@ -308,6 +317,15 @@ export default function App() {
           },
         });
         const data = await response.json();
+        if (data.error === 'MFA_REQUIRED') {
+          // An aal1-only session survived (e.g. the tab was closed or
+          // reloaded before the TOTP step completed). Sign out rather than
+          // silently restoring a session that skipped the code — the user
+          // must log in and verify the code again from a clean state.
+          await supabase.auth.signOut();
+          clearSessionStart();
+          return;
+        }
         if (data.user) {
           setUser(data.user);
         }
@@ -370,7 +388,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="size-full flex items-center justify-center bg-gradient-to-br from-emerald-50 to-teal-100">
+      <div className="size-full flex items-center justify-center bg-gray-50">
         <div className="text-lg text-emerald-800">Yükleniyor... / Laden...</div>
       </div>
     );
@@ -391,7 +409,7 @@ export default function App() {
       {showTour && tourRole && (
         <ProductTour role={tourRole} language={language} onClose={() => setShowTour(false)} />
       )}
-      <div className="size-full bg-gradient-to-br from-emerald-50 to-teal-100">
+      <div className="size-full bg-gray-50">
         <Suspense
           fallback={
             <div className="flex items-center justify-center size-full">

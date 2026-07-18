@@ -188,8 +188,8 @@ export default function PrivacyPage() {
   const text = t[language];
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-emerald-50 to-teal-100 py-8 px-4">
-      <div className="max-w-2xl mx-auto bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl ring-1 ring-black/5 p-6 sm:p-9">
+    <div className="min-h-screen w-full bg-gray-50 py-8 px-4">
+      <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-9">
         <div className="flex items-center justify-between mb-6">
           <a href="/" className="text-emerald-700 hover:text-emerald-900 text-sm font-medium">
             {text.back}

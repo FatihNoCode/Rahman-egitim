@@ -795,6 +795,16 @@ app.get("/make-server-6679cacd/session", async (c) => {
 
     let userData = await getUserData(user.id);
 
+    // /session is exempt from the global aal2 middleware (it must work while
+    // an MFA challenge is still pending), so it has to make the same check
+    // itself. Without this, an aal1 token persisted client-side before the
+    // TOTP step completed — e.g. a reload mid-challenge — would restore a
+    // full session on every subsequent app load, skipping the code entirely.
+    const token = c.req.header('Authorization')?.split(' ')[1] || '';
+    if (mfaRequiredForRole(userData) && userData?.mfaEnrolled && decodeAal(token) !== 'aal2') {
+      return c.json({ error: 'MFA_REQUIRED' }, 403);
+    }
+
     // OAuth first login: Supabase has just created the auth user, but no KV
     // profile exists yet. Auto-provision as `pending` (same policy as the
     // password self-signup flow) so an admin can approve and assign a real

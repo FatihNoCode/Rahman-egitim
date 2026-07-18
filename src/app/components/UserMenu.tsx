@@ -385,7 +385,7 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 max-w-[90vw] bg-white rounded-2xl shadow-xl ring-1 ring-black/5 z-50 overflow-hidden">
+        <div className="absolute right-0 mt-2 w-80 max-w-[90vw] bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
           {view === 'menu' && (
             <div className="p-2">
               <div className="px-3 py-2 border-b border-gray-100 mb-1">
@@ -406,7 +406,7 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
                 >
                   <ShieldCheck className="h-4 w-4 text-gray-400" />
                   {text.twoFactor}
-                  {user?.role === 'superadmin' && (
+                  {(user?.role === 'superadmin' || user?.mfaRequired) && (
                     <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
                       {text.twoFactorRequiredBadge}
                     </span>
@@ -583,7 +583,7 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
                     {mfaEnrolled === null ? '' : mfaEnrolled ? text.twoFactorEnabled : text.twoFactorDisabled}
                   </p>
                   {mfaEnrolled ? (
-                    user?.role !== 'superadmin' ? (
+                    user?.role !== 'superadmin' && !user?.mfaRequired ? (
                       <button
                         onClick={disableMfa}
                         disabled={mfaBusy}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, PlayCircle } from 'lucide-react';
+import { Euro, Moon, PlayCircle, AlertTriangle, Check } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import ProductTour from './ProductTour';
@@ -416,7 +416,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
         </div>
 
         {students.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-4 sm:p-6 md:p-8 text-center text-sm sm:text-base text-gray-500">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 md:p-8 text-center text-sm sm:text-base text-gray-500">
             {t.noChildren}
           </div>
         ) : (
@@ -442,7 +442,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
             {/* Selected child header + actions */}
             {selectedChild && (
-              <div className="bg-white rounded-2xl shadow-sm shadow-gray-900/5 ring-1 ring-black/5 p-4 sm:p-6 mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">{selectedChild.name}</h2>
                   <p className="text-sm text-gray-500">
@@ -700,10 +700,11 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                 </div>
                 {deadlinePassed && absenceDate && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                    <p className="text-sm text-red-800 font-semibold">
+                    <p className="flex items-center gap-1.5 text-sm text-red-800 font-semibold">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
                       {language === 'tr'
-                        ? `⚠️ Bildirim süresi geçmiştir (${notificationDeadlineTime})`
-                        : `⚠️ Meldingstermijn verstreken (${notificationDeadlineTime})`}
+                        ? `Bildirim süresi geçmiştir (${notificationDeadlineTime})`
+                        : `Meldingstermijn verstreken (${notificationDeadlineTime})`}
                     </p>
                     <p className="text-xs text-red-700 mt-1">
                       {language === 'tr'
@@ -757,8 +758,9 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                         </div>
                         {myBooking ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700">
-                              ✓ {myBooking.start} - {myBooking.end}
+                            <span className="inline-flex items-center gap-1 text-sm font-medium px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700">
+                              <Check className="h-3.5 w-3.5" />
+                              {myBooking.start} - {myBooking.end}
                             </span>
                             <button
                               onClick={() => setBookingSessionId(isExpanded ? null : session.id)}

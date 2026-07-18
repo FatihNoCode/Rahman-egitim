@@ -208,7 +208,7 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
                   <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${
                     reg.geslacht === 'meisje' ? 'bg-pink-100 text-pink-600' : 'bg-blue-100 text-blue-600'
                   }`}>
-                    {reg.geslacht === 'meisje' ? '👧' : '👦'}
+                    {reg.voornaam?.[0]?.toUpperCase() || '?'}
                   </div>
 
                   <div className="flex-1 min-w-0">

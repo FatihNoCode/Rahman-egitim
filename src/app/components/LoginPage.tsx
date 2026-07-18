@@ -15,9 +15,15 @@ interface LoginPageProps {
   onLogin: (user: any, token: string) => void;
   language: Language;
   setLanguage: (lang: Language) => void;
+  // Owned by App: an aal1 session needing a TOTP code can arrive here from
+  // the password flow below, from a Google OAuth redirect, or from a reload
+  // that caught either mid-challenge — App is what sees all three, so it's
+  // what decides when this screen should show.
+  mfaChallenge: boolean;
+  setMfaChallenge: (v: boolean) => void;
 }
 
-export default function LoginPage({ onLogin, language, setLanguage }: LoginPageProps) {
+export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge, setMfaChallenge }: LoginPageProps) {
   const t = translations[language];
   const [isSignup, setIsSignup] = useState(false);
   const [signupPending, setSignupPending] = useState(false);
@@ -35,7 +41,6 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [mfaChallenge, setMfaChallenge] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
   const [mfaSubmitting, setMfaSubmitting] = useState(false);
 
@@ -66,7 +71,11 @@ export default function LoginPage({ onLogin, language, setLanguage }: LoginPageP
 
       onLogin(sessionData.user, session.access_token);
     } catch (err: any) {
-      setError(err.message || (language === 'tr' ? 'Kod doğrulanamadı' : 'Code kon niet worden geverifieerd'));
+      // Supabase's own error strings (e.g. "Auth session missing!") are
+      // English-only and not meant for end users — always show the
+      // localized message instead of err.message here.
+      console.error('MFA verification error:', err);
+      setError(language === 'tr' ? 'Kod doğrulanamadı. Kontrol edip tekrar deneyin.' : 'Code kon niet worden geverifieerd. Controleer en probeer opnieuw.');
     } finally {
       setMfaSubmitting(false);
     }

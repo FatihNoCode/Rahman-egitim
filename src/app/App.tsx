@@ -113,6 +113,13 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // An aal1-only session belonging to an account that requires MFA — set
+  // whenever /session or an API call reports MFA_REQUIRED, regardless of
+  // whether that session came from the password flow, a Google OAuth
+  // redirect, or a page reload that caught a challenge mid-flight. LoginPage
+  // renders the TOTP screen off this single flag so all three paths land on
+  // the same non-destructive prompt instead of each having its own logic.
+  const [mfaChallenge, setMfaChallenge] = useState(false);
   // Superadmins act on a specific school by selecting it; actingSchoolId is
   // sent as X-School-Id on every request so the backend can scope data.
   const [actingSchoolId, setActingSchoolId] = useState<string | null>(null);
@@ -174,12 +181,11 @@ export default function App() {
         // A superadmin flipped this account's MFA requirement mid-session, or
         // the cached session otherwise fell out of sync with an aal2 need.
         // Every other route will 403 the same way, so there's nothing useful
-        // to keep showing — sign out and send the user back through login,
-        // where the TOTP code will be asked for again.
-        await supabase.auth.signOut();
-        clearSessionStart();
+        // to keep showing — but the aal1 session is still exactly what's
+        // needed to complete the TOTP challenge, so drop back to the
+        // dashboard chrome and prompt for the code rather than signing out.
         setUser(null);
-        setAccessToken(null);
+        setMfaChallenge(true);
       }
       throw new Error(data.error || 'Request failed');
     }
@@ -318,12 +324,12 @@ export default function App() {
         });
         const data = await response.json();
         if (data.error === 'MFA_REQUIRED') {
-          // An aal1-only session survived (e.g. the tab was closed or
-          // reloaded before the TOTP step completed). Sign out rather than
-          // silently restoring a session that skipped the code — the user
-          // must log in and verify the code again from a clean state.
-          await supabase.auth.signOut();
-          clearSessionStart();
+          // An aal1-only session — from a password login mid-challenge, a
+          // Google OAuth redirect (which has no TOTP step of its own), or a
+          // reload that caught either of those before the code was entered.
+          // The session itself is exactly what the challenge screen needs,
+          // so keep it and prompt rather than signing out from under it.
+          setMfaChallenge(true);
           return;
         }
         if (data.user) {
@@ -352,6 +358,7 @@ export default function App() {
     markSessionStart();
     setUser(userData);
     setAccessToken(token);
+    setMfaChallenge(false);
   };
 
   const handleLogout = async () => {
@@ -361,6 +368,7 @@ export default function App() {
     setAccessToken(null);
     setActingSchoolId(null);
     setViewMode('superadmin');
+    setMfaChallenge(false);
   };
 
   // While the app is open, periodically enforce the session-lifetime cap so a
@@ -435,6 +443,8 @@ export default function App() {
               onLogin={handleLogin}
               language={language}
               setLanguage={setLanguage}
+              mfaChallenge={mfaChallenge}
+              setMfaChallenge={setMfaChallenge}
             />
           ) : user.status === 'pending' ? (
             <PendingApprovalScreen

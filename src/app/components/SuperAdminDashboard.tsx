@@ -491,31 +491,17 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
 
         {tab === 'locations' && selectedLocation && (
           <>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setSelectedLocation(null)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-medium ring-1 ring-black/5 transition"
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" />
-                  {t.backToLocations}
-                </button>
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-800 leading-tight">{selectedLocation.name}</h2>
-                  <p className="text-xs text-gray-400">{selectedLocation.city}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-medium text-gray-500">{rtx.region}</label>
-                <select
-                  value={selectedLocation.region || ''}
-                  disabled
-                  className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
-                >
-                  <option value="">{rtx.noRegion}</option>
-                  <option value="north">{rtx.north}</option>
-                  <option value="south">{rtx.south}</option>
-                </select>
+            <div className="flex items-center gap-3 mb-4">
+              <button
+                onClick={() => setSelectedLocation(null)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-medium ring-1 ring-black/5 transition"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                {t.backToLocations}
+              </button>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800 leading-tight">{selectedLocation.name}</h2>
+                <p className="text-xs text-gray-400">{selectedLocation.city}</p>
               </div>
             </div>
 

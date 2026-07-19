@@ -5,6 +5,7 @@ import { useApp } from '../App';
 import UserMenu from './UserMenu';
 import { notify } from './ui/feedback';
 import type { LocationRecord } from './LocationsMap';
+import MetricsDrilldown from './MetricsDrilldown';
 
 // Leaflet and its CSS are only needed once a regional admin opens the map, so
 // the whole map bundle stays out of the initial download — same pattern as
@@ -448,6 +449,15 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
                 </div>
               )}
             </div>
+
+            {region && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
+                <h2 className="text-lg font-semibold text-gray-800 mb-4">
+                  {language === 'tr' ? 'Detaylı metrikler' : 'Gedetailleerde statistieken'}
+                </h2>
+                <MetricsDrilldown language={language} apiRequest={apiRequest} rootScope="region" rootId={region} />
+              </div>
+            )}
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-1">{text.proposeLocalAdmin}</h2>

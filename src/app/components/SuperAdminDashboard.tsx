@@ -9,6 +9,7 @@ import InboxView from './InboxView';
 import type { LocationRecord } from './LocationsMap';
 import booksLogo from '../../imports/logo.svg';
 import { notify, confirmDialog } from './ui/feedback';
+import MetricsDrilldown from './MetricsDrilldown';
 
 // Leaflet and its CSS are only needed once a superadmin opens the map, so the
 // whole map bundle stays out of the initial download.
@@ -866,6 +867,14 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                       </table>
                     </div>
                   )}
+                </div>
+
+                {/* Drill-down: organisation -> location -> school -> class */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
+                  <h3 className="text-base font-semibold text-gray-800 mb-4">
+                    {language === 'tr' ? 'Detaylı metrikler' : 'Gedetailleerde statistieken'}
+                  </h3>
+                  <MetricsDrilldown language={language} apiRequest={apiRequest} rootScope="org" />
                 </div>
               </>
             )}

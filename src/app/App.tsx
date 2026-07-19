@@ -26,6 +26,7 @@ const ResetPasswordPage = lazy(() => import('./components/ResetPasswordPage'));
 const ElifBaPage = lazy(() => import('./components/ElifBaPage'));
 const PrivacyPage = lazy(() => import('./components/PrivacyPage'));
 const RegionalAdminDashboard = lazy(() => import('./components/RegionalAdminDashboard'));
+const ToetsPage = lazy(() => import('./components/ToetsPage'));
 
 const supabase = getSupabaseClient();
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
@@ -146,6 +147,11 @@ export default function App() {
   const isPrivacyPage =
     pathSegments.includes('privacy') ||
     pageParam === 'privacy';
+
+  // Public exam-taking page — students join with a code, no login needed.
+  const isToetsPage =
+    pathSegments.includes('toets') ||
+    pageParam === 'toets';
 
   const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
     // Prefer the live Supabase session token (auto-refreshed) so long
@@ -271,6 +277,12 @@ export default function App() {
 
     // Privacy policy — public, no login needed
     if (pathParts.includes('privacy') || urlParams.get('page') === 'privacy') {
+      setLoading(false);
+      return;
+    }
+
+    // Public exam page — no login needed
+    if (pathParts.includes('toets') || urlParams.get('page') === 'toets') {
       setLoading(false);
       return;
     }
@@ -467,6 +479,8 @@ export default function App() {
           >
             {isPrivacyPage ? (
               <PrivacyPage />
+            ) : isToetsPage ? (
+              <ToetsPage />
             ) : isRecovery ? (
               <ResetPasswordPage language={language} onDone={() => setIsRecovery(false)} />
             ) : isElifBaPage ? (

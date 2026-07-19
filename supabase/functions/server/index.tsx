@@ -268,6 +268,38 @@ async function createNotification(userId: string, opts: {
   return notification;
 }
 
+// Delivers a notification to a user via the channel(s) they opted into:
+// 'email' (default), 'inapp' (bell only) or 'both'. New features should
+// route through this instead of calling createNotification/sendEmail
+// directly, so the user's preference is always honoured.
+async function notifyUser(userId: string, opts: {
+  type: string;
+  titleNl: string;
+  titleTr: string;
+  bodyNl: string;
+  bodyTr: string;
+  link?: string;
+  emailSubject?: string;
+  emailHtml?: string;
+}) {
+  const userRecord = await kv.get(`user:${userId}`);
+  if (!userRecord) return;
+  const pref = userRecord.notificationPref || 'email';
+  if (pref === 'inapp' || pref === 'both') {
+    await createNotification(userId, opts);
+  }
+  if ((pref === 'email' || pref === 'both') && userRecord.email) {
+    const subject = opts.emailSubject || `${opts.titleNl} | ${opts.titleTr} - Rahman Eğitim`;
+    const html = opts.emailHtml || emailWrapper(opts.titleNl, `
+      <p style="color:#374151;line-height:1.6">${escapeHtml(opts.bodyNl)}</p>
+      <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb">
+      <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+      <p style="color:#374151;line-height:1.6">${escapeHtml(opts.bodyTr)}</p>
+    `);
+    await sendEmail(userRecord.email, subject, html);
+  }
+}
+
 // Shared helper for sending transactional emails via Resend. Every
 // notification flow (signup, payments, inschrijvingen, status changes,
 // absence alerts) routes through this so the from-address and error
@@ -636,7 +668,7 @@ app.post("/make-server-6679cacd/signup", async (c) => {
       return c.json({ error: 'Too many registrations from this connection. Please try again later.' }, 429);
     }
 
-    const { email, password, role, firstName, lastName, phone } = await c.req.json();
+    const { email, password, role, firstName, lastName, phone, schoolId } = await c.req.json();
 
     // This endpoint is public and unauthenticated (parents self-register).
     // Teacher accounts are provisioned only via the admin invite flow
@@ -656,6 +688,17 @@ app.post("/make-server-6679cacd/signup", async (c) => {
     }
 
     const name = `${firstName.trim()} ${lastName.trim()}`.trim();
+
+    // Which location the parent registers for. Stored as a hint only — a
+    // parent's definitive school context still derives from linked children.
+    let preferredSchoolId: string | null = null;
+    if (schoolId) {
+      const school = await kv.get(`school:${schoolId}`);
+      if (!school || school.active === false) {
+        return c.json({ error: 'Invalid school selection' }, 400);
+      }
+      preferredSchoolId = schoolId;
+    }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -686,6 +729,7 @@ app.post("/make-server-6679cacd/signup", async (c) => {
       name,
       phone: phone.trim(),
       role,
+      preferredSchoolId,
       status: 'pending',
       hasAccount: true,
       lastCheckIn: null,
@@ -981,10 +1025,16 @@ app.put("/make-server-6679cacd/me", async (c) => {
     const userData = await getUserData(user.id);
     if (!userData) return c.json({ error: 'User not found' }, 404);
 
-    const { name, phone, signature } = await c.req.json();
+    const { name, phone, signature, notificationPref } = await c.req.json();
     const updated = { ...userData };
     if (name !== undefined) updated.name = name;
     if (phone !== undefined) updated.phone = phone;
+    if (notificationPref !== undefined) {
+      if (!['email', 'inapp', 'both'].includes(notificationPref)) {
+        return c.json({ error: 'Invalid notification preference' }, 400);
+      }
+      updated.notificationPref = notificationPref;
+    }
     // Teacher handwritten signature, stored as a PNG data URL. Empty string
     // clears it. Guard the size so a huge upload can't bloat the KV record.
     if (signature !== undefined) {
@@ -3499,6 +3549,11 @@ app.post("/make-server-6679cacd/behavior", async (c) => {
 
     const { studentId, date, rating, notes } = await c.req.json();
 
+    // A sad rating (<= 2) must always come with a written explanation.
+    if (Number(rating) <= 2 && (!notes || String(notes).trim().length < 5)) {
+      return c.json({ error: 'An explanation of at least 5 characters is required for a sad rating' }, 400);
+    }
+
     const behaviorStudent = await kv.get(`student:${studentId}`);
     if (!behaviorStudent?.classId || !(await userHasClassAccess(user.id, userData, behaviorStudent.classId))) {
       return c.json({ error: 'Unauthorized' }, 403);
@@ -3546,6 +3601,708 @@ app.get("/make-server-6679cacd/behavior/:studentId", async (c) => {
   } catch (err) {
     console.log('Get behavior error:', err);
     return c.json({ error: 'Failed to get behavior' }, 500);
+  }
+});
+
+// ============= CASES ROUTES =============
+// A "case" is a teacher/admin dossier about one or more students (persistent
+// misbehaviour, a fight, ...). Teachers can forward a case to the local
+// admin, who works it through viewed -> planned -> fixed (with a mandatory
+// comment); after the creating teacher reads the comment it is archived.
+
+async function getCaseOr404(id: string) {
+  return await kv.get(`case:${id}`);
+}
+
+// Which cases is this user allowed to see? Admin: every case in their
+// school. Teacher: cases they created, plus cases whose students overlap
+// with the students of their own classes (so teachers of the same students
+// see each other's cases).
+async function casesVisibleTo(userId: string, userData: any): Promise<any[]> {
+  const schoolIds = await getUserSchoolIds(userId, userData);
+  let all: any[] = [];
+  for (const schoolId of schoolIds) {
+    const ids: string[] = await kv.get(`case_ids:${schoolId}`) || [];
+    if (ids.length > 0) {
+      all = all.concat((await kv.mget(ids.map((id: string) => `case:${id}`))).filter((cs: any) => cs && cs.id));
+    }
+  }
+  if (userData.role === 'admin' || userData.role === 'superadmin') return all;
+  if (userData.role === 'teacher') {
+    const classIds: string[] = await kv.get(`teacher_classes:${userId}`) || [];
+    const myStudents = (await kv.getByPrefix('student:')).filter((s: any) => s && s.classId && classIds.includes(s.classId));
+    const myStudentIds = new Set(myStudents.map((s: any) => s.id));
+    return all.filter((cs: any) => cs.createdBy === userId || (cs.studentIds || []).some((id: string) => myStudentIds.has(id)));
+  }
+  return [];
+}
+
+app.post("/make-server-6679cacd/cases", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'teacher' && userData?.role !== 'admin') {
+      return c.json({ error: 'Only teachers and admins can create cases' }, 403);
+    }
+
+    const { studentIds, parentEmail, parentPhone, explanation, desiredAction } = await c.req.json();
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return c.json({ error: 'Select at least one student' }, 400);
+    }
+    if (!explanation?.trim()) return c.json({ error: 'Explanation is required' }, 400);
+    if (!desiredAction?.trim()) return c.json({ error: 'Desired action is required' }, 400);
+
+    const students = (await kv.mget(studentIds.map((id: string) => `student:${id}`))).filter((s: any) => s && s.id);
+    if (students.length !== studentIds.length) return c.json({ error: 'Unknown student' }, 400);
+    for (const s of students) {
+      if (!s.classId || !(await userHasClassAccess(user.id, userData, s.classId))) {
+        return c.json({ error: 'Unauthorized for one of the selected students' }, 403);
+      }
+    }
+
+    const schoolId = students[0].schoolId || userData.schoolId || null;
+    if (!schoolId) return c.json({ error: 'Could not determine school' }, 400);
+    const classIds = Array.from(new Set(students.map((s: any) => s.classId).filter(Boolean)));
+
+    // Autofill parent contact from the first student's linked parent when the
+    // teacher didn't supply it (teachers can't read parent accounts directly).
+    let resolvedParentEmail = (parentEmail || '').trim();
+    let resolvedParentPhone = (parentPhone || '').trim();
+    if (!resolvedParentEmail || !resolvedParentPhone) {
+      const withParent = students.find((s: any) => s.parentId);
+      if (withParent) {
+        const parent = await kv.get(`user:${withParent.parentId}`);
+        if (parent) {
+          if (!resolvedParentEmail) resolvedParentEmail = parent.email || '';
+          if (!resolvedParentPhone) resolvedParentPhone = parent.phone || '';
+        }
+      }
+    }
+
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const record = {
+      id,
+      schoolId,
+      classIds,
+      studentIds,
+      studentNames: students.map((s: any) => s.name),
+      parentEmail: resolvedParentEmail,
+      parentPhone: resolvedParentPhone,
+      explanation: explanation.trim(),
+      desiredAction: desiredAction.trim(),
+      createdBy: user.id,
+      createdByName: userData.name || userData.email,
+      createdByRole: userData.role,
+      status: 'open',
+      adminComment: null,
+      forwardedAt: null,
+      fixedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await kv.set(`case:${id}`, record);
+    const ids: string[] = await kv.get(`case_ids:${schoolId}`) || [];
+    ids.unshift(id);
+    await kv.set(`case_ids:${schoolId}`, ids);
+    return c.json({ case: record });
+  } catch (err) {
+    console.log('Create case error:', err);
+    return c.json({ error: 'Failed to create case' }, 500);
+  }
+});
+
+app.get("/make-server-6679cacd/cases", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'teacher' && userData?.role !== 'admin' && userData?.role !== 'superadmin') {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    const cases = await casesVisibleTo(user.id, userData);
+    cases.sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return c.json({ cases });
+  } catch (err) {
+    console.log('List cases error:', err);
+    return c.json({ error: 'Failed to get cases' }, 500);
+  }
+});
+
+// Teacher forwards a case to the local admin(s) of the school.
+app.post("/make-server-6679cacd/cases/:id/forward", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    const record = await getCaseOr404(c.req.param('id'));
+    if (!record) return c.json({ error: 'Not found' }, 404);
+    if (record.createdBy !== user.id && userData?.role !== 'admin' && userData?.role !== 'superadmin') {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    if (record.status !== 'open') return c.json({ error: 'Case is already forwarded' }, 400);
+
+    const updated = { ...record, status: 'forwarded', forwardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    await kv.set(`case:${record.id}`, updated);
+
+    const admins = (await kv.getByPrefix('user:')).filter(
+      (u: any) => u && u.role === 'admin' && u.schoolId === record.schoolId && u.status !== 'pending'
+    );
+    for (const admin of admins) {
+      await notifyUser(admin.id, {
+        type: 'case_forwarded',
+        titleNl: 'Nieuwe case doorgestuurd',
+        titleTr: 'Yeni bir vaka iletildi',
+        bodyNl: `${record.createdByName} heeft een case doorgestuurd over ${record.studentNames.join(', ')}.`,
+        bodyTr: `${record.createdByName}, ${record.studentNames.join(', ')} hakkında bir vaka iletti.`,
+        link: '#cases',
+      });
+    }
+    return c.json({ case: updated });
+  } catch (err) {
+    console.log('Forward case error:', err);
+    return c.json({ error: 'Failed to forward case' }, 500);
+  }
+});
+
+// Admin moves a forwarded case through viewed / planned / fixed.
+// 'fixed' requires a comment, which is what gets reported back to the teacher.
+app.put("/make-server-6679cacd/cases/:id/status", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'admin' && userData?.role !== 'superadmin') {
+      return c.json({ error: 'Only admins can update the case status' }, 403);
+    }
+    const record = await getCaseOr404(c.req.param('id'));
+    if (!record) return c.json({ error: 'Not found' }, 404);
+    if (userData.role === 'admin' && userData.schoolId !== record.schoolId) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const { status, comment } = await c.req.json();
+    if (!['viewed', 'planned', 'fixed'].includes(status)) {
+      return c.json({ error: 'Invalid status' }, 400);
+    }
+    if (status === 'fixed' && (!comment || String(comment).trim().length < 5)) {
+      return c.json({ error: 'A comment (min 5 characters) is required to mark a case as fixed' }, 400);
+    }
+
+    const updated = {
+      ...record,
+      status,
+      adminComment: status === 'fixed' ? String(comment).trim() : record.adminComment,
+      fixedAt: status === 'fixed' ? new Date().toISOString() : record.fixedAt,
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`case:${record.id}`, updated);
+
+    if (status === 'fixed') {
+      await notifyUser(record.createdBy, {
+        type: 'case_fixed',
+        titleNl: 'Case afgehandeld',
+        titleTr: 'Vaka çözüldü',
+        bodyNl: `Uw case over ${record.studentNames.join(', ')} is afgehandeld. Reactie: ${updated.adminComment}`,
+        bodyTr: `${record.studentNames.join(', ')} hakkındaki vakanız çözüldü. Yanıt: ${updated.adminComment}`,
+        link: '#cases',
+      });
+    }
+    return c.json({ case: updated });
+  } catch (err) {
+    console.log('Update case status error:', err);
+    return c.json({ error: 'Failed to update case' }, 500);
+  }
+});
+
+// The creating teacher confirms having read the admin's comment -> archive.
+app.post("/make-server-6679cacd/cases/:id/ack", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const record = await getCaseOr404(c.req.param('id'));
+    if (!record) return c.json({ error: 'Not found' }, 404);
+    if (record.createdBy !== user.id) return c.json({ error: 'Unauthorized' }, 403);
+    if (record.status !== 'fixed') return c.json({ error: 'Case is not fixed yet' }, 400);
+    const updated = { ...record, status: 'archived', updatedAt: new Date().toISOString() };
+    await kv.set(`case:${record.id}`, updated);
+    return c.json({ case: updated });
+  } catch (err) {
+    console.log('Ack case error:', err);
+    return c.json({ error: 'Failed to archive case' }, 500);
+  }
+});
+
+app.delete("/make-server-6679cacd/cases/:id", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    const record = await getCaseOr404(c.req.param('id'));
+    if (!record) return c.json({ error: 'Not found' }, 404);
+    const isSchoolAdmin = (userData?.role === 'admin' && userData.schoolId === record.schoolId) || userData?.role === 'superadmin';
+    if (record.createdBy !== user.id && !isSchoolAdmin) return c.json({ error: 'Unauthorized' }, 403);
+    await kv.del(`case:${record.id}`);
+    const ids: string[] = await kv.get(`case_ids:${record.schoolId}`) || [];
+    await kv.set(`case_ids:${record.schoolId}`, ids.filter((id: string) => id !== record.id));
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Delete case error:', err);
+    return c.json({ error: 'Failed to delete case' }, 500);
+  }
+});
+
+// ============= EXAM (TOETS) ROUTES =============
+// Teachers build exams (multiple choice / yes-no / fill-the-gap / Quran-gap /
+// open questions), can save them as reusable templates, run them live for one
+// class via a 6-character join code (+ QR), and grade the results. Students
+// join anonymously on the public /toets page: code -> pick own name -> take
+// the exam against a server-side clock.
+
+const EXAM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generateExamCode(): string {
+  let code = '';
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  for (const b of bytes) code += EXAM_CODE_ALPHABET[b % EXAM_CODE_ALPHABET.length];
+  return code;
+}
+
+// Strips answers before an exam is sent to a student.
+function examForStudent(exam: any) {
+  return {
+    id: exam.id,
+    name: exam.name,
+    level: exam.level,
+    language: exam.language,
+    timeLimitMinutes: exam.timeLimitMinutes,
+    questions: (exam.questions || []).map((q: any) => ({
+      id: q.id,
+      type: q.type,
+      prompt: q.prompt,
+      options: q.options || null,
+      multiple: q.type === 'mc' ? (Array.isArray(q.correct) && q.correct.length > 1) : undefined,
+      points: q.points || 1,
+    })),
+  };
+}
+
+// Server-side auto-grading of the closed question types.
+function autoGradeAnswers(exam: any, answers: Record<string, any>) {
+  let autoScore = 0;
+  let autoMax = 0;
+  let openMax = 0;
+  const perQuestion: Record<string, { correct: boolean | null; points: number }> = {};
+  for (const q of exam.questions || []) {
+    const pts = Number(q.points) || 1;
+    const a = answers?.[q.id];
+    if (q.type === 'open') {
+      openMax += pts;
+      perQuestion[q.id] = { correct: null, points: 0 };
+      continue;
+    }
+    autoMax += pts;
+    let ok = false;
+    if (q.type === 'mc') {
+      const want = Array.isArray(q.correct) ? [...q.correct].sort().join(',') : String(q.correct);
+      const got = Array.isArray(a) ? [...a].sort().join(',') : String(a);
+      ok = want === got && got !== '' && got !== 'undefined';
+    } else if (q.type === 'yesno') {
+      ok = typeof a === 'boolean' && a === q.correct;
+    } else if (q.type === 'gap') {
+      ok = typeof a === 'string' && a.trim().toLocaleLowerCase('tr') === String(q.correct || '').trim().toLocaleLowerCase('tr');
+    } else if (q.type === 'qurangap') {
+      ok = Number(a) === Number(q.correct);
+    }
+    if (ok) autoScore += pts;
+    perQuestion[q.id] = { correct: ok, points: ok ? pts : 0 };
+  }
+  return { autoScore, autoMax, openMax, perQuestion };
+}
+
+const EXAM_LEVELS = ['hazirlik', 'TB1', 'TB2', 'TB3'];
+
+app.post("/make-server-6679cacd/exams", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'teacher' && userData?.role !== 'admin') {
+      return c.json({ error: 'Only teachers can create exams' }, 403);
+    }
+    const body = await c.req.json();
+    const { name, level, language, timeLimitMinutes, questions, isTemplate } = body;
+    if (!name?.trim()) return c.json({ error: 'Exam name is required' }, 400);
+    if (!EXAM_LEVELS.includes(level)) return c.json({ error: 'Invalid level' }, 400);
+    if (language !== 'tr' && language !== 'nl') return c.json({ error: 'Invalid language' }, 400);
+
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    const schoolId = [...schoolIds][0] || null;
+    if (!schoolId) return c.json({ error: 'No school context' }, 400);
+
+    const id = crypto.randomUUID();
+    const exam = {
+      id,
+      schoolId,
+      createdBy: user.id,
+      createdByName: userData.name || userData.email,
+      name: name.trim(),
+      level,
+      language,
+      timeLimitMinutes: timeLimitMinutes ? Number(timeLimitMinutes) : null,
+      isTemplate: !!isTemplate,
+      questions: Array.isArray(questions) ? questions : [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`exam:${id}`, exam);
+    const ids: string[] = await kv.get(`exam_ids:${schoolId}`) || [];
+    ids.unshift(id);
+    await kv.set(`exam_ids:${schoolId}`, ids);
+    return c.json({ exam });
+  } catch (err) {
+    console.log('Create exam error:', err);
+    return c.json({ error: 'Failed to create exam' }, 500);
+  }
+});
+
+app.get("/make-server-6679cacd/exams", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'teacher' && userData?.role !== 'admin') {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    let exams: any[] = [];
+    for (const schoolId of schoolIds) {
+      const ids: string[] = await kv.get(`exam_ids:${schoolId}`) || [];
+      if (ids.length > 0) {
+        exams = exams.concat((await kv.mget(ids.map((id: string) => `exam:${id}`))).filter((e: any) => e && e.id));
+      }
+    }
+    exams.sort((a: any, b: any) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    return c.json({ exams });
+  } catch (err) {
+    console.log('List exams error:', err);
+    return c.json({ error: 'Failed to get exams' }, 500);
+  }
+});
+
+app.put("/make-server-6679cacd/exams/:id", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const exam = await kv.get(`exam:${c.req.param('id')}`);
+    if (!exam) return c.json({ error: 'Not found' }, 404);
+    const userData = await getUserData(user.id);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    if (!schoolIds.has(exam.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+
+    const body = await c.req.json();
+    const updated = { ...exam };
+    for (const field of ['name', 'level', 'language', 'timeLimitMinutes', 'questions', 'isTemplate'] as const) {
+      if (body[field] !== undefined) (updated as any)[field] = body[field];
+    }
+    if (!EXAM_LEVELS.includes(updated.level)) return c.json({ error: 'Invalid level' }, 400);
+    updated.updatedAt = new Date().toISOString();
+    await kv.set(`exam:${exam.id}`, updated);
+    return c.json({ exam: updated });
+  } catch (err) {
+    console.log('Update exam error:', err);
+    return c.json({ error: 'Failed to update exam' }, 500);
+  }
+});
+
+app.delete("/make-server-6679cacd/exams/:id", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const exam = await kv.get(`exam:${c.req.param('id')}`);
+    if (!exam) return c.json({ error: 'Not found' }, 404);
+    const userData = await getUserData(user.id);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    if (!schoolIds.has(exam.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+    await kv.del(`exam:${exam.id}`);
+    const ids: string[] = await kv.get(`exam_ids:${exam.schoolId}`) || [];
+    await kv.set(`exam_ids:${exam.schoolId}`, ids.filter((id: string) => id !== exam.id));
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Delete exam error:', err);
+    return c.json({ error: 'Failed to delete exam' }, 500);
+  }
+});
+
+// Duplicate an exam — also how "use a template" works (copy, then edit).
+app.post("/make-server-6679cacd/exams/:id/duplicate", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const exam = await kv.get(`exam:${c.req.param('id')}`);
+    if (!exam) return c.json({ error: 'Not found' }, 404);
+    const userData = await getUserData(user.id);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    if (!schoolIds.has(exam.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+
+    const id = crypto.randomUUID();
+    const copy = {
+      ...exam,
+      id,
+      name: `${exam.name} (kopie)`,
+      isTemplate: false,
+      createdBy: user.id,
+      createdByName: userData?.name || userData?.email,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`exam:${id}`, copy);
+    const ids: string[] = await kv.get(`exam_ids:${exam.schoolId}`) || [];
+    ids.unshift(id);
+    await kv.set(`exam_ids:${exam.schoolId}`, ids);
+    return c.json({ exam: copy });
+  } catch (err) {
+    console.log('Duplicate exam error:', err);
+    return c.json({ error: 'Failed to duplicate exam' }, 500);
+  }
+});
+
+// Put an exam live for one class: creates the join code students use.
+app.post("/make-server-6679cacd/exams/:id/golive", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const exam = await kv.get(`exam:${c.req.param('id')}`);
+    if (!exam) return c.json({ error: 'Not found' }, 404);
+    const userData = await getUserData(user.id);
+    const { classId } = await c.req.json();
+    if (!classId || !(await userHasClassAccess(user.id, userData, classId))) {
+      return c.json({ error: 'Unauthorized for this class' }, 403);
+    }
+    const cls = await kv.get(`class:${classId}`);
+    if (!cls) return c.json({ error: 'Class not found' }, 404);
+
+    // Retry on the (unlikely) code collision with a still-live session.
+    let code = '';
+    for (let i = 0; i < 5; i++) {
+      code = generateExamCode();
+      const existing = await kv.get(`exam_live:${code}`);
+      if (!existing || existing.status !== 'live') break;
+      code = '';
+    }
+    if (!code) return c.json({ error: 'Could not generate a code, try again' }, 500);
+
+    const live = {
+      code,
+      examId: exam.id,
+      classId,
+      className: cls.name,
+      schoolId: exam.schoolId,
+      startedBy: user.id,
+      startedAt: new Date().toISOString(),
+      status: 'live',
+    };
+    await kv.set(`exam_live:${code}`, live);
+    const liveCodes: string[] = await kv.get(`exam_live_codes:${exam.id}`) || [];
+    liveCodes.unshift(code);
+    await kv.set(`exam_live_codes:${exam.id}`, liveCodes);
+    return c.json({ live });
+  } catch (err) {
+    console.log('Go live error:', err);
+    return c.json({ error: 'Failed to start exam' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/exams/live/:code/close", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const live = await kv.get(`exam_live:${c.req.param('code').toUpperCase()}`);
+    if (!live) return c.json({ error: 'Not found' }, 404);
+    const userData = await getUserData(user.id);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    if (!schoolIds.has(live.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+    await kv.set(`exam_live:${live.code}`, { ...live, status: 'closed', closedAt: new Date().toISOString() });
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Close exam error:', err);
+    return c.json({ error: 'Failed to close exam' }, 500);
+  }
+});
+
+// Teacher: all sessions + attempts for an exam.
+app.get("/make-server-6679cacd/exams/:id/results", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const exam = await kv.get(`exam:${c.req.param('id')}`);
+    if (!exam) return c.json({ error: 'Not found' }, 404);
+    const userData = await getUserData(user.id);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    if (!schoolIds.has(exam.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+
+    const codes: string[] = await kv.get(`exam_live_codes:${exam.id}`) || [];
+    const sessions = (await kv.mget(codes.map((code: string) => `exam_live:${code}`))).filter((s: any) => s);
+    const results: any[] = [];
+    for (const session of sessions) {
+      const attempts = (await kv.getByPrefix(`exam_attempt:${session.code}:`)).filter((a: any) => a && a.studentId);
+      results.push({ session, attempts });
+    }
+    return c.json({ exam, results });
+  } catch (err) {
+    console.log('Exam results error:', err);
+    return c.json({ error: 'Failed to get results' }, 500);
+  }
+});
+
+// Teacher: manual scores for open questions of one attempt.
+app.put("/make-server-6679cacd/exams/live/:code/grade/:studentId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const code = c.req.param('code').toUpperCase();
+    const live = await kv.get(`exam_live:${code}`);
+    if (!live) return c.json({ error: 'Not found' }, 404);
+    const userData = await getUserData(user.id);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    if (!schoolIds.has(live.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+
+    const attempt = await kv.get(`exam_attempt:${code}:${c.req.param('studentId')}`);
+    if (!attempt) return c.json({ error: 'Attempt not found' }, 404);
+    const { manualScores } = await c.req.json();
+    const updated = {
+      ...attempt,
+      manualScores: manualScores || {},
+      graded: true,
+      gradedBy: user.id,
+      gradedAt: new Date().toISOString(),
+    };
+    await kv.set(`exam_attempt:${code}:${attempt.studentId}`, updated);
+    return c.json({ attempt: updated });
+  } catch (err) {
+    console.log('Grade attempt error:', err);
+    return c.json({ error: 'Failed to grade' }, 500);
+  }
+});
+
+// ---- Public (anonymous) exam-taking routes. No verifyUser: students have no
+// account. Rate-limited per IP, and identical 404s for wrong/closed codes.
+
+app.get("/make-server-6679cacd/toets/:code", async (c) => {
+  try {
+    if (await rateLimited('toets-lookup', clientIp(c), 30, 60)) {
+      return c.json({ error: 'Too many attempts, slow down' }, 429);
+    }
+    const code = c.req.param('code').toUpperCase();
+    const live = await kv.get(`exam_live:${code}`);
+    if (!live || live.status !== 'live') return c.json({ error: 'Not found' }, 404);
+    const exam = await kv.get(`exam:${live.examId}`);
+    if (!exam) return c.json({ error: 'Not found' }, 404);
+
+    // Only names of the selected class, needed for the "pick your name" step.
+    const classStudents = (await kv.getByPrefix('student:'))
+      .filter((s: any) => s && s.classId === live.classId)
+      .map((s: any) => ({ id: s.id, name: s.name }));
+
+    return c.json({
+      code,
+      className: live.className,
+      exam: examForStudent(exam),
+      students: classStudents,
+    });
+  } catch (err) {
+    console.log('Toets lookup error:', err);
+    return c.json({ error: 'Failed' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/toets/:code/start", async (c) => {
+  try {
+    if (await rateLimited('toets-start', clientIp(c), 20, 60)) {
+      return c.json({ error: 'Too many attempts, slow down' }, 429);
+    }
+    const code = c.req.param('code').toUpperCase();
+    const live = await kv.get(`exam_live:${code}`);
+    if (!live || live.status !== 'live') return c.json({ error: 'Not found' }, 404);
+    const exam = await kv.get(`exam:${live.examId}`);
+    if (!exam) return c.json({ error: 'Not found' }, 404);
+
+    const { studentId } = await c.req.json();
+    const student = await kv.get(`student:${studentId}`);
+    if (!student || student.classId !== live.classId) return c.json({ error: 'Invalid student' }, 400);
+
+    // Resume an existing attempt (page refresh / second device) instead of
+    // resetting the clock; refuse once submitted.
+    const key = `exam_attempt:${code}:${studentId}`;
+    const existing = await kv.get(key);
+    if (existing) {
+      if (existing.submittedAt) return c.json({ error: 'Already submitted' }, 409);
+      return c.json({ attempt: { startedAt: existing.startedAt, endsAt: existing.endsAt } });
+    }
+
+    const startedAt = new Date();
+    const endsAt = exam.timeLimitMinutes
+      ? new Date(startedAt.getTime() + exam.timeLimitMinutes * 60 * 1000).toISOString()
+      : null;
+    const attempt = {
+      examId: exam.id,
+      code,
+      studentId,
+      studentName: student.name,
+      answers: {},
+      startedAt: startedAt.toISOString(),
+      endsAt,
+      submittedAt: null,
+      autoScore: null,
+      manualScores: {},
+      graded: false,
+    };
+    await kv.set(key, attempt);
+    return c.json({ attempt: { startedAt: attempt.startedAt, endsAt } });
+  } catch (err) {
+    console.log('Toets start error:', err);
+    return c.json({ error: 'Failed' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/toets/:code/submit", async (c) => {
+  try {
+    if (await rateLimited('toets-submit', clientIp(c), 20, 60)) {
+      return c.json({ error: 'Too many attempts, slow down' }, 429);
+    }
+    const code = c.req.param('code').toUpperCase();
+    const live = await kv.get(`exam_live:${code}`);
+    if (!live) return c.json({ error: 'Not found' }, 404);
+    const exam = await kv.get(`exam:${live.examId}`);
+    if (!exam) return c.json({ error: 'Not found' }, 404);
+
+    const { studentId, answers } = await c.req.json();
+    const key = `exam_attempt:${code}:${studentId}`;
+    const attempt = await kv.get(key);
+    if (!attempt) return c.json({ error: 'No attempt' }, 404);
+    if (attempt.submittedAt) return c.json({ error: 'Already submitted' }, 409);
+
+    // 30s grace over the server-side deadline for network/auto-submit lag.
+    if (attempt.endsAt && Date.now() > new Date(attempt.endsAt).getTime() + 30_000) {
+      // Accept but flag: the answers still get stored so nothing is lost.
+      attempt.late = true;
+    }
+
+    const grading = autoGradeAnswers(exam, answers || {});
+    const updated = {
+      ...attempt,
+      answers: answers || {},
+      submittedAt: new Date().toISOString(),
+      autoScore: grading.autoScore,
+      autoMax: grading.autoMax,
+      openMax: grading.openMax,
+      perQuestion: grading.perQuestion,
+    };
+    await kv.set(key, updated);
+    return c.json({ success: true, autoScore: grading.autoScore, autoMax: grading.autoMax, openMax: grading.openMax });
+  } catch (err) {
+    console.log('Toets submit error:', err);
+    return c.json({ error: 'Failed' }, 500);
   }
 });
 
@@ -3809,6 +4566,183 @@ app.delete("/make-server-6679cacd/predefined-homework/:id", async (c) => {
 });
 
 // ============= METRICS ROUTES (Admin) =============
+
+// Drill-down metrics for superadmin / regional admin:
+//   scope=org                    -> whole organisation, children = locations
+//   scope=region&id=north|south  -> one region, children = locations
+//   scope=location&id=...        -> one physical location, children = schools (programs)
+//   scope=school&id=...          -> one school/program, children = classes
+//   scope=class&id=...           -> one class (leaf)
+// Only aggregates are returned — never individual student names or ids.
+app.get("/make-server-6679cacd/metrics/v2", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'superadmin' && userData?.role !== 'regional_admin') {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const scope = c.req.query('scope') || 'org';
+    const scopeId = c.req.query('id') || '';
+
+    // Regional admins may only look inside their own region.
+    const region = userData.role === 'regional_admin' ? userData.region : null;
+
+    const [locations, schools, classes, students, attendance, behavior, events, conferences] = await Promise.all([
+      kv.getByPrefix('location:'),
+      kv.getByPrefix('school:'),
+      kv.getByPrefix('class:'),
+      kv.getByPrefix('student:'),
+      kv.getByPrefix('attendance:'),
+      kv.getByPrefix('behavior:'),
+      kv.getByPrefix('agenda_event:'),
+      kv.getByPrefix('oudergesprek:'),
+    ]);
+    const validLocations = locations.filter((l: any) => l && l.id);
+    const validSchools = schools.filter((s: any) => s && s.id);
+    const validClasses = classes.filter((cl: any) => cl && cl.id);
+    const schoolById = new Map(validSchools.map((s: any) => [s.id, s]));
+    const locationById = new Map(validLocations.map((l: any) => [l.id, l]));
+
+    const regionOfSchool = (s: any) => locationById.get(s.locationId)?.region || null;
+
+    // Resolve which schools + classes fall inside the requested scope, and
+    // what the clickable children of this node are.
+    let scopeSchools: any[] = [];
+    let scopeClasses: any[] = [];
+    let name = '';
+    let children: { level: string; id: string; name: string }[] = [];
+
+    if (scope === 'org') {
+      if (region) return c.json({ error: 'Regional admins must use scope=region' }, 403);
+      scopeSchools = validSchools;
+      name = 'Organisatie';
+      children = validLocations.map((l: any) => ({ level: 'location', id: l.id, name: l.name + (l.city ? ` (${l.city})` : '') }));
+    } else if (scope === 'region') {
+      if (region && scopeId !== region) return c.json({ error: 'Unauthorized' }, 403);
+      scopeSchools = validSchools.filter((s: any) => regionOfSchool(s) === scopeId);
+      name = scopeId === 'north' ? 'Regio Noord' : 'Regio Zuid';
+      children = validLocations
+        .filter((l: any) => l.region === scopeId)
+        .map((l: any) => ({ level: 'location', id: l.id, name: l.name + (l.city ? ` (${l.city})` : '') }));
+    } else if (scope === 'location') {
+      const loc = locationById.get(scopeId);
+      if (!loc) return c.json({ error: 'Not found' }, 404);
+      if (region && loc.region !== region) return c.json({ error: 'Unauthorized' }, 403);
+      scopeSchools = validSchools.filter((s: any) => s.locationId === scopeId);
+      name = loc.name;
+      children = scopeSchools.map((s: any) => ({ level: 'school', id: s.id, name: s.name }));
+    } else if (scope === 'school') {
+      const school = schoolById.get(scopeId);
+      if (!school) return c.json({ error: 'Not found' }, 404);
+      if (region && regionOfSchool(school) !== region) return c.json({ error: 'Unauthorized' }, 403);
+      scopeSchools = [school];
+      name = school.name;
+      children = validClasses
+        .filter((cl: any) => cl.schoolId === scopeId)
+        .map((cl: any) => ({ level: 'class', id: cl.id, name: cl.name }));
+    } else if (scope === 'class') {
+      const cls = validClasses.find((cl: any) => cl.id === scopeId);
+      if (!cls) return c.json({ error: 'Not found' }, 404);
+      const school = cls.schoolId ? schoolById.get(cls.schoolId) : null;
+      if (region && (!school || regionOfSchool(school) !== region)) return c.json({ error: 'Unauthorized' }, 403);
+      scopeSchools = school ? [school] : [];
+      scopeClasses = [cls];
+      name = cls.name;
+      children = [];
+    } else {
+      return c.json({ error: 'Invalid scope' }, 400);
+    }
+
+    const scopeSchoolIds = new Set(scopeSchools.map((s: any) => s.id));
+    if (scope !== 'class') {
+      scopeClasses = validClasses.filter((cl: any) => cl.schoolId && scopeSchoolIds.has(cl.schoolId));
+    }
+    const scopeClassIds = new Set(scopeClasses.map((cl: any) => cl.id));
+    const scopeStudents = students.filter((s: any) => s && s.id && s.classId && scopeClassIds.has(s.classId));
+    const scopeStudentIds = new Set(scopeStudents.map((s: any) => s.id));
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const todayYmd = now.toISOString().split('T')[0];
+
+    // -- Students: attendance + behavior aggregates
+    const scopeAttendance = attendance.filter((a: any) => a && a.classId && scopeClassIds.has(a.classId));
+    let present = 0, total = 0, absences30 = 0;
+    let sameDayEntries = 0, attendanceEntries = 0;
+    for (const a of scopeAttendance) {
+      attendanceEntries++;
+      if (a.markedAt && typeof a.markedAt === 'string' && a.markedAt.split('T')[0] === a.date) sameDayEntries++;
+      for (const rec of a.records || []) {
+        // Guard against students that moved out of scope since.
+        if (scope === 'class' && rec.studentId && !scopeStudentIds.has(rec.studentId)) continue;
+        total++;
+        if (rec.present) present++;
+        else if (a.date >= thirtyDaysAgo) absences30++;
+      }
+    }
+    const scopeBehavior = behavior.filter((b: any) => b && b.studentId && scopeStudentIds.has(b.studentId));
+    const ratings = scopeBehavior.map((b: any) => Number(b.rating)).filter((r: number) => !isNaN(r));
+    const avgBehavior = ratings.length > 0 ? Math.round((ratings.reduce((s: number, r: number) => s + r, 0) / ratings.length) * 10) / 10 : null;
+    const sadCount = ratings.filter((r: number) => r <= 2).length;
+
+    // -- Events + oudergesprekken
+    const scopeEvents = events.filter((e: any) => e && e.date && (!e.schoolId || scopeSchoolIds.has(e.schoolId)));
+    const scopeConfs = conferences.filter((s: any) => s && s.id && (
+      (s.classId && scopeClassIds.has(s.classId)) || (!s.classId && s.schoolId && scopeSchoolIds.has(s.schoolId))
+    ));
+    let confSlots = 0, confBooked = 0;
+    for (const s of scopeConfs) {
+      for (const slot of s.slots || []) {
+        confSlots++;
+        if (slot.bookedBy) confBooked++;
+      }
+    }
+
+    // -- Teachers in scope (via class assignments)
+    const teacherIds = new Set(scopeClasses.map((cl: any) => cl.teacherId).filter(Boolean));
+
+    const metrics = {
+      students: {
+        count: scopeStudents.length,
+        attendanceRate: total > 0 ? Math.round((present / total) * 100) : null,
+        absences30Days: absences30,
+        avgBehavior,
+        sadBehaviorCount: sadCount,
+        behaviorRecords: ratings.length,
+      },
+      teachers: {
+        count: teacherIds.size,
+        attendanceEntries,
+        sameDayEntryRate: attendanceEntries > 0 ? Math.round((sameDayEntries / attendanceEntries) * 100) : null,
+      },
+      admins: {
+        eventsPlanned: scopeEvents.length,
+        oudergesprekSessionsPlanned: scopeConfs.length,
+      },
+      oudergesprekken: {
+        sessions: scopeConfs.length,
+        totalSlots: confSlots,
+        bookedSlots: confBooked,
+        bookingRate: confSlots > 0 ? Math.round((confBooked / confSlots) * 100) : null,
+      },
+      events: {
+        total: scopeEvents.length,
+        upcoming: scopeEvents.filter((e: any) => e.date >= todayYmd).length,
+      },
+      overview: {
+        schools: scopeSchools.length,
+        classes: scopeClasses.length,
+      },
+    };
+
+    return c.json({ level: scope, id: scopeId || null, name, children, metrics });
+  } catch (err) {
+    console.log('Metrics v2 error:', err);
+    return c.json({ error: 'Failed to compute metrics' }, 500);
+  }
+});
 
 app.get("/make-server-6679cacd/metrics", async (c) => {
   try {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, ClipboardList, BellRing, Settings, MessageSquare, CalendarDays, Award, Check, AlertTriangle, X, Frown, Meh, Smile } from 'lucide-react';
+import { Moon, ClipboardList, BellRing, Settings, MessageSquare, CalendarDays, Award, Check, AlertTriangle, X, Frown, Meh, Smile, FolderOpen, FileText } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
@@ -9,6 +9,8 @@ import TeacherManageView from './TeacherManageView';
 import AbsenceOverviewView from './AbsenceOverviewView';
 import DiplomaView from './DiplomaView';
 import AgendaCalendar from './AgendaCalendar';
+import CasesView from './CasesView';
+import ExamListView from './toets/ExamListView';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import { notify } from './ui/feedback';
@@ -51,7 +53,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const app = isAppLayout();
   const [activeTab, setActiveTab] = useHashTab<string>(
     'attendance',
-    ['attendance', 'meldingen', 'beheer', 'oudergesprekken', 'agenda', 'diploma', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['attendance', 'meldingen', 'beheer', 'oudergesprekken', 'agenda', 'diploma', 'cases', 'toets', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   const [diplomaVisible, setDiplomaVisible] = useState(false);
   const [navOrder, setNavOrder] = useNavOrder('teacher', [
@@ -59,6 +61,8 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     'agenda',
     'meldingen',
     'oudergesprekken',
+    'cases',
+    'toets',
     ...(diplomaVisible ? ['diploma'] : []),
     'beheer',
     MOBILE_ACCOUNT_ID,
@@ -121,7 +125,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     if (activeTab === 'beheer' && students.length > 0) {
       loadStudentStats();
     }
-    if (activeTab === 'oudergesprekken') {
+    if (activeTab === 'oudergesprekken' || activeTab === 'agenda') {
       apiRequest('/oudergesprekken').then((d) => setConferSessions(d.sessions || [])).catch(() => {});
     }
   }, [activeTab, students]);
@@ -327,6 +331,17 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       }
     }
 
+    // A sad smiley requires a written explanation of at least 5 characters.
+    const missingSadNote = Object.keys(behaviorRecords).find(
+      (id) => behaviorRecords[id] === 'sad' && (behaviorNotes[id] || '').trim().length < 5
+    );
+    if (missingSadNote) {
+      notify.error(language === 'tr'
+        ? 'Üzgün surat verilen her öğrenci için en az 5 karakterlik bir açıklama girin!'
+        : 'Voer een toelichting van minimaal 5 tekens in voor elke leerling met een verdrietige smiley!');
+      return;
+    }
+
     setIsSaving(true);
     setSaveProgress(0);
 
@@ -368,7 +383,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
               studentId,
               date: attendanceDate,
               rating: behavior ? ratingMap[behavior] : 3,
-              notes: behaviorNeedsInfo[studentId] ? (behaviorNotes[studentId] || '').trim() : '',
+              notes: (behaviorNeedsInfo[studentId] || behavior === 'sad') ? (behaviorNotes[studentId] || '').trim() : '',
             }),
           });
         } catch (behaviorError) {
@@ -454,6 +469,8 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     { id: 'agenda', label: language === 'tr' ? 'Ajanda' : 'Agenda', icon: CalendarDays },
     { id: 'meldingen', label: language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen', shortLabel: language === 'tr' ? 'Bildirim' : 'Meldingen', icon: BellRing },
     { id: 'oudergesprekken', label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken', shortLabel: language === 'tr' ? 'Görüşme' : 'Gesprekken', icon: MessageSquare },
+    { id: 'cases', label: language === 'tr' ? 'Vakalar' : 'Cases', icon: FolderOpen },
+    { id: 'toets', label: language === 'tr' ? 'Sınav' : 'Toets', icon: FileText },
     ...(diplomaVisible ? [{ id: 'diploma', label: 'Diploma', icon: Award }] : []),
     { id: 'beheer', label: 'Beheer', icon: Settings },
   ];
@@ -687,7 +704,11 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                               </label>
                               <div className="flex gap-2 sm:gap-3 justify-center">
                                 <button
-                                  onClick={() => setBehaviorRecords({ ...behaviorRecords, [student.id]: 'sad' })}
+                                  onClick={() => {
+                                    setBehaviorRecords({ ...behaviorRecords, [student.id]: 'sad' });
+                                    // A sad rating always requires a written explanation.
+                                    setBehaviorNeedsInfo((prev) => ({ ...prev, [student.id]: true }));
+                                  }}
                                   className={`p-2 rounded-full text-red-500 transition-transform hover:scale-110 ${
                                     behaviorRecords[student.id] === 'sad' ? 'scale-125 bg-red-50' : 'opacity-50'
                                   }`}
@@ -709,12 +730,13 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                                 ><Smile className="h-7 w-7 sm:h-8 sm:w-8" /></button>
                               </div>
 
-                              {/* Optional behaviour explanation */}
+                              {/* Behaviour explanation — optional, except mandatory for a sad rating */}
                               <div className="mt-3">
-                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <label className={`flex items-center gap-2 select-none ${behaviorRecords[student.id] === 'sad' ? 'cursor-default' : 'cursor-pointer'}`}>
                                   <input
                                     type="checkbox"
-                                    checked={!!behaviorNeedsInfo[student.id]}
+                                    checked={!!behaviorNeedsInfo[student.id] || behaviorRecords[student.id] === 'sad'}
+                                    disabled={behaviorRecords[student.id] === 'sad'}
                                     onChange={(e) => {
                                       setBehaviorNeedsInfo({ ...behaviorNeedsInfo, [student.id]: e.target.checked });
                                       if (!e.target.checked) {
@@ -731,14 +753,23 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                                       : 'Extra toelichting over gedrag toevoegen'}
                                   </span>
                                 </label>
-                                {behaviorNeedsInfo[student.id] && (
-                                  <textarea
-                                    value={behaviorNotes[student.id] || ''}
-                                    onChange={(e) => setBehaviorNotes({ ...behaviorNotes, [student.id]: e.target.value })}
-                                    rows={2}
-                                    placeholder={language === 'tr' ? 'Kısa açıklama...' : 'Korte toelichting...'}
-                                    className="mt-2 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-                                  />
+                                {(behaviorNeedsInfo[student.id] || behaviorRecords[student.id] === 'sad') && (
+                                  <>
+                                    <textarea
+                                      value={behaviorNotes[student.id] || ''}
+                                      onChange={(e) => setBehaviorNotes({ ...behaviorNotes, [student.id]: e.target.value })}
+                                      rows={2}
+                                      placeholder={language === 'tr' ? 'Kısa açıklama...' : 'Korte toelichting...'}
+                                      className="mt-2 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                                    />
+                                    {behaviorRecords[student.id] === 'sad' && (behaviorNotes[student.id] || '').trim().length < 5 && (
+                                      <p className="mt-1 text-xs text-red-600">
+                                        {language === 'tr'
+                                          ? 'Üzgün surat için açıklama zorunludur (en az 5 karakter).'
+                                          : 'Een toelichting is verplicht bij een verdrietige smiley (minimaal 5 tekens).'}
+                                      </p>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -1129,9 +1160,44 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
               </div>
             )}
 
+            {/* ─── TOETS TAB ─── */}
+            {activeTab === 'toets' && (
+              <ExamListView language={language} apiRequest={apiRequest} classes={classes} />
+            )}
+
+            {/* ─── CASES TAB ─── */}
+            {activeTab === 'cases' && (
+              <CasesView language={language} apiRequest={apiRequest} role="teacher" currentUserId={user?.id || ''} />
+            )}
+
             {/* ─── AGENDA TAB ─── */}
             {activeTab === 'agenda' && (
-              <AgendaCalendar language={language} apiRequest={apiRequest} role="teacher" />
+              <AgendaCalendar
+                language={language}
+                apiRequest={apiRequest}
+                role="teacher"
+                conferences={(() => {
+                  // Booked slots of this teacher's own classes; grouped per
+                  // class inside the calendar when teaching multiple classes.
+                  const myClassIds = new Set(classes.map((cl) => cl.id));
+                  const items: { id: string; date: string; start: string; end: string; className?: string; studentName?: string }[] = [];
+                  for (const session of conferSessions) {
+                    if (session.classId && !myClassIds.has(session.classId)) continue;
+                    (session.slots || []).forEach((slot: any, i: number) => {
+                      if (!slot.bookedBy) return;
+                      items.push({
+                        id: `${session.id}:${i}`,
+                        date: session.date,
+                        start: slot.start,
+                        end: slot.end,
+                        className: session.className,
+                        studentName: slot.studentName,
+                      });
+                    });
+                  }
+                  return items;
+                })()}
+              />
             )}
 
             {/* ─── DIPLOMA TAB ─── */}

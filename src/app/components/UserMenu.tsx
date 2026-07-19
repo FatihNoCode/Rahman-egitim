@@ -142,6 +142,9 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
   const [editName, setEditName] = useState(user?.name || '');
   const [editPhone, setEditPhone] = useState('');
   const [editSignature, setEditSignature] = useState<string | null>(user?.signature || null);
+  const [editNotificationPref, setEditNotificationPref] = useState<'email' | 'inapp' | 'both'>(
+    ((user as any)?.notificationPref as any) || 'email'
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -294,12 +297,13 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
     setEditName(user?.name || '');
     setEditPhone((user as any)?.phone || '');
     setEditSignature(user?.signature || null);
+    setEditNotificationPref(((user as any)?.notificationPref as any) || 'email');
   };
 
   const saveProfile = async () => {
     setSaving(true);
     try {
-      const body: Record<string, unknown> = { name: editName, phone: editPhone };
+      const body: Record<string, unknown> = { name: editName, phone: editPhone, notificationPref: editNotificationPref };
       if (isTeacher) body.signature = editSignature || '';
       const res = await apiRequest('/me', {
         method: 'PUT',
@@ -471,6 +475,31 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
+                {(user?.role === 'parent' || isTeacher) && (
+                  <div className="border-t border-gray-100 pt-3">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      {language === 'tr' ? 'Bildirim tercihi' : 'Meldingen ontvangen via'}
+                    </label>
+                    <div className="space-y-1.5">
+                      {([
+                        ['email', language === 'tr' ? 'E-posta (varsayılan)' : 'E-mail (standaard)'],
+                        ['inapp', language === 'tr' ? 'Uygulama içi' : 'In de app'],
+                        ['both', language === 'tr' ? 'Her ikisi' : 'Beide'],
+                      ] as const).map(([value, label]) => (
+                        <label key={value} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                          <input
+                            type="radio"
+                            name="notificationPref"
+                            checked={editNotificationPref === value}
+                            onChange={() => setEditNotificationPref(value)}
+                            className="accent-emerald-600"
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {isTeacher && (
                   <div className="border-t border-gray-100 pt-3">
                     <label className="block text-xs font-medium text-gray-500 mb-1">{text.signature}</label>

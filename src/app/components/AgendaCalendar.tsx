@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, X, Clock, Sun, PartyPopper, Calendar as CalendarIcon, BookOpen, FileText, Frown, Meh, Smile, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Clock, Sun, PartyPopper, Calendar as CalendarIcon, BookOpen, FileText, Frown, Meh, Smile, Check, Users } from 'lucide-react';
 
 interface Lesstructuur {
   id: string;
@@ -46,6 +46,15 @@ interface BehaviorRecord {
   notes: string;
 }
 
+export interface ConferenceItem {
+  id: string;          // sessionId:slotIndex — unique per booked slot
+  date: string;        // YYYY-MM-DD
+  start: string;
+  end: string;
+  className?: string;  // teacher view: which class the session belongs to
+  studentName?: string; // whose child/student the slot is booked for
+}
+
 interface AgendaCalendarProps {
   language: 'tr' | 'nl';
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
@@ -59,6 +68,8 @@ interface AgendaCalendarProps {
   behaviorList?: BehaviorRecord[];
   homeworkCompletion?: Record<string, boolean>;
   onToggleHomeworkCompletion?: (studentId: string, homeworkId: string) => void;
+  // Booked oudergesprek slots (parent: own bookings; teacher: their classes).
+  conferences?: ConferenceItem[];
 }
 
 const DAY_NAMES_SHORT_NL = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
@@ -78,6 +89,7 @@ function mondayFirstIndex(dow: number) {
 export default function AgendaCalendar({
   language, apiRequest, refreshKey, role,
   selectedChildId, lessons, behaviorList, homeworkCompletion, onToggleHomeworkCompletion,
+  conferences,
 }: AgendaCalendarProps) {
   const showHomework = role === 'teacher' || role === 'parent';
 
@@ -186,6 +198,10 @@ export default function AgendaCalendar({
     return (ymd: string) => homework.filter(hw => hw.dueDate === ymd);
   }, [homework]);
 
+  const conferencesForDate = useMemo(() => {
+    return (ymd: string) => (conferences || []).filter(cf => cf.date === ymd);
+  }, [conferences]);
+
   const year = monthCursor.getFullYear();
   const month = monthCursor.getMonth();
   const firstOfMonth = new Date(year, month, 1);
@@ -218,10 +234,12 @@ export default function AgendaCalendar({
     homework: homeworkForDate(selectedDate),
     lesson: lessonForDate(selectedDate),
     behavior: behaviorForDate(selectedDate),
+    conferences: conferencesForDate(selectedDate),
   } : null;
   const hasSelectionData = !!(selected && (
     selected.vacation || selected.lesstructuur || selected.events.length > 0 ||
-    selected.homework.length > 0 || selected.lesson || selected.behavior
+    selected.homework.length > 0 || selected.lesson || selected.behavior ||
+    selected.conferences.length > 0
   ));
 
   if (loading) {
@@ -279,7 +297,10 @@ export default function AgendaCalendar({
             >
               <span className={`font-medium ${textClass}`}>{dayNum}</span>
               {dayHomework.length > 0 && (
-                <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-red-600" />
+                <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-indigo-600" />
+              )}
+              {conferencesForDate(ymd).length > 0 && (
+                <span className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-teal-600" />
               )}
               {dayLesson && (
                 <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-600" />
@@ -294,10 +315,13 @@ export default function AgendaCalendar({
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-yellow-100 border border-yellow-300 inline-block" />{language === 'tr' ? 'Tatil' : 'Vakantie'}</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-purple-100 border border-purple-300 inline-block" />{language === 'tr' ? 'Etkinlik' : 'Evenement'}</span>
         {showHomework && (
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-600 inline-block" />{language === 'tr' ? 'Ödev' : 'Huiswerk'}</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-600 inline-block" />{language === 'tr' ? 'Ödev' : 'Huiswerk'}</span>
         )}
         {lessons && (
           <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block" />{language === 'tr' ? 'Ders Özeti' : 'Lesverslag'}</span>
+        )}
+        {conferences && conferences.length > 0 && (
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-600 inline-block" />{language === 'tr' ? 'Veli Görüşmesi' : 'Oudergesprek'}</span>
         )}
       </div>
     </div>
@@ -355,6 +379,36 @@ export default function AgendaCalendar({
                   </div>
                 </div>
               ))}
+              {selected.conferences.length > 0 && (() => {
+                // Teacher with multiple classes: group slots per class.
+                const byClass = new Map<string, ConferenceItem[]>();
+                for (const cf of selected.conferences) {
+                  const key = cf.className || '';
+                  byClass.set(key, [...(byClass.get(key) || []), cf]);
+                }
+                return Array.from(byClass.entries()).map(([className, items]) => (
+                  <div key={className || 'own'} className="bg-teal-50 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Users className="w-4 h-4 text-teal-600 shrink-0" />
+                      <p className="text-sm font-semibold text-teal-800">
+                        {language === 'tr' ? 'Veli Görüşmesi' : 'Oudergesprek'}
+                        {className ? ` · ${className}` : ''}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      {items
+                        .slice()
+                        .sort((a, b) => a.start.localeCompare(b.start))
+                        .map((cf) => (
+                          <p key={cf.id} className="text-xs text-teal-700 ml-6">
+                            {cf.start} - {cf.end}
+                            {cf.studentName ? ` · ${cf.studentName}` : ''}
+                          </p>
+                        ))}
+                    </div>
+                  </div>
+                ));
+              })()}
               {selected.lesson && (
                 <div className="flex items-start gap-2 bg-blue-50 rounded-lg p-3">
                   <FileText className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
@@ -385,18 +439,18 @@ export default function AgendaCalendar({
                 const completionKey = selectedChildId ? `${selectedChildId}:${hw.id}` : null;
                 const completed = completionKey ? !!homeworkCompletion?.[completionKey] : false;
                 return (
-                  <div key={hw.id} className="flex items-start gap-2 bg-red-50 rounded-lg p-3">
-                    <BookOpen className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+                  <div key={hw.id} className="flex items-start gap-2 bg-indigo-50 rounded-lg p-3">
+                    <BookOpen className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
                     <div className="flex-1">
-                      <p className="text-sm font-semibold text-red-800">{text}</p>
+                      <p className="text-sm font-semibold text-indigo-800">{text}</p>
                       {role === 'teacher' && (
-                        <p className="text-xs text-red-700 mt-0.5">
+                        <p className="text-xs text-indigo-700 mt-0.5">
                           {classesById[hw.classId] || hw.classId}
                           {isWholeClass ? (language === 'tr' ? ' · Tüm sınıf' : ' · Hele klas') : ''}
                         </p>
                       )}
                       {!isWholeClass && namedStudents.length > 0 && (
-                        <p className="text-xs text-red-600 mt-0.5">{namedStudents.join(', ')}</p>
+                        <p className="text-xs text-indigo-600 mt-0.5">{namedStudents.join(', ')}</p>
                       )}
                       {role === 'parent' && selectedChildId && onToggleHomeworkCompletion && (
                         <button

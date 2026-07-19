@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
@@ -272,6 +272,27 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
     setDeadlinePassed(now >= deadline);
   };
+
+  // Own booked oudergesprek slots, surfaced in the agenda. With multiple
+  // children the child's name disambiguates which booking is for whom.
+  const myBookedConferences = useMemo(() => {
+    const childById = new Map(students.map((s: Student) => [s.id, s.name]));
+    const items: { id: string; date: string; start: string; end: string; studentName?: string }[] = [];
+    for (const session of conferSessions) {
+      (session.slots || []).forEach((slot: any, i: number) => {
+        if (slot.studentId && childById.has(slot.studentId)) {
+          items.push({
+            id: `${session.id}:${i}`,
+            date: session.date,
+            start: slot.start,
+            end: slot.end,
+            studentName: students.length > 1 ? childById.get(slot.studentId) : undefined,
+          });
+        }
+      });
+    }
+    return items;
+  }, [conferSessions, students]);
 
   const toggleHomeworkCompletion = async (studentId: string, homeworkId: string) => {
     const key = `${studentId}:${homeworkId}`;
@@ -877,6 +898,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               behaviorList={behaviorList}
               homeworkCompletion={homeworkCompletion}
               onToggleHomeworkCompletion={toggleHomeworkCompletion}
+              conferences={myBookedConferences}
             />
           )}
         </div>

@@ -76,6 +76,9 @@ export default function AccountPanel({ onLogout }: AccountPanelProps) {
   const [editPhone, setEditPhone] = useState((user as any)?.phone || '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [editNotificationPref, setEditNotificationPref] = useState<'email' | 'inapp' | 'both'>(
+    ((user as any)?.notificationPref as any) || 'email'
+  );
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -125,7 +128,7 @@ export default function AccountPanel({ onLogout }: AccountPanelProps) {
     try {
       const res = await apiRequest('/me', {
         method: 'PUT',
-        body: JSON.stringify({ name: editName, phone: editPhone }),
+        body: JSON.stringify({ name: editName, phone: editPhone, notificationPref: editNotificationPref }),
       });
       if (res?.user && user) setUser({ ...user, ...res.user });
       setSaved(true);
@@ -220,6 +223,31 @@ export default function AccountPanel({ onLogout }: AccountPanelProps) {
               className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
+          {(user?.role === 'parent' || user?.role === 'teacher') && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                {language === 'tr' ? 'Bildirim tercihi' : 'Meldingen ontvangen via'}
+              </label>
+              <div className="space-y-1.5">
+                {([
+                  ['email', language === 'tr' ? 'E-posta (varsayılan)' : 'E-mail (standaard)'],
+                  ['inapp', language === 'tr' ? 'Uygulama içi' : 'In de app'],
+                  ['both', language === 'tr' ? 'Her ikisi' : 'Beide'],
+                ] as const).map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="notificationPrefMobile"
+                      checked={editNotificationPref === value}
+                      onChange={() => setEditNotificationPref(value)}
+                      className="accent-emerald-600"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <button
             onClick={saveProfile}
             disabled={saving}

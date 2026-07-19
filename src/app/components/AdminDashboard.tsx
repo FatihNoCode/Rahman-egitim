@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { ArrowLeft, Layers, Users, Upload, BellRing, Wallet, ClipboardList, MessageSquare, CalendarDays, Send, Settings, AlertTriangle, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Layers, Users, Upload, BellRing, Wallet, ClipboardList, MessageSquare, CalendarDays, Send, Settings, AlertTriangle, BarChart3, FolderOpen } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import booksLogo from '../../imports/logo.svg';
@@ -20,6 +20,7 @@ import { isAppLayout } from '../../lib/native';
 import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
 import SettingsPanel from './mobile/SettingsPanel';
+import CasesView from './CasesView';
 import {
   useNavOrder,
   mobileExtraNavItems,
@@ -84,7 +85,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   const app = isAppLayout();
   const [activeTab, setActiveTab] = useHashTab<string>(
     'entities',
-    ['entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'oudergesprekken', 'agenda', 'communicatie', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'oudergesprekken', 'agenda', 'communicatie', 'cases', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   const [navOrder, setNavOrder] = useNavOrder('admin', [
     'entities',
@@ -96,6 +97,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
     'oudergesprekken',
     'agenda',
     'communicatie',
+    'cases',
     'settings',
     MOBILE_ACCOUNT_ID,
     MOBILE_PREFS_ID,
@@ -323,6 +325,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
     { id: 'boekhouding', label: language === 'tr' ? 'Muhasebe' : 'Boekhouding', icon: Wallet },
     { id: 'inschrijvingen', label: language === 'tr' ? 'Kayıtlar' : 'Inschrijvingen', icon: ClipboardList },
     { id: 'oudergesprekken', label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken', shortLabel: language === 'tr' ? 'Görüşme' : 'Gesprekken', icon: MessageSquare },
+    { id: 'cases', label: language === 'tr' ? 'Vakalar' : 'Cases', icon: FolderOpen },
     { id: 'agenda', label: language === 'tr' ? 'Ajanda' : 'Agenda', icon: CalendarDays },
     { id: 'communicatie', label: language === 'tr' ? 'İletişim' : 'Communicatie', icon: Send },
     { id: 'settings', label: language === 'tr' ? 'Ayarlar' : 'Instellingen', icon: Settings },
@@ -631,6 +634,10 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
               language={language}
               apiRequest={apiRequest}
             />
+          )}
+
+          {activeTab === 'cases' && (
+            <CasesView language={language} apiRequest={apiRequest} role="admin" currentUserId={currentUser?.id || ''} />
           )}
 
           {activeTab === 'agenda' && (

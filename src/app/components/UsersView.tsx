@@ -51,6 +51,16 @@ export default function UsersView({
 }: UsersViewProps) {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
+  // id -> name lookup, used to show which location a registration chose.
+  const [schoolNames, setSchoolNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    apiRequest('/schools/mine').then((d) => {
+      const names: Record<string, string> = {};
+      (d.schools || []).forEach((s: any) => { names[s.id] = s.name; });
+      setSchoolNames(names);
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [search, setSearch] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<'email' | 'role' | null>(null);
@@ -380,6 +390,12 @@ export default function UsersView({
                       {u.phone || text.noPhone} · {text.registeredOn}{' '}
                       {new Date(u.createdAt).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')}
                     </p>
+                    {(u as any).preferredSchoolId && (
+                      <p className="text-xs text-emerald-700">
+                        {language === 'tr' ? 'Seçilen lokasyon: ' : 'Gekozen locatie: '}
+                        {schoolNames[(u as any).preferredSchoolId] || (u as any).preferredSchoolId}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <label className="text-xs text-gray-500">{text.assignRole}</label>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Mail, Lock, ArrowLeft, CheckCircle2, Circle, UserPlus, Eye, EyeOff, Clock, AlertTriangle, Sparkles } from 'lucide-react';
 import { translations } from './translations';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
@@ -37,6 +37,20 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'parent' | 'teacher' | 'admin'>('parent');
+  const [schoolId, setSchoolId] = useState('');
+  const [schools, setSchools] = useState<{ id: string; name: string; city?: string }[]>([]);
+
+  // Registration asks which location the parent belongs to; the list is the
+  // same public one the inschrijfpagina uses.
+  useEffect(() => {
+    if (!isSignup || schools.length > 0) return;
+    fetch(`${API_BASE}/schools/public`, {
+      headers: { 'Authorization': `Bearer ${publicAnonKey}` },
+    })
+      .then((r) => r.json())
+      .then((d) => setSchools(d.schools || []))
+      .catch(() => {});
+  }, [isSignup, schools.length]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -153,6 +167,12 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
           return;
         }
 
+        if (!schoolId) {
+          setError(language === 'tr' ? 'Lütfen bir lokasyon seçin' : 'Selecteer een locatie');
+          setLoading(false);
+          return;
+        }
+
         const response = await fetch(`${API_BASE}/signup`, {
           method: 'POST',
           headers: {
@@ -166,6 +186,7 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
             firstName: firstName.trim(),
             lastName: lastName.trim(),
             phone: phone.trim(),
+            schoolId,
           }),
         });
 
@@ -522,6 +543,22 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
                     placeholder="+31 6 00000000"
                     className="w-full px-3 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
                   />
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+                    {language === 'tr' ? 'Lokasyon' : 'Locatie'}
+                  </label>
+                  <select
+                    value={schoolId}
+                    onChange={(e) => setSchoolId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
+                  >
+                    <option value="">{language === 'tr' ? 'Lokasyon seçin...' : 'Kies een locatie...'}</option>
+                    {schools.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}{s.city ? ` — ${s.city}` : ''}</option>
+                    ))}
+                  </select>
                 </div>
               </>
             )}

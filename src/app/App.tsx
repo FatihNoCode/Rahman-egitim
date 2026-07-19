@@ -4,6 +4,7 @@ import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../lib/supabase';
 import LoginPage from './components/LoginPage';
 import ProductTour, { hasSeenTour } from './components/ProductTour';
+import ErrorBoundary from './components/ErrorBoundary';
 import { FeedbackHost } from './components/ui/feedback';
 import { markSessionStart, clearSessionStart, isSessionExpired } from '../lib/session';
 import { isNative, NATIVE_AUTH_REDIRECT } from '../lib/native';
@@ -156,15 +157,29 @@ export default function App() {
     } catch (err) {
       // ignore — fall back to existing token
     }
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        ...(actingSchoolId ? { 'X-School-Id': actingSchoolId } : {}),
-        ...options.headers,
-      },
-    });
+    // A dropped connection rejects fetch with a bare `TypeError: Failed to
+    // fetch` / `Load failed`. Callers surface `err.message` straight into a
+    // toast, so on a phone that goes through a tunnel the user was being told
+    // "Load failed" — indistinguishable from a real server error, and it
+    // reads as data loss. Translate it into something actionable instead.
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          ...(actingSchoolId ? { 'X-School-Id': actingSchoolId } : {}),
+          ...options.headers,
+        },
+      });
+    } catch {
+      throw new Error(
+        language === 'tr'
+          ? 'Bağlantı yok. İnternet bağlantınızı kontrol edip tekrar deneyin.'
+          : 'Geen verbinding. Controleer je internetverbinding en probeer het opnieuw.',
+      );
+    }
 
     const text = await response.text();
     let data;
@@ -233,9 +248,15 @@ export default function App() {
       return;
     }
 
-    // Public sign-up page — no login needed
+    // Public sign-up page — no login needed. Must accept every spelling the
+    // render path above treats as the sign-up route, canonical /inschrijven
+    // included; otherwise the public link falls through to checkSession() and
+    // makes a logged-out visitor wait on an auth roundtrip before the form
+    // appears.
     if (
+      pathParts.includes('inschrijven') ||
       pathParts.includes('inschrijving') ||
+      urlParams.get('page') === 'inschrijven' ||
       urlParams.get('page') === 'inschrijving'
     ) {
       setLoading(false);
@@ -436,55 +457,57 @@ export default function App() {
         <ProductTour role={tourRole} language={language} onClose={() => setShowTour(false)} />
       )}
       <div className="size-full bg-gray-50">
-        <Suspense
-          fallback={
-            <div className="flex items-center justify-center size-full">
-              <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
-            </div>
-          }
-        >
-          {isPrivacyPage ? (
-            <PrivacyPage />
-          ) : isRecovery ? (
-            <ResetPasswordPage language={language} onDone={() => setIsRecovery(false)} />
-          ) : isElifBaPage ? (
-            <ElifBaPage onBack={() => { window.location.href = '/'; }} />
-          ) : isInschrijvingPage ? (
-            <InschrijvingPage />
-          ) : inviteToken ? (
-            <InvitePage token={inviteToken} onComplete={() => {
-              setInviteToken(null);
-              window.history.pushState({}, '', '/');
-            }} />
-          ) : !user ? (
-            <LoginPage
-              onLogin={handleLogin}
-              language={language}
-              setLanguage={setLanguage}
-              mfaChallenge={mfaChallenge}
-              setMfaChallenge={setMfaChallenge}
-            />
-          ) : user.status === 'pending' ? (
-            <PendingApprovalScreen
-              email={user.email}
-              language={language}
-              onSignOut={handleLogout}
-            />
-          ) : user.role === 'parent' ? (
-            <ParentDashboard onLogout={handleLogout} />
-          ) : user.role === 'teacher' ? (
-            <TeacherDashboard onLogout={handleLogout} />
-          ) : user.role === 'regional_admin' ? (
-            <RegionalAdminDashboard onLogout={handleLogout} />
-          ) : user.role === 'superadmin' && viewMode === 'superadmin' ? (
-            <SuperAdminDashboard onLogout={handleLogout} onEnterSchool={handleEnterSchool} />
-          ) : (
-            <AdminDashboard
-              onLogout={handleLogout}
-              onExitAdminMode={user.role === 'superadmin' ? handleExitAdminMode : undefined}
-            />
-          )}
-        </Suspense>
+        <ErrorBoundary language={language}>
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center size-full">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+              </div>
+            }
+          >
+            {isPrivacyPage ? (
+              <PrivacyPage />
+            ) : isRecovery ? (
+              <ResetPasswordPage language={language} onDone={() => setIsRecovery(false)} />
+            ) : isElifBaPage ? (
+              <ElifBaPage onBack={() => { window.location.href = '/'; }} />
+            ) : isInschrijvingPage ? (
+              <InschrijvingPage />
+            ) : inviteToken ? (
+              <InvitePage token={inviteToken} onComplete={() => {
+                setInviteToken(null);
+                window.history.pushState({}, '', '/');
+              }} />
+            ) : !user ? (
+              <LoginPage
+                onLogin={handleLogin}
+                language={language}
+                setLanguage={setLanguage}
+                mfaChallenge={mfaChallenge}
+                setMfaChallenge={setMfaChallenge}
+              />
+            ) : user.status === 'pending' ? (
+              <PendingApprovalScreen
+                email={user.email}
+                language={language}
+                onSignOut={handleLogout}
+              />
+            ) : user.role === 'parent' ? (
+              <ParentDashboard onLogout={handleLogout} />
+            ) : user.role === 'teacher' ? (
+              <TeacherDashboard onLogout={handleLogout} />
+            ) : user.role === 'regional_admin' ? (
+              <RegionalAdminDashboard onLogout={handleLogout} />
+            ) : user.role === 'superadmin' && viewMode === 'superadmin' ? (
+              <SuperAdminDashboard onLogout={handleLogout} onEnterSchool={handleEnterSchool} />
+            ) : (
+              <AdminDashboard
+                onLogout={handleLogout}
+                onExitAdminMode={user.role === 'superadmin' ? handleExitAdminMode : undefined}
+              />
+            )}
+          </Suspense>
+        </ErrorBoundary>
       </div>
     </AppContext.Provider>
   );

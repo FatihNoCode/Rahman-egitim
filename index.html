@@ -27,11 +27,11 @@
            on a blank pane.
            frame-src must list demo.arcade.software — the ProductTour onboarding
            walkthrough embeds it in an iframe. -->
-      <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tile.openstreetmap.org; connect-src 'self' https://uriirwsjpzsjnaosqlph.supabase.co https://*.supabase.co; frame-src 'self' https://accounts.google.com https://demo.arcade.software; base-uri 'self'; form-action 'self'; object-src 'none'" />
+      <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tile.openstreetmap.org; connect-src 'self' https://uriirwsjpzsjnaosqlph.supabase.co https://*.supabase.co; frame-src 'self' https://accounts.google.com https://demo.arcade.software; base-uri 'self'; form-action 'self'; object-src 'none'" />
       <meta name="referrer" content="strict-origin-when-cross-origin" />
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-      <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Scheherazade+New:wght@400;700&display=swap" rel="stylesheet" />
+      <!-- The Arabic faces used by ElifBaPage are self-hosted and bundled;
+           see src/styles/fonts.css. Nothing here loads from a font CDN, so
+           style-src/font-src above no longer allow one. -->
       <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
       
     </head>

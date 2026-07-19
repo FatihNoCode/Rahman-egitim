@@ -138,6 +138,10 @@ async function getMfaPolicy(): Promise<{ admin: boolean; regional_admin: boolean
 // whether a given session's assurance level is good enough to proceed.
 async function mfaRequiredForRole(userData: any): Promise<boolean> {
   if (!userData) return false;
+  // Demo/showcase accounts (flagged `mfaExempt` on their KV user record) skip
+  // MFA entirely, regardless of role — they exist purely so the app can be
+  // demoed without an enrollment step, not for handling real data.
+  if (userData.mfaExempt) return false;
   if (userData.role === 'superadmin') return true;
   if (userData.role === 'admin' || userData.role === 'regional_admin') {
     const policy = await getMfaPolicy();
@@ -3390,30 +3394,10 @@ app.post("/make-server-6679cacd/attendance", async (c) => {
   }
 });
 
-app.get("/make-server-6679cacd/attendance/:classId/:date", async (c) => {
-  try {
-    const { user, error } = await verifyUser(c.req.raw);
-    if (error) return c.json({ error }, 401);
-
-    const classId = c.req.param('classId');
-    const date = c.req.param('date');
-
-    // Raw per-student attendance is a teacher/admin tool — parents get their
-    // own filtered view via /lessons and /behavior instead.
-    const userData = await getUserData(user.id);
-    if (!userData || !['admin', 'superadmin', 'teacher'].includes(userData.role) || !(await userHasClassAccess(user.id, userData, classId))) {
-      return c.json({ error: 'Unauthorized' }, 403);
-    }
-
-    const attendance = await kv.get(`attendance:${classId}:${date}`);
-    return c.json({ attendance });
-  } catch (err) {
-    console.log('Get attendance error:', err);
-    return c.json({ error: 'Failed to get attendance' }, 500);
-  }
-});
-
-// Get all dates with attendance data for a class
+// Get all dates with attendance data for a class. Must be registered before
+// the /attendance/:classId/:date route below — Hono matches routes in
+// registration order, and a literal "dates" segment would otherwise be
+// captured as :date, making this handler permanently unreachable.
 app.get("/make-server-6679cacd/attendance/:classId/dates", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
@@ -3448,6 +3432,29 @@ app.get("/make-server-6679cacd/attendance/:classId/dates", async (c) => {
   } catch (err) {
     console.log('Get attendance dates error:', err);
     return c.json({ error: 'Failed to get attendance dates' }, 500);
+  }
+});
+
+app.get("/make-server-6679cacd/attendance/:classId/:date", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const classId = c.req.param('classId');
+    const date = c.req.param('date');
+
+    // Raw per-student attendance is a teacher/admin tool — parents get their
+    // own filtered view via /lessons and /behavior instead.
+    const userData = await getUserData(user.id);
+    if (!userData || !['admin', 'superadmin', 'teacher'].includes(userData.role) || !(await userHasClassAccess(user.id, userData, classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const attendance = await kv.get(`attendance:${classId}:${date}`);
+    return c.json({ attendance });
+  } catch (err) {
+    console.log('Get attendance error:', err);
+    return c.json({ error: 'Failed to get attendance' }, 500);
   }
 });
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { User as UserIcon, Bell, LogOut, Trash2, Check, ChevronRight, X } from 'lucide-react';
 import { useApp } from '../../App';
 import { notify } from '../ui/feedback';
+import { isNative } from '../../../lib/native';
 
 interface Notification {
   id: string;
@@ -98,7 +99,25 @@ export default function AccountPanel({ onLogout }: AccountPanelProps) {
   useEffect(() => {
     loadNotifications();
     const interval = setInterval(loadNotifications, 60000);
-    return () => clearInterval(interval);
+
+    // The 60s timer is frozen while the app is backgrounded — iOS suspends
+    // aggressively, so coming back after a while would otherwise show stale
+    // notifications until the next tick fires. Refresh on resume instead.
+    // (Until there's real APNs push this is the only way the badge updates
+    // from anything that happened while the app was closed.)
+    let removeResume = () => {};
+    if (isNative()) {
+      (async () => {
+        const { App: CapApp } = await import('@capacitor/app');
+        const handle = await CapApp.addListener('resume', loadNotifications);
+        removeResume = () => { handle.remove(); };
+      })();
+    }
+
+    return () => {
+      clearInterval(interval);
+      removeResume();
+    };
   }, []);
 
   const saveProfile = async () => {

@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, PlayCircle, AlertTriangle, Check, Home, Receipt, Sparkles } from 'lucide-react';
+import { Euro, Moon, PlayCircle, AlertTriangle, Check, Home, Receipt, Sparkles, MessageSquare } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import ProductTour from './ProductTour';
@@ -108,11 +108,12 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   // top-level destinations; on the web only the overview/billing split exists.
   const [activeTab, setActiveTab] = useHashTab<string>(
     'overview',
-    ['overview', 'billing', 'alifba', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['overview', 'billing', 'oudergesprekken', 'alifba', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   const [navOrder, setNavOrder] = useNavOrder('parent', [
     'overview',
     'billing',
+    'oudergesprekken',
     'alifba',
     MOBILE_ACCOUNT_ID,
     MOBILE_PREFS_ID,
@@ -402,6 +403,12 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const allNavItems: MobileNavItem[] = [
     { id: 'overview', label: language === 'tr' ? 'Ana Sayfa' : 'Start', icon: Home },
     { id: 'billing', label: language === 'tr' ? 'Ödemeler' : 'Facturatie', icon: Receipt },
+    {
+      id: 'oudergesprekken',
+      label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken',
+      shortLabel: language === 'tr' ? 'Görüşme' : 'Gesprekken',
+      icon: MessageSquare,
+    },
     { id: 'alifba', label: 'Elif-Ba', icon: Sparkles },
     ...mobileExtraNavItems(language),
   ];
@@ -478,9 +485,15 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             bottom tab bar — and shows only a compact greeting. */}
         {app && (
           <div className="mb-4">
-            <h1 className="text-2xl font-bold text-gray-800 leading-tight">
-              {activeTab === 'billing' ? (language === 'tr' ? 'Ödemeler' : 'Facturatie') : t.parentDashboard}
-            </h1>
+            {/* The home tab shows no title — "Ouderpaneel" only restated where
+                the user already is. Other destinations still name themselves. */}
+            {activeTab !== 'overview' && (
+              <h1 className="text-2xl font-bold text-gray-800 leading-tight">
+                {activeTab === 'billing'
+                  ? language === 'tr' ? 'Ödemeler' : 'Facturatie'
+                  : language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken'}
+              </h1>
+            )}
             <p className="flex items-center gap-1 text-xs text-emerald-700 font-medium">
               <Moon className="h-3.5 w-3.5 fill-emerald-700" />
               {language === 'tr' ? 'Selamün Aleyküm' : 'Assalamu alaikum'}{user?.name ? `, ${user.name}` : ''}
@@ -551,8 +564,10 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               </div>
             )}
 
-            {/* Selected child header + actions */}
-            {selectedChild && (
+            {/* Selected child header + actions. Overview only: the billing and
+                oudergesprekken tabs already say which child they're about, and
+                repeating the card there just pushed their content down. */}
+            {selectedChild && activeTab === 'overview' && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">{selectedChild.name}</h2>
@@ -844,12 +859,41 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           </div>
         )}
 
-        {/* Oudergesprekken — conferences now span every class */}
-        {selectedChild && conferSessions.length > 0 && (
+
+        {/* Agenda: lesson days, vacations, events, lesson reports & homework */}
+        <div className="mb-4 sm:mb-6">
+          <h2 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-3">
+            {language === 'tr' ? 'Ajanda' : 'Agenda'}
+          </h2>
+          {selectedChild && loadingChild ? (
+            <p className="text-sm text-gray-400">{t.loading}</p>
+          ) : (
+            <AgendaCalendar
+              language={language}
+              apiRequest={apiRequest}
+              role="parent"
+              selectedChildId={selectedChild?.id}
+              lessons={lessons}
+              behaviorList={behaviorList}
+              homeworkCompletion={homeworkCompletion}
+              onToggleHomeworkCompletion={toggleHomeworkCompletion}
+            />
+          )}
+        </div>
+        </>
+        )}
+
+        {/* Oudergesprekken — conferences now span every class. Its own
+            destination rather than a card on the home screen. */}
+        {selectedChild && activeTab === 'oudergesprekken' && conferSessions.length === 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center text-sm text-gray-500">
+            {language === 'tr'
+              ? 'Şu anda planlanmış veli görüşmesi yok.'
+              : 'Er zijn op dit moment geen oudergesprekken gepland.'}
+          </div>
+        )}
+        {selectedChild && activeTab === 'oudergesprekken' && conferSessions.length > 0 && (
           <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
-            <h2 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-3">
-              {language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken'}
-            </h2>
             <div className="space-y-4">
               {conferSessions
                 .map((session: any) => {
@@ -926,29 +970,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                 })}
             </div>
           </div>
-        )}
-
-        {/* Agenda: lesson days, vacations, events, lesson reports & homework */}
-        <div className="mb-4 sm:mb-6">
-          <h2 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-3">
-            {language === 'tr' ? 'Ajanda' : 'Agenda'}
-          </h2>
-          {selectedChild && loadingChild ? (
-            <p className="text-sm text-gray-400">{t.loading}</p>
-          ) : (
-            <AgendaCalendar
-              language={language}
-              apiRequest={apiRequest}
-              role="parent"
-              selectedChildId={selectedChild?.id}
-              lessons={lessons}
-              behaviorList={behaviorList}
-              homeworkCompletion={homeworkCompletion}
-              onToggleHomeworkCompletion={toggleHomeworkCompletion}
-            />
-          )}
-        </div>
-        </>
         )}
       </div>
     </div>

@@ -1,6 +1,8 @@
-import { Globe, PlayCircle, Shield, Info, ChevronRight, ArrowUp, ArrowDown, LayoutGrid } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Globe, PlayCircle, Shield, Info, ChevronRight, ChevronDown, GripVertical, LayoutGrid } from 'lucide-react';
 import { useApp } from '../../App';
 import { type MobileNavItem, VISIBLE_SLOTS } from './navPrefs';
+import { selectionStart, selectionChanged, selectionEnd } from '../../../lib/haptics';
 
 interface SettingsPanelProps {
   onShowDemo?: () => void;
@@ -25,8 +27,7 @@ const T = {
     privacy: 'Privacybeleid',
     about: 'Over',
     version: 'Versie',
-    moveUp: 'Omhoog',
-    moveDown: 'Omlaag',
+    reorder: 'Versleep om te ordenen',
   },
   tr: {
     settings: 'Tercihler',
@@ -42,8 +43,7 @@ const T = {
     privacy: 'Gizlilik politikası',
     about: 'Hakkında',
     version: 'Sürüm',
-    moveUp: 'Yukarı',
-    moveDown: 'Aşağı',
+    reorder: 'Sıralamak için sürükleyin',
   },
 };
 
@@ -51,13 +51,62 @@ export default function SettingsPanel({ onShowDemo, navItems, onReorder }: Setti
   const { language, setLanguage } = useApp();
   const text = T[language];
 
-  const move = (index: number, dir: -1 | 1) => {
-    if (!navItems || !onReorder) return;
-    const next = navItems.map((i) => i.id);
-    const target = index + dir;
-    if (target < 0 || target >= next.length) return;
-    [next[index], next[target]] = [next[target], next[index]];
-    onReorder(next);
+  // Collapsed until asked for. Reordering the tab bar is a once-in-a-while
+  // thing, and unfolded by default it dominated a screen whose main job is
+  // language and general settings.
+  const [navOpen, setNavOpen] = useState(false);
+
+  // Press-and-drag reordering, replacing the up/down arrows.
+  //
+  // The drag starts from the grip handle rather than anywhere on the row, and
+  // only the handle carries `touch-action: none`. That split matters: an
+  // element with touch-action:none cannot be scrolled through, so making whole
+  // rows draggable would turn the list into a dead zone the page won't scroll
+  // past. Confining it to the handle keeps the rest of the row scrollable —
+  // which is exactly how iOS' own reorderable lists behave.
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOffset, setDragOffset] = useState(0);
+  const rowHeight = useRef(0);
+  const grabY = useRef(0);
+
+  const onHandleDown = (e: React.PointerEvent, index: number) => {
+    if (!navItems || !onReorder || e.button !== 0) return;
+    const row = (e.currentTarget as HTMLElement).closest('[data-nav-row]') as HTMLElement | null;
+    rowHeight.current = row?.offsetHeight ?? 48;
+    grabY.current = e.clientY;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragIndex(index);
+    setDragOffset(0);
+    selectionStart();
+  };
+
+  const onHandleMove = (e: React.PointerEvent) => {
+    if (dragIndex === null || !navItems || !onReorder) return;
+    const dy = e.clientY - grabY.current;
+    // Reorder live, a row at a time, as the finger crosses each boundary.
+    const steps = Math.round(dy / (rowHeight.current || 48));
+    const target = Math.max(0, Math.min(navItems.length - 1, dragIndex + steps));
+    if (steps !== 0 && target !== dragIndex) {
+      const ids = navItems.map((i) => i.id);
+      const [moved] = ids.splice(dragIndex, 1);
+      ids.splice(target, 0, moved);
+      onReorder(ids);
+      // Re-anchor to the row's new home so the dragged item stays under the
+      // finger instead of jumping by one row height on every swap.
+      grabY.current += (target - dragIndex) * (rowHeight.current || 48);
+      setDragIndex(target);
+      selectionChanged();
+      setDragOffset(e.clientY - grabY.current);
+      return;
+    }
+    setDragOffset(dy);
+  };
+
+  const endDrag = () => {
+    if (dragIndex === null) return;
+    setDragIndex(null);
+    setDragOffset(0);
+    selectionEnd();
   };
 
   // Reordering is useful even when everything fits on the bar — it decides the
@@ -96,58 +145,74 @@ export default function SettingsPanel({ onShowDemo, navItems, onReorder }: Setti
         </div>
       </div>
 
-      {/* Navigation order */}
+      {/* Navigation order — collapsed until tapped */}
       {showReorder && (
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-          <div className="mb-1 flex items-center gap-2">
-            <LayoutGrid className="h-4 w-4 text-emerald-600" />
-            <p className="text-sm font-semibold text-gray-700">{text.navTitle}</p>
-          </div>
-          <p className="mb-3 text-xs text-gray-400">{hasMore ? text.navHint : text.navHintSimple}</p>
-          <div className="space-y-1.5">
-            {navItems!.map((item, index) => {
-              const onBar = !hasMore || index < VISIBLE_SLOTS;
-              const Icon = item.icon;
-              return (
-                <div
-                  key={item.id}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ring-1 ${
-                    onBar ? 'bg-emerald-50/60 ring-emerald-100' : 'bg-gray-50 ring-gray-100'
-                  }`}
-                >
-                  <Icon className={`h-4 w-4 ${onBar ? 'text-emerald-600' : 'text-gray-400'}`} />
-                  <span className="flex-1 truncate text-sm font-medium text-gray-700">{item.label}</span>
-                  {hasMore && (
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        onBar ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'
-                      }`}
+        <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+          <button
+            onClick={() => setNavOpen((v) => !v)}
+            aria-expanded={navOpen}
+            className="flex w-full items-center gap-2 px-4 py-3.5 text-left transition active:bg-gray-50"
+          >
+            <LayoutGrid className="h-4 w-4 shrink-0 text-emerald-600" />
+            <span className="flex-1 text-sm font-semibold text-gray-700">{text.navTitle}</span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-gray-300 transition-transform duration-200 ${
+                navOpen ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+
+          {navOpen && (
+            <div className="px-4 pb-4">
+              <p className="mb-3 text-xs text-gray-400">{hasMore ? text.navHint : text.navHintSimple}</p>
+              <div className="space-y-1.5">
+                {navItems!.map((item, index) => {
+                  const onBar = !hasMore || index < VISIBLE_SLOTS;
+                  const Icon = item.icon;
+                  const isDragging = dragIndex === index;
+                  return (
+                    <div
+                      key={item.id}
+                      data-nav-row
+                      className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ring-1 ${
+                        onBar ? 'bg-emerald-50/60 ring-emerald-100' : 'bg-gray-50 ring-gray-100'
+                      } ${isDragging ? 'relative z-10 shadow-lg' : ''}`}
+                      style={
+                        isDragging
+                          ? { transform: `translateY(${dragOffset}px) scale(1.02)` }
+                          : { transition: 'transform 200ms cubic-bezier(0.32, 0.72, 0, 1)' }
+                      }
                     >
-                      {onBar ? text.onBar : text.underMore}
-                    </span>
-                  )}
-                  <div className="flex flex-col">
-                    <button
-                      onClick={() => move(index, -1)}
-                      disabled={index === 0}
-                      aria-label={text.moveUp}
-                      className="text-gray-400 transition hover:text-emerald-600 disabled:opacity-20"
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => move(index, 1)}
-                      disabled={index === navItems!.length - 1}
-                      aria-label={text.moveDown}
-                      className="text-gray-400 transition hover:text-emerald-600 disabled:opacity-20"
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                      <Icon className={`h-4 w-4 shrink-0 ${onBar ? 'text-emerald-600' : 'text-gray-400'}`} />
+                      <span className="flex-1 truncate text-sm font-medium text-gray-700">{item.label}</span>
+                      {hasMore && (
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            onBar ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'
+                          }`}
+                        >
+                          {onBar ? text.onBar : text.underMore}
+                        </span>
+                      )}
+                      <span
+                        role="button"
+                        aria-label={text.reorder}
+                        onPointerDown={(e) => onHandleDown(e, index)}
+                        onPointerMove={onHandleMove}
+                        onPointerUp={endDrag}
+                        onPointerCancel={endDrag}
+                        // Only the handle opts out of scrolling; see onHandleDown.
+                        style={{ touchAction: 'none' }}
+                        className="-mr-1 shrink-0 cursor-grab p-1 text-gray-300 active:cursor-grabbing active:text-emerald-600"
+                      >
+                        <GripVertical className="h-5 w-5" />
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

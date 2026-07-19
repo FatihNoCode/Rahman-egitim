@@ -316,13 +316,13 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   };
 
   const navItems = [
-    { id: 'entities', label: language === 'tr' ? 'Sınıf Yönetimi' : 'Klassen beheer', icon: Layers },
+    { id: 'entities', label: language === 'tr' ? 'Sınıf Yönetimi' : 'Klassen beheer', shortLabel: language === 'tr' ? 'Sınıflar' : 'Klassen', icon: Layers },
     { id: 'users', label: language === 'tr' ? 'Kullanıcılar' : 'Gebruikers', icon: Users },
     { id: 'import', label: language === 'tr' ? 'İçe Aktar' : 'Importeren', icon: Upload },
-    { id: 'meldingen', label: language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen', icon: BellRing },
+    { id: 'meldingen', label: language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen', shortLabel: language === 'tr' ? 'Bildirim' : 'Meldingen', icon: BellRing },
     { id: 'boekhouding', label: language === 'tr' ? 'Muhasebe' : 'Boekhouding', icon: Wallet },
     { id: 'inschrijvingen', label: language === 'tr' ? 'Kayıtlar' : 'Inschrijvingen', icon: ClipboardList },
-    { id: 'oudergesprekken', label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken', icon: MessageSquare },
+    { id: 'oudergesprekken', label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken', shortLabel: language === 'tr' ? 'Görüşme' : 'Gesprekken', icon: MessageSquare },
     { id: 'agenda', label: language === 'tr' ? 'Ajanda' : 'Agenda', icon: CalendarDays },
     { id: 'communicatie', label: language === 'tr' ? 'İletişim' : 'Communicatie', icon: Send },
     { id: 'settings', label: language === 'tr' ? 'Ayarlar' : 'Instellingen', icon: Settings },

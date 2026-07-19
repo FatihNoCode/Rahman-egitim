@@ -97,3 +97,126 @@
 .native-app body {
   touch-action: manipulation;
 }
+
+/* ---------------------------------------------------------------------------
+   Glass material — the translucent surface used by the floating tab bar and
+   its "More" sheet.
+
+   Written out longhand rather than composed from Tailwind's backdrop-* helpers
+   for one specific reason: WKWebView still needs the -webkit- prefixed
+   backdrop-filter. If only the unprefixed property reaches the device the blur
+   silently does nothing, and the surface collapses to a flat white panel that
+   looks like a bug rather than a material.
+
+   Three things make this read as glass instead of translucent plastic:
+     - saturate() well above 100%. Blurring alone washes colour out; pushing
+       saturation back up is what makes the surface feel like it's *sampling*
+       what's behind it. This is the single biggest contributor.
+     - a low background alpha, so scrolled content genuinely tints the bar.
+     - a bright inset line along the top edge, which reads as light catching a
+       bevel and gives the panel physical thickness.
+--------------------------------------------------------------------------- */
+.ios-glass {
+  position: relative;
+
+  /* Almost no fill. Piling on white tint is what made earlier attempts vanish
+     against a white page — the panel matched exactly what was behind it. */
+  background-color: rgba(255, 255, 255, 0.01);
+
+  /* brightness() below 1 is the load-bearing part. A pane of glass over a
+     light surface reads *darker* than that surface, not lighter, and that
+     small step down in luminance is what gives the panel an edge you can see
+     on an all-white screen. saturate() then puts back the colour the blur
+     washes out, so anything with hue behind it still bleeds through. */
+  /* Lower blur reads as more transparent than lower tint does — at 30px the
+     backdrop is diffused into an average colour, whereas around 20px you can
+     still make out the shapes of what's behind, which is what actually looks
+     see-through. The silhouette no longer depends on the fill: the rim and the
+     brightness step carry it, so the tint can go this low without the panel
+     disappearing the way it did in earlier attempts. */
+  -webkit-backdrop-filter: blur(4px) saturate(190%) brightness(0.95);
+  backdrop-filter: blur(4px) saturate(190%) brightness(0.95);
+
+  box-shadow:
+    /* Float. */
+    0 12px 36px rgba(0, 0, 0, 0.18),
+    /* Hairline outer edge, so the silhouette stays legible on white. */
+    0 0 0 0.5px rgba(0, 0, 0, 0.09),
+    /* Specular highlight along the top, bounce light along the bottom. */
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.4),
+    /* Edge lensing: light gathering at the left and right extremes, the way it
+       does through a thick curved edge. This is the detail that actually sells
+       the material — more than the fill or the blur radius ever did. */
+    inset 10px 0 20px -12px rgba(255, 255, 255, 0.95),
+    inset -10px 0 20px -12px rgba(255, 255, 255, 0.95);
+}
+
+/* Refractive rim. A 1px gradient border — bright where light would catch the
+   top-left and bottom-right, dim through the middle — drawn by masking out the
+   inside of a filled rounded box so only the border ring survives. */
+.ios-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    140deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(255, 255, 255, 0.2) 32%,
+    rgba(255, 255, 255, 0.12) 62%,
+    rgba(255, 255, 255, 0.85) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.ios-glass-sheet {
+  background-color: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+}
+
+/* Without backdrop-filter the low alpha would leave label text sitting on
+   whatever scrolls underneath, which is unreadable. Fall back to near-opaque. */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .ios-glass {
+    background-image: none;
+    background-color: rgba(255, 255, 255, 0.94);
+  }
+  .ios-glass-sheet {
+    background-color: rgba(255, 255, 255, 0.97);
+  }
+}
+
+/* Sheet presentation for the tab bar's "More" panel (MobileNav.tsx). iOS
+   sheets rise from the bottom edge while the dimming layer fades in behind
+   them — the two are separate animations because the backdrop should be fully
+   dark before the sheet finishes settling. */
+@keyframes mobilenav-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes mobilenav-sheet {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes mobilenav-sheet {
+    from {
+      transform: none;
+    }
+  }
+}

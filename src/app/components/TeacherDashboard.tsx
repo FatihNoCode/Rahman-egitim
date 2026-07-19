@@ -450,10 +450,10 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   // agenda and absence reports are checked often, conferences and roster
   // management are comparatively occasional.
   const navItems = [
-    { id: 'attendance', label: language === 'tr' ? 'Les Kaydı' : 'Les Registratie', icon: ClipboardList },
+    { id: 'attendance', label: language === 'tr' ? 'Les Kaydı' : 'Les Registratie', shortLabel: language === 'tr' ? 'Ders' : 'Les', icon: ClipboardList },
     { id: 'agenda', label: language === 'tr' ? 'Ajanda' : 'Agenda', icon: CalendarDays },
-    { id: 'meldingen', label: language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen', icon: BellRing },
-    { id: 'oudergesprekken', label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken', icon: MessageSquare },
+    { id: 'meldingen', label: language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen', shortLabel: language === 'tr' ? 'Bildirim' : 'Meldingen', icon: BellRing },
+    { id: 'oudergesprekken', label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken', shortLabel: language === 'tr' ? 'Görüşme' : 'Gesprekken', icon: MessageSquare },
     ...(diplomaVisible ? [{ id: 'diploma', label: 'Diploma', icon: Award }] : []),
     { id: 'beheer', label: 'Beheer', icon: Settings },
   ];

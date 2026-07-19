@@ -5,6 +5,12 @@ export interface MobileNavItem {
   id: string;
   label: string;
   icon: LucideIcon;
+  // Optional bar-only label. These labels were written for the desktop
+  // sidebar, where length is free; a tab bar slot is ~72pt wide and anything
+  // past ~10 characters ellipsises into noise ("Oudergespr…"). Set this to a
+  // short form for the bar — the full `label` is still what the "More" sheet
+  // and every other surface shows.
+  shortLabel?: string;
 }
 
 // The two destinations every role gets on top of its dashboard sections.

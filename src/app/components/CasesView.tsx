@@ -163,7 +163,7 @@ export default function CasesView({ language, apiRequest, role, currentUserId }:
     if (!explanation.trim() || !desiredAction.trim()) { notify.error(text.fillFields); return; }
     setCreating(true);
     try {
-      await apiRequest('/cases', {
+      const { case: created } = await apiRequest('/cases', {
         method: 'POST',
         body: JSON.stringify({
           studentIds: selStudents,
@@ -171,10 +171,10 @@ export default function CasesView({ language, apiRequest, role, currentUserId }:
           desiredAction: desiredAction.trim(),
         }),
       });
+      setCases((prev) => [created, ...prev]);
       notify.success(text.saved);
       setShowCreate(false);
       setSelStudents([]); setExplanation(''); setDesiredAction('');
-      await load();
     } catch (err: any) {
       notify.error(err.message || 'Error');
     } finally {

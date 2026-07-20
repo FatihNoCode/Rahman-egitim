@@ -729,7 +729,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
       ) : (
       <>
       {/* ── Total collected banner ── */}
-      <div className="bg-emerald-700 text-white rounded-xl p-4 mb-5 flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="bg-emerald-700 text-white rounded-xl p-4 mb-5 flex flex-col lg:flex-row lg:items-center gap-3">
         <div className="flex items-center gap-3 flex-1">
           <div className="bg-emerald-600 rounded-lg p-2">
             <Euro className="h-6 w-6" />
@@ -741,7 +741,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
             <p className="text-3xl font-bold">€{grandTotal.toFixed(2)}</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-xs">
           {[
             { label: 'Schoolgeld', val: totals.schoolgeld },
             { label: 'Tas', val: totals.tas },

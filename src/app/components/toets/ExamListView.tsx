@@ -63,6 +63,11 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
   const [printExam, setPrintExam] = useState<ExamDraft | null>(null);
   const [printCopies, setPrintCopies] = useState(10);
   const [resultsData, setResultsData] = useState<any | null>(null);
+  // Item analysis for the exam currently open in the results view. Loaded
+  // alongside the results so a teacher sees *why* a result looks the way it
+  // does, not just the scores.
+  const [analysis, setAnalysis] = useState<any | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
   const [gradeDrafts, setGradeDrafts] = useState<Record<string, Record<string, number>>>({});
 
   const load = useCallback(async () => {
@@ -130,6 +135,9 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
   const openResults = async (examId: string) => {
     setMode({ view: 'results', examId });
     setResultsData(null);
+    setAnalysis(null);
+    // The analysis is supplementary: if it fails, the results still render.
+    apiRequest(`/exams/${examId}/analysis`).then(setAnalysis).catch(() => setAnalysis(null));
     try {
       const data = await apiRequest(`/exams/${examId}/results`);
       setResultsData(data);
@@ -187,6 +195,71 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
         <button onClick={() => setMode({ view: 'list' })} className="text-sm font-medium text-emerald-700 hover:text-emerald-900">
           ← {text.back}
         </button>
+        {analysis?.analysis?.attemptCount > 0 && (
+          <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-4">
+            <button
+              onClick={() => setShowAnalysis(!showAnalysis)}
+              className="w-full flex items-center justify-between text-left gap-3"
+            >
+              <div className="min-w-0">
+                <h4 className="text-sm font-semibold text-gray-800">
+                  {tr ? 'Soru analizi' : 'Vraaganalyse'}
+                </h4>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {tr ? analysis.analysis.summaryTr : analysis.analysis.summaryNl}
+                </p>
+              </div>
+              <span className="text-sm text-emerald-700 shrink-0">
+                {showAnalysis ? (tr ? 'Gizle' : 'Verbergen') : (tr ? 'Göster' : 'Tonen')}
+              </span>
+            </button>
+
+            {showAnalysis && (
+              <div className="mt-4 space-y-2 border-t border-gray-100 pt-4">
+                {(analysis.weakTopics || []).length > 0 && (
+                  <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 p-3">
+                    <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1">
+                      {tr ? 'Tekrar edilmesi gereken konular' : 'Onderwerpen om te herhalen'}
+                    </p>
+                    <ul className="text-sm text-amber-900 space-y-0.5">
+                      {analysis.weakTopics.map((t: any) => (
+                        <li key={t.topic}>
+                          {t.topic} — {Math.round(t.pCorrect * 100)}% {tr ? 'doğru' : 'goed'}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {analysis.analysis.questions.map((q: any) => {
+                  const pct = Math.round(q.pCorrect * 100);
+                  // Colour tracks difficulty so the problem rows stand out
+                  // without the teacher having to read every note.
+                  const tone = q.pCorrect <= 0.3 ? 'bg-red-500' : q.pCorrect < 0.7 ? 'bg-amber-500' : 'bg-emerald-500';
+                  return (
+                    <div key={q.questionId} className="flex items-start gap-3 py-2">
+                      <div className="w-12 shrink-0 text-right">
+                        <span className="text-sm font-semibold text-gray-700">{pct}%</span>
+                      </div>
+                      <div className="w-16 shrink-0 mt-1.5">
+                        <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                          <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-gray-800 truncate">{q.prompt}</p>
+                        {q.flags.length > 0 && (
+                          <p className="text-xs text-gray-500 mt-0.5">{tr ? q.noteTr : q.noteNl}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {!resultsData ? (
           <p className="text-sm text-gray-400">{tr ? 'Yükleniyor...' : 'Laden...'}</p>
         ) : (resultsData.results || []).length === 0 ? (

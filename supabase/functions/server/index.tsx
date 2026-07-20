@@ -3,6 +3,16 @@ import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import * as kv from "./kv_store.tsx";
 import { createClient } from "npm:@supabase/supabase-js";
+import {
+  computeStudentSignals,
+  computeExamAnalysis,
+  buildTodayFeed,
+  weakTopics,
+  needsGrading,
+  diffSignals,
+  snapshotOf,
+  type SignalContext,
+} from "./signals.tsx";
 
 const app = new Hono();
 
@@ -7987,6 +7997,193 @@ app.delete("/make-server-6679cacd/agenda/events/:id", async (c) => {
   }
 });
 
+// ============= SIGNALS ROUTES =============
+// Thin auth + scoping wrappers around the pure engine in ./signals.tsx.
+// Everything these routes hand to the engine has already been filtered down
+// to what the caller is allowed to see, so the engine never needs to know
+// about roles.
+
+/**
+ * Loads the raw rows the signals engine works on, scoped to the classes this
+ * user may see. Teachers get their own classes, admins their school, regional
+ * admins their region, superadmins everything.
+ *
+ * This deliberately does one pass over each prefix and filters in memory: the
+ * KV store has no indexes, so a per-student query would be far more expensive
+ * than loading each prefix once.
+ */
+async function loadSignalScope(userId: string, userData: any, schoolFilter?: string) {
+  const [allClasses, allStudents, allAttendance, allBehavior, allHomework, allCompletions] = await Promise.all([
+    kv.getByPrefix('class:'),
+    kv.getByPrefix('student:'),
+    kv.getByPrefix('attendance:'),
+    kv.getByPrefix('behavior:'),
+    kv.getByPrefix('homework:'),
+    kv.getByPrefix('homework_completion:'),
+  ]);
+
+  let classes: any[];
+  if (userData?.role === 'teacher') {
+    const ids: string[] = await kv.get(`teacher_classes:${userId}`) || [];
+    const idSet = new Set(ids);
+    classes = allClasses.filter((cl: any) => cl?.id && idSet.has(cl.id));
+  } else {
+    const schoolIds = await getUserSchoolIds(userId, userData);
+    classes = allClasses.filter((cl: any) => cl?.id && cl.schoolId && schoolIds.has(cl.schoolId));
+  }
+  if (schoolFilter) classes = classes.filter((cl: any) => cl.schoolId === schoolFilter);
+
+  const classIds = new Set(classes.map((cl: any) => cl.id));
+  const students = allStudents.filter((s: any) => s?.id && s.classId && classIds.has(s.classId));
+  const studentIds = new Set(students.map((s: any) => s.id));
+
+  // Scope the school year off any one class — all classes here belong to
+  // schools this user can see, and the window only needs to be approximate.
+  const anySchoolId = classes.find((cl: any) => cl.schoolId)?.schoolId;
+  const year = anySchoolId ? await getCurrentSchoolYear(anySchoolId) : null;
+  const since = year?.startDate ? String(year.startDate).slice(0, 10) : undefined;
+
+  // Exam attempts live under exam_attempt:<code>:<studentId>; there is no
+  // per-student index, so filter the one prefix scan by our student set.
+  const allAttempts = await kv.getByPrefix('exam_attempt:');
+  const attempts = allAttempts.filter((a: any) => a?.studentId && studentIds.has(a.studentId));
+
+  return {
+    classes,
+    students,
+    since,
+    ctx: {
+      students,
+      classes,
+      attendance: allAttendance.filter((a: any) => a?.classId && classIds.has(a.classId)),
+      behavior: allBehavior.filter((b: any) => b?.studentId && studentIds.has(b.studentId)),
+      homework: allHomework.filter((h: any) => h?.classId && classIds.has(h.classId)),
+      completions: allCompletions.filter((c: any) => c?.studentId && studentIds.has(c.studentId)),
+      attempts,
+      since,
+    } as SignalContext,
+  };
+}
+
+// Ranked list of students who need attention, with the reasons why.
+app.get("/make-server-6679cacd/signals/students", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (!['teacher', 'admin', 'regional_admin', 'superadmin'].includes(userData?.role)) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const { ctx } = await loadSignalScope(user.id, userData, c.req.header('X-School-Id') || undefined);
+    const signals = computeStudentSignals(ctx);
+    return c.json({ students: signals, scanned: ctx.students.length });
+  } catch (err) {
+    console.log('Signals students error:', err);
+    return c.json({ error: 'Failed to compute signals' }, 500);
+  }
+});
+
+// The "what needs me today" feed for the signed-in user's role.
+app.get("/make-server-6679cacd/signals/today", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (!['teacher', 'admin', 'regional_admin', 'superadmin'].includes(userData?.role)) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const { classes, ctx } = await loadSignalScope(user.id, userData, c.req.header('X-School-Id') || undefined);
+    const studentSignals = computeStudentSignals(ctx);
+
+    // Only nag about attendance on a day that actually has lessons.
+    const schoolId = classes.find((cl: any) => cl.schoolId)?.schoolId;
+    let lessonToday = false;
+    if (schoolId) {
+      const lesstructuren = await getLesstructurenForSchool(schoolId);
+      const active = lesstructuren.find((ls: any) => today >= ls.startDate && today <= ls.endDate);
+      lessonToday = !!active && (active.lessonDays || []).includes(new Date().getDay());
+    }
+
+    // Exams with submitted-but-ungraded open answers, grouped per exam.
+    const ungradedExams: Array<{ examId: string; title: string; pending: number }> = [];
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    const exams = (await kv.getByPrefix('exam:')).filter((e: any) => e?.id && schoolIds.has(e.schoolId));
+    for (const exam of exams) {
+      const codes: string[] = await kv.get(`exam_live_codes:${exam.id}`) || [];
+      let pending = 0;
+      for (const code of codes) {
+        const attempts = await kv.getByPrefix(`exam_attempt:${code}:`);
+        pending += attempts.filter((a: any) => needsGrading(a)).length;
+      }
+      if (pending > 0) ungradedExams.push({ examId: exam.id, title: exam.title || 'Toets', pending });
+    }
+
+    const openCases = (await casesVisibleTo(user.id, userData)).filter(
+      (k: any) => k && !['fixed', 'archived'].includes(k.status),
+    );
+
+    const unbookedConferences: Array<{ sessionId: string; title: string; unbooked: number; date: string }> = [];
+    const sessions = (await kv.getByPrefix('oudergesprek:')).filter(
+      (s: any) => s?.id && s.schoolId && schoolIds.has(s.schoolId) && s.date >= today,
+    );
+    for (const s of sessions) {
+      const unbooked = (s.slots || []).filter((slot: any) => !slot.bookedBy).length;
+      if (unbooked > 0) {
+        unbookedConferences.push({
+          sessionId: s.id,
+          title: s.title || s.className || 'Oudergesprek',
+          unbooked,
+          date: s.date,
+        });
+      }
+    }
+
+    const feed = buildTodayFeed({
+      role: userData.role,
+      today,
+      classes: lessonToday ? classes : [],
+      attendance: ctx.attendance,
+      ungradedExams,
+      openCases,
+      unbookedConferences,
+      studentSignals,
+    });
+
+    return c.json({ feed, generatedAt: new Date().toISOString() });
+  } catch (err) {
+    console.log('Signals today error:', err);
+    return c.json({ error: 'Failed to build feed' }, 500);
+  }
+});
+
+// Item analysis for one exam: which questions worked and which did not.
+app.get("/make-server-6679cacd/exams/:id/analysis", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const exam = await kv.get(`exam:${c.req.param('id')}`);
+    if (!exam) return c.json({ error: 'Not found' }, 404);
+    const userData = await getUserData(user.id);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    if (!schoolIds.has(exam.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+
+    const codes: string[] = await kv.get(`exam_live_codes:${exam.id}`) || [];
+    let attempts: any[] = [];
+    for (const code of codes) {
+      attempts = attempts.concat((await kv.getByPrefix(`exam_attempt:${code}:`)).filter((a: any) => a?.studentId));
+    }
+
+    const analysis = computeExamAnalysis(exam, attempts);
+    return c.json({ analysis, weakTopics: weakTopics(exam, analysis) });
+  } catch (err) {
+    console.log('Exam analysis error:', err);
+    return c.json({ error: 'Failed to analyse exam' }, 500);
+  }
+});
+
 // ============= SCHEDULED REMINDERS (pg_cron -> this endpoint every ~10min) =============
 // Protected by a shared secret header (not a user JWT) since it's called by
 // the database, not a logged-in user. Every check below is deduplicated via
@@ -8146,12 +8343,105 @@ app.post("/make-server-6679cacd/cron/tick", async (c) => {
       }
     }
 
+    // ── 5. Escalate open cases that nobody has touched ──
+    // A dossier sitting untouched is the exact failure this feature exists to
+    // prevent, so after the SLA we tell the school's admins once per case.
+    const CASE_SLA_DAYS = 7;
+    let caseEscalations = 0;
+    const allCases = (await kv.getByPrefix('case:')).filter((k: any) => k && k.id);
+    for (const kase of allCases) {
+      if (['fixed', 'archived'].includes(kase.status)) continue;
+      const touchedAt = Date.parse(kase.updatedAt || kase.createdAt || '');
+      if (!Number.isFinite(touchedAt)) continue;
+      const daysOpen = Math.floor((now.getTime() - touchedAt) / (1000 * 60 * 60 * 24));
+      if (daysOpen < CASE_SLA_DAYS) continue;
+
+      // Re-flag per week so a case that stays stuck keeps surfacing, instead
+      // of being announced once and then forgotten forever.
+      const week = Math.floor(daysOpen / CASE_SLA_DAYS);
+      const flagKey = `reminder_sent:case_overdue:${kase.id}:${week}`;
+      if (await kv.get(flagKey)) continue;
+      await kv.set(flagKey, true);
+
+      for (const admin of adminsBySchool.get(kase.schoolId) || []) {
+        await notifyUser(admin.id, {
+          type: 'case_overdue',
+          titleNl: 'Casus zonder opvolging',
+          titleTr: 'Takip edilmeyen vaka',
+          bodyNl: `De casus "${kase.title || 'zonder titel'}" is al ${daysOpen} dagen niet bijgewerkt.`,
+          bodyTr: `"${kase.title || 'başlıksız'}" vakası ${daysOpen} gündür güncellenmedi.`,
+          link: '#cases',
+        });
+        caseEscalations++;
+      }
+    }
+
+    // ── 6. Early-warning: tell staff when a student's situation worsens ──
+    // Runs once a day per school. We compare against yesterday's snapshot and
+    // notify only on genuine deterioration (see diffSignals) — a daily digest
+    // of the same names is what makes people mute notifications.
+    let riskAlerts = 0;
+    for (const school of schools) {
+      const flagKey = `reminder_sent:risk_scan:${school.id}:${todayStr}`;
+      if (await kv.get(flagKey)) continue;
+      await kv.set(flagKey, true);
+
+      const classes = (await kv.getByPrefix('class:')).filter((cl: any) => cl?.id && cl.schoolId === school.id);
+      const classIds = new Set(classes.map((cl: any) => cl.id));
+      const students = (await kv.getByPrefix('student:')).filter((s: any) => s?.id && classIds.has(s.classId));
+      if (!students.length) continue;
+      const studentIds = new Set(students.map((s: any) => s.id));
+
+      const year = await getCurrentSchoolYear(school.id);
+      const ctx: SignalContext = {
+        students,
+        classes,
+        attendance: (await kv.getByPrefix('attendance:')).filter((a: any) => a?.classId && classIds.has(a.classId)),
+        behavior: (await kv.getByPrefix('behavior:')).filter((b: any) => b?.studentId && studentIds.has(b.studentId)),
+        homework: (await kv.getByPrefix('homework:')).filter((h: any) => h?.classId && classIds.has(h.classId)),
+        completions: (await kv.getByPrefix('homework_completion:')).filter((x: any) => x?.studentId && studentIds.has(x.studentId)),
+        attempts: (await kv.getByPrefix('exam_attempt:')).filter((a: any) => a?.studentId && studentIds.has(a.studentId)),
+        since: year?.startDate ? String(year.startDate).slice(0, 10) : undefined,
+      };
+
+      const current = computeStudentSignals(ctx);
+      const previous = await kv.get(`signal_snapshot:${school.id}`);
+      const worsened = diffSignals(previous, current);
+      await kv.set(`signal_snapshot:${school.id}`, snapshotOf(current));
+
+      for (const student of worsened) {
+        const cls = classes.find((cl: any) => cl.id === student.classId);
+        const reasonNl = student.signals.map((s: any) => s.titleNl).join(', ');
+        const reasonTr = student.signals.map((s: any) => s.titleTr).join(', ');
+
+        // The class teacher owns the first conversation; admins get the same
+        // alert so nothing depends on one person reading their mail.
+        const recipients = new Set<string>();
+        if (cls?.teacherId) recipients.add(cls.teacherId);
+        for (const admin of adminsBySchool.get(school.id) || []) recipients.add(admin.id);
+
+        for (const recipientId of recipients) {
+          await notifyUser(recipientId, {
+            type: 'student_at_risk',
+            titleNl: `${student.studentName} heeft aandacht nodig`,
+            titleTr: `${student.studentName} ilgi gerektiriyor`,
+            bodyNl: `${cls?.name ? cls.name + ' — ' : ''}${reasonNl}. Bekijk de details en plan zo nodig een gesprek.`,
+            bodyTr: `${cls?.name ? cls.name + ' — ' : ''}${reasonTr}. Ayrıntıları inceleyin ve gerekirse bir görüşme planlayın.`,
+            link: '#signals',
+          });
+          riskAlerts++;
+        }
+      }
+    }
+
     return c.json({
       success: true,
       teacherReminders,
       quarterlyReminders,
       oudergesprekReminders,
       newYearReminders,
+      caseEscalations,
+      riskAlerts,
     });
   } catch (err) {
     console.log('Cron tick error:', err);

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { ArrowLeft, Layers, Users, Upload, BellRing, Wallet, ClipboardList, MessageSquare, CalendarDays, Send, Settings, AlertTriangle, BarChart3, FolderOpen } from 'lucide-react';
+import { ArrowLeft, Layers, Users, Upload, BellRing, Wallet, ClipboardList, MessageSquare, CalendarDays, Send, Settings, AlertTriangle, BarChart3, FolderOpen, Sparkles } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import booksLogo from '../../imports/logo.svg';
@@ -21,6 +21,7 @@ import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
 import SettingsPanel from './mobile/SettingsPanel';
 import CasesView from './CasesView';
+import SignalsView from './SignalsView';
 import {
   useNavOrder,
   mobileExtraNavItems,
@@ -85,9 +86,10 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   const app = isAppLayout();
   const [activeTab, setActiveTab] = useHashTab<string>(
     'entities',
-    ['entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'oudergesprekken', 'agenda', 'communicatie', 'cases', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['signals', 'entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'oudergesprekken', 'agenda', 'communicatie', 'cases', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   const [navOrder, setNavOrder] = useNavOrder('admin', [
+    'signals',
     'entities',
     'users',
     'import',
@@ -318,6 +320,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   };
 
   const navItems = [
+    { id: 'signals', label: language === 'tr' ? 'Bugün' : 'Vandaag', icon: Sparkles },
     { id: 'entities', label: language === 'tr' ? 'Sınıf Yönetimi' : 'Klassen beheer', shortLabel: language === 'tr' ? 'Sınıflar' : 'Klassen', icon: Layers },
     { id: 'users', label: language === 'tr' ? 'Kullanıcılar' : 'Gebruikers', icon: Users },
     { id: 'import', label: language === 'tr' ? 'İçe Aktar' : 'Importeren', icon: Upload },
@@ -633,6 +636,14 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
             <OudergesprekkenView
               language={language}
               apiRequest={apiRequest}
+            />
+          )}
+
+          {activeTab === 'signals' && (
+            <SignalsView
+              language={language}
+              apiRequest={apiRequest}
+              onNavigate={(link) => setActiveTab(link.replace('#', ''))}
             />
           )}
 

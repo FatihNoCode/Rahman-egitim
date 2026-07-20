@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, ClipboardList, BellRing, Settings, MessageSquare, CalendarDays, Award, Check, AlertTriangle, X, Frown, Meh, Smile, FolderOpen, FileText } from 'lucide-react';
+import { Moon, ClipboardList, BellRing, Settings, MessageSquare, CalendarDays, Award, Check, AlertTriangle, X, Frown, Meh, Smile, FolderOpen, FileText, Sparkles } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
@@ -10,6 +10,7 @@ import AbsenceOverviewView from './AbsenceOverviewView';
 import DiplomaView from './DiplomaView';
 import AgendaCalendar from './AgendaCalendar';
 import CasesView from './CasesView';
+import SignalsView from './SignalsView';
 import ExamListView from './toets/ExamListView';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
@@ -53,10 +54,11 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const app = isAppLayout();
   const [activeTab, setActiveTab] = useHashTab<string>(
     'attendance',
-    ['attendance', 'meldingen', 'beheer', 'oudergesprekken', 'agenda', 'diploma', 'cases', 'toets', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['signals', 'attendance', 'meldingen', 'beheer', 'oudergesprekken', 'agenda', 'diploma', 'cases', 'toets', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   const [diplomaVisible, setDiplomaVisible] = useState(false);
   const [navOrder, setNavOrder] = useNavOrder('teacher', [
+    'signals',
     'attendance',
     'agenda',
     'meldingen',
@@ -465,6 +467,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   // agenda and absence reports are checked often, conferences and roster
   // management are comparatively occasional.
   const navItems = [
+    { id: 'signals', label: language === 'tr' ? 'Bugün' : 'Vandaag', icon: Sparkles },
     { id: 'attendance', label: language === 'tr' ? 'Les Kaydı' : 'Les Registratie', shortLabel: language === 'tr' ? 'Ders' : 'Les', icon: ClipboardList },
     { id: 'agenda', label: language === 'tr' ? 'Ajanda' : 'Agenda', icon: CalendarDays },
     { id: 'meldingen', label: language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen', shortLabel: language === 'tr' ? 'Bildirim' : 'Meldingen', icon: BellRing },
@@ -1163,6 +1166,15 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             {/* ─── TOETS TAB ─── */}
             {activeTab === 'toets' && (
               <ExamListView language={language} apiRequest={apiRequest} classes={classes} />
+            )}
+
+            {/* ─── SIGNALS TAB ─── */}
+            {activeTab === 'signals' && (
+              <SignalsView
+                language={language}
+                apiRequest={apiRequest}
+                onNavigate={(link) => setActiveTab(link.replace('#', ''))}
+              />
             )}
 
             {/* ─── CASES TAB ─── */}

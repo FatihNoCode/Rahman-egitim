@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, ShieldCheck } from 'lucide-react';
-import { useApp, supabase } from '../App';
+import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, ShieldCheck, FlaskConical } from 'lucide-react';
+import { useApp, supabase, isDemoFamily } from '../App';
+import TestRoleSwitcher from './TestRoleSwitcher';
 import { startTotpEnroll, confirmTotpEnroll } from '../../lib/mfaEnroll';
 import { notify, confirmDialog } from './ui/feedback';
 
@@ -133,7 +134,8 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
   const { language, user, setUser, apiRequest } = useApp();
   const text = t[language];
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<'menu' | 'profile' | 'notifications' | 'delete' | 'security'>('menu');
+  const [view, setView] = useState<'menu' | 'profile' | 'notifications' | 'delete' | 'security' | 'testrole'>('menu');
+  const showTestRoles = isDemoFamily(user?.email);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -423,6 +425,16 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
                   </span>
                 )}
               </button>
+              {showTestRoles && (
+                <button
+                  onClick={() => setView('testrole')}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition"
+                >
+                  <FlaskConical className="h-4 w-4 text-amber-500" />
+                  {language === 'tr' ? 'Test rolü' : 'Testrol'}
+                  <span className="ml-auto text-[11px] font-medium text-gray-400 capitalize">{user?.role?.replace('_', ' ')}</span>
+                </button>
+              )}
               <div className="border-t border-gray-100 mt-1 pt-1">
                 <button
                   onClick={onLogout}
@@ -443,6 +455,20 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
                   </button>
                 )}
               </div>
+            </div>
+          )}
+
+          {view === 'testrole' && (
+            <div className="p-3">
+              <div className="flex items-center justify-between mb-2 px-1">
+                <button onClick={() => setView('menu')} className="text-gray-400 hover:text-gray-600 text-xs font-medium">
+                  ← {text.back}
+                </button>
+                <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <TestRoleSwitcher language={language} />
             </div>
           )}
 

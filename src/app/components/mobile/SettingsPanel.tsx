@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Globe, PlayCircle, Shield, Info, ChevronRight, ChevronDown, GripVertical, LayoutGrid } from 'lucide-react';
-import { useApp } from '../../App';
+import { useApp, isDemoFamily } from '../../App';
+import TestRoleSwitcher from '../TestRoleSwitcher';
 import { type MobileNavItem, VISIBLE_SLOTS } from './navPrefs';
 import { selectionStart, selectionChanged, selectionEnd } from '../../../lib/haptics';
 
@@ -48,8 +49,9 @@ const T = {
 };
 
 export default function SettingsPanel({ onShowDemo, navItems, onReorder }: SettingsPanelProps) {
-  const { language, setLanguage } = useApp();
+  const { language, setLanguage, user } = useApp();
   const text = T[language];
+  const showTestRoles = isDemoFamily(user?.email);
 
   // Collapsed until asked for. Reordering the tab bar is a once-in-a-while
   // thing, and unfolded by default it dominated a screen whose main job is
@@ -144,6 +146,9 @@ export default function SettingsPanel({ onShowDemo, navItems, onReorder }: Setti
           ))}
         </div>
       </div>
+
+      {/* Demo-only: switch the account you're testing as */}
+      {showTestRoles && <TestRoleSwitcher language={language} />}
 
       {/* Navigation order — collapsed until tapped */}
       {showReorder && (

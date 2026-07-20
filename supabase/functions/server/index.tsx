@@ -937,6 +937,87 @@ app.get("/make-server-6679cacd/session", async (c) => {
   }
 });
 
+// ============= DEMO ROLE SWITCHING =============
+//
+// A convenience for the demo/showcase environment only: the master demo
+// account can hop between the pre-seeded per-role accounts without signing out
+// and back in. It is deliberately narrow — it will only ever mint a session for
+// one of the fixed demo emails below, and only when the caller is authenticated
+// as IMPERSONATION_MASTER. Nothing here can target an arbitrary account, so it
+// is not a general impersonation backdoor.
+//
+// The session is minted the honest way: an admin-generated magic link for the
+// target account, immediately exchanged for real tokens via verifyOtp. That
+// keeps every downstream permission check correct (the client ends up holding a
+// genuine session for the target user) and means no demo password is ever
+// embedded in the shipped app.
+const IMPERSONATION_TARGETS: Record<string, string> = {
+  superadmin: 'onderwijs.rahman@gmail.com',
+  regional_admin: 'onderwijs.rahman+1@gmail.com',
+  admin: 'onderwijs.rahman+2@gmail.com',
+  teacher: 'onderwijs.rahman+3@gmail.com',
+  parent: 'onderwijs.rahman+4@gmail.com',
+};
+// The closed set of demo accounts allowed to use this. Because it is closed and
+// every target is also a member, a caller can hop back and forth between roles
+// (e.g. after switching to the parent account, switch back to superadmin)
+// without ever being able to touch an account outside this family.
+const IMPERSONATION_FAMILY = new Set(Object.values(IMPERSONATION_TARGETS).map((e) => e.toLowerCase()));
+
+app.post("/make-server-6679cacd/impersonate", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error || !user) return c.json({ error: 'Unauthorized' }, 401);
+
+    // Gate hard on the concrete demo emails, not on role — the whole point is
+    // that this only ever works within the fixed demo family.
+    if (!IMPERSONATION_FAMILY.has((user.email || '').toLowerCase())) {
+      return c.json({ error: 'Not available for this account' }, 403);
+    }
+
+    const { role } = await c.req.json().catch(() => ({ role: undefined }));
+    const targetEmail = IMPERSONATION_TARGETS[role as string];
+    if (!targetEmail) return c.json({ error: 'Unknown role' }, 400);
+
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+      type: 'magiclink',
+      email: targetEmail,
+    });
+    const tokenHash = (linkData as any)?.properties?.hashed_token;
+    if (linkErr || !tokenHash) {
+      console.log('Impersonate generateLink error:', linkErr);
+      return c.json({ error: 'Could not start test session' }, 500);
+    }
+
+    const anon = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+    );
+    const { data: sessionData, error: verifyErr } = await anon.auth.verifyOtp({
+      type: 'magiclink',
+      token_hash: tokenHash,
+    });
+    if (verifyErr || !sessionData?.session || !sessionData.user) {
+      console.log('Impersonate verifyOtp error:', verifyErr);
+      return c.json({ error: 'Could not start test session' }, 500);
+    }
+
+    const targetData = await getUserData(sessionData.user.id);
+    return c.json({
+      accessToken: sessionData.session.access_token,
+      refreshToken: sessionData.session.refresh_token,
+      user: { ...targetData, id: sessionData.user.id, mfaRequired: await mfaRequiredForRole(targetData) },
+    });
+  } catch (err) {
+    console.log('Impersonate error:', err);
+    return c.json({ error: 'Failed to switch role' }, 500);
+  }
+});
+
 // ============= TWO-FACTOR AUTHENTICATION =============
 //
 // Enrollment/challenge/verify/unenroll happen client-side against Supabase's

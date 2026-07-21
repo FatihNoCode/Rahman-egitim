@@ -11,7 +11,20 @@ import booksLogo from '../../imports/logo.svg';
 import { notify, confirmDialog } from './ui/feedback';
 import MetricsDrilldown from './MetricsDrilldown';
 import TestRoleSwitcher from './TestRoleSwitcher';
-import { isNative } from '../../lib/native';
+import { isNative, isAppLayout } from '../../lib/native';
+import MobileNav from './mobile/MobileNav';
+import AccountPanel from './mobile/AccountPanel';
+import AccountAvatarButton from './mobile/AccountAvatarButton';
+import SettingsPanel from './mobile/SettingsPanel';
+import LocationsList from './mobile/LocationsList';
+import {
+  useNavOrder,
+  mobileExtraNavItems,
+  sharedNavItem,
+  MOBILE_ACCOUNT_ID,
+  MOBILE_PREFS_ID,
+  type MobileNavItem,
+} from './mobile/navPrefs';
 
 // Leaflet and its CSS are only needed once a superadmin opens the map, so the
 // whole map bundle stays out of the initial download.
@@ -250,9 +263,14 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   const [newSchoolName, setNewSchoolName] = useState('');
   const [creating, setCreating] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [tab, setTab] = useHashTab<'locations' | 'inbox' | 'regional' | 'performance'>(
-    'locations',
-    ['locations', 'inbox', 'regional', 'performance'] as const,
+  const app = isAppLayout();
+  // On the web a superadmin lands on the map, which is the fastest way to see
+  // the whole country at once. In the app there is no map (see LocationsList),
+  // so the landing tab is the organisation overview instead — the same "Start"
+  // every other role opens on.
+  const [tab, setTab] = useHashTab<string>(
+    app ? 'performance' : 'locations',
+    ['locations', 'inbox', 'regional', 'performance', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
 
   const [orgSummary, setOrgSummary] = useState<OrgSummary | null>(null);
@@ -435,9 +453,64 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
     }
   };
 
+  // The sidebar's destinations, reused as the app's bottom tab bar. Start
+  // comes first for the same reason it does for every other role.
+  const navItems: MobileNavItem[] = [
+    sharedNavItem('home', language, 'performance'),
+    { id: 'locations', label: t.locations, icon: MapPin },
+    { id: 'inbox', label: t.inbox, icon: InboxIcon },
+    { id: 'regional', label: rtx.regionalTab, shortLabel: language === 'tr' ? 'Bölge' : 'Regio', icon: Users },
+  ];
+  const [navOrder, setNavOrder] = useNavOrder('superadmin', [
+    'performance',
+    'locations',
+    'inbox',
+    'regional',
+    MOBILE_PREFS_ID,
+  ]);
+  const allMobileItems: MobileNavItem[] = [...navItems, ...mobileExtraNavItems(language)];
+  const mobileById = Object.fromEntries(allMobileItems.map((i) => [i.id, i]));
+  const mobileItems = navOrder.map((id) => mobileById[id]).filter(Boolean) as MobileNavItem[];
+  const mobileNav = <MobileNav items={mobileItems} active={tab} onChange={setTab} language={language} />;
+
+  if (app && (tab === MOBILE_ACCOUNT_ID || tab === MOBILE_PREFS_ID)) {
+    return (
+      <div
+        className="size-full overflow-auto bg-gray-50 px-4 pt-6"
+        style={{ paddingBottom: 'calc(5.5rem + var(--safe-bottom))' }}
+      >
+        <div className="mx-auto mb-2 flex max-w-lg justify-end">
+          <AccountAvatarButton
+            onOpen={() => setTab(MOBILE_ACCOUNT_ID)}
+            active={tab === MOBILE_ACCOUNT_ID}
+          />
+        </div>
+        {tab === MOBILE_ACCOUNT_ID ? (
+          <AccountPanel onLogout={onLogout} />
+        ) : (
+          <SettingsPanel navItems={mobileItems} onReorder={setNavOrder} />
+        )}
+        {mobileNav}
+      </div>
+    );
+  }
+
   return (
-    <div className="size-full overflow-auto p-3 sm:p-4 md:p-6">
+    <div
+      className={`size-full overflow-auto ${app ? 'px-3 pt-5' : 'p-3 sm:p-4 md:p-6'}`}
+      style={app ? { paddingBottom: 'calc(5.5rem + var(--safe-bottom))' } : undefined}
+    >
+      {app && mobileNav}
       <div className="max-w-6xl mx-auto">
+        {app && (
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <h1 className="min-w-0 flex-1 text-2xl font-bold leading-tight text-gray-800">
+              {mobileById[tab]?.label ?? t.superAdminDashboard}
+            </h1>
+            <AccountAvatarButton onOpen={() => setTab(MOBILE_ACCOUNT_ID)} />
+          </div>
+        )}
+        {!app && (
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
           <div className="flex items-center gap-3">
             <img src={booksLogo} alt="Rahman Eğitim" className="h-[52px] w-[52px] sm:h-[64px] sm:w-[64px] object-contain" />
@@ -464,6 +537,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
             <UserMenu onLogout={onLogout} />
           </div>
         </div>
+        )}
 
         {/* The dropdown version of this lives inside UserMenu, but on the native
             shell it's been unreliable to reach, so demo accounts also get it
@@ -475,6 +549,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
         )}
 
         <div className="flex gap-4 sm:gap-6 items-start">
+          {!app && (
           <Sidebar
             items={[
               { id: 'locations', label: t.locations, icon: MapPin },
@@ -488,6 +563,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
             collapseLabel={language === 'tr' ? 'Daralt' : 'Inklappen'}
             expandLabel={language === 'tr' ? 'Genişlet' : 'Uitklappen'}
           />
+          )}
 
           <div className="flex-1 min-w-0">
 
@@ -500,20 +576,32 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
           ) : (
             <>
               <p className="text-sm text-gray-500 mb-3">{t.selectLocationHint}</p>
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center h-[34rem]">
-                    <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
-                  </div>
-                }
-              >
-                <LocationsMap
+              {app ? (
+                // No map on a phone — a searchable list picks a branch faster
+                // and skips the whole Leaflet download. Same onSelect, so the
+                // detail view below is reached identically either way.
+                <LocationsList
                   locations={locations}
                   selectedId={null}
                   onSelect={setSelectedLocation}
                   t={t as unknown as Record<string, string>}
                 />
-              </Suspense>
+              ) : (
+                <Suspense
+                  fallback={
+                    <div className="flex items-center justify-center h-[34rem]">
+                      <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+                    </div>
+                  }
+                >
+                  <LocationsMap
+                    locations={locations}
+                    selectedId={null}
+                    onSelect={setSelectedLocation}
+                    t={t as unknown as Record<string, string>}
+                  />
+                </Suspense>
+              )}
             </>
           )
         )}

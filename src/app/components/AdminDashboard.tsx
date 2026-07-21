@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { ArrowLeft, Layers, Users, Upload, BellRing, Wallet, ClipboardList, MessageSquare, CalendarDays, Send, Settings, AlertTriangle, BarChart3, FolderOpen, Sparkles } from 'lucide-react';
+import { ArrowLeft, Layers, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle, BarChart3 } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import booksLogo from '../../imports/logo.svg';
@@ -21,11 +21,13 @@ import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
 import AccountAvatarButton from './mobile/AccountAvatarButton';
 import SettingsPanel from './mobile/SettingsPanel';
+import DesktopOnly from './mobile/DesktopOnly';
 import CasesView from './CasesView';
 import SignalsView from './SignalsView';
 import {
   useNavOrder,
   mobileExtraNavItems,
+  sharedNavItem,
   MOBILE_ACCOUNT_ID,
   MOBILE_PREFS_ID,
   type MobileNavItem,
@@ -320,16 +322,18 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   };
 
   const navItems = [
-    { id: 'signals', label: language === 'tr' ? 'Bugün' : 'Vandaag', icon: Sparkles },
+    // Start / Ana Sayfa — the same landing tab as every other role, showing a
+    // beheerder's signals rather than a parent's children.
+    sharedNavItem('home', language, 'signals'),
     { id: 'entities', label: language === 'tr' ? 'Sınıf Yönetimi' : 'Klassen beheer', shortLabel: language === 'tr' ? 'Sınıflar' : 'Klassen', icon: Layers },
     { id: 'users', label: language === 'tr' ? 'Kullanıcılar' : 'Gebruikers', icon: Users },
     { id: 'import', label: language === 'tr' ? 'İçe Aktar' : 'Importeren', icon: Upload },
-    { id: 'meldingen', label: language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen', shortLabel: language === 'tr' ? 'Bildirim' : 'Meldingen', icon: BellRing },
+    sharedNavItem('meldingen', language),
     { id: 'boekhouding', label: language === 'tr' ? 'Muhasebe' : 'Boekhouding', icon: Wallet },
     { id: 'inschrijvingen', label: language === 'tr' ? 'Kayıtlar' : 'Inschrijvingen', icon: ClipboardList },
-    { id: 'oudergesprekken', label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken', shortLabel: language === 'tr' ? 'Görüşme' : 'Gesprekken', icon: MessageSquare },
-    { id: 'cases', label: language === 'tr' ? 'Vakalar' : 'Cases', icon: FolderOpen },
-    { id: 'agenda', label: language === 'tr' ? 'Ajanda' : 'Agenda', icon: CalendarDays },
+    sharedNavItem('oudergesprekken', language),
+    sharedNavItem('cases', language),
+    sharedNavItem('agenda', language),
     { id: 'communicatie', label: language === 'tr' ? 'İletişim' : 'Communicatie', icon: Send },
     { id: 'settings', label: language === 'tr' ? 'Ayarlar' : 'Instellingen', icon: Settings },
   ];
@@ -489,12 +493,30 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
             />
           )}
 
+          {/* Importeren is a spreadsheet: seven columns wide, often hundreds
+              of rows, edited cell by cell and usually starting from an .xlsx
+              that lives on a computer anyway. There is no phone-shaped version
+              of that job, so the tab explains itself and links to the site
+              rather than shipping a grid nobody can type into. */}
           {activeTab === 'import' && (
-            <ImportView
-              language={language}
-              apiRequest={apiRequest}
-              onDataChange={loadData}
-            />
+            app ? (
+              <DesktopOnly
+                language={language}
+                title={language === 'tr' ? 'İçe Aktar' : 'Importeren'}
+                reason={
+                  language === 'tr'
+                    ? 'Toplu içe aktarma, yüzlerce satırlık geniş bir tablo üzerinde çalışır ve genellikle bilgisayarınızdaki bir Excel dosyasından başlar. Bunu web sitesinde yapmak çok daha kolay.'
+                    : 'Importeren werkt met een brede tabel van soms honderden rijen, en begint meestal bij een Excel-bestand dat toch al op uw computer staat. Op de website gaat dat een stuk makkelijker.'
+                }
+                tab="import"
+              />
+            ) : (
+              <ImportView
+                language={language}
+                apiRequest={apiRequest}
+                onDataChange={loadData}
+              />
+            )
           )}
 
           {activeTab === 'communicatie' && (

@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react';
-import { SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import {
+  BellRing,
+  CalendarDays,
+  FolderOpen,
+  Home,
+  MessageSquare,
+  SlidersHorizontal,
+  type LucideIcon,
+} from 'lucide-react';
 
 export interface MobileNavItem {
   id: string;
@@ -27,6 +35,52 @@ export function mobileExtraNavItems(language: 'nl' | 'tr'): MobileNavItem[] {
   return [
     { id: MOBILE_PREFS_ID, label: language === 'tr' ? 'Tercihler' : 'Voorkeuren', icon: SlidersHorizontal },
   ];
+}
+
+// Destinations that exist for more than one role, named once.
+//
+// A parent, a teacher and a beheerder are often the same person wearing three
+// hats — the mother who teaches on Saturday and sits on the board. When the
+// landing tab was "Start" in one role and "Vandaag" in the next, switching
+// roles meant re-learning a bar that was doing the same job. What each tab
+// *shows* still differs per role (a parent's home is their children, a
+// teacher's is today's lessons); only the name and the icon are shared, so the
+// bar stays recognisable across the roles one person holds.
+//
+// Roles keep owning their role-specific tabs (Elif-Ba, Boekhouding, Importeren)
+// — this table is only for the ones that overlap.
+const SHARED_NAV: Record<string, { nl: string; tr: string; shortNl?: string; shortTr?: string; icon: LucideIcon }> = {
+  home: { nl: 'Start', tr: 'Ana Sayfa', icon: Home },
+  meldingen: {
+    nl: 'Ziekmeldingen',
+    tr: 'Hastalık Bildirimleri',
+    shortNl: 'Meldingen',
+    shortTr: 'Bildirim',
+    icon: BellRing,
+  },
+  oudergesprekken: {
+    nl: 'Oudergesprekken',
+    tr: 'Veli Görüşmeleri',
+    shortNl: 'Gesprekken',
+    shortTr: 'Görüşme',
+    icon: MessageSquare,
+  },
+  agenda: { nl: 'Agenda', tr: 'Ajanda', icon: CalendarDays },
+  cases: { nl: 'Cases', tr: 'Vakalar', icon: FolderOpen },
+};
+
+// Build a nav item for a shared destination. `id` is the role's own tab id,
+// which is free to differ from the shared `key` — a teacher's landing tab is
+// `signals` and a parent's is `overview`, but both are Start.
+export function sharedNavItem(key: keyof typeof SHARED_NAV | string, language: 'nl' | 'tr', id?: string): MobileNavItem {
+  const entry = SHARED_NAV[key];
+  const tr = language === 'tr';
+  return {
+    id: id ?? key,
+    label: tr ? entry.tr : entry.nl,
+    shortLabel: (tr ? entry.shortTr : entry.shortNl) ?? undefined,
+    icon: entry.icon,
+  };
 }
 
 // How many destinations sit directly on the bar. When a role has more than

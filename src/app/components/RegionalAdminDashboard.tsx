@@ -2,10 +2,25 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { RefreshCw, Users, School, GraduationCap, BookOpen, CalendarCheck, UserPlus, Send, ArrowLeft } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import { useApp } from '../App';
+import { useHashTab } from '../useHashTab';
 import UserMenu from './UserMenu';
 import { notify } from './ui/feedback';
 import type { LocationRecord } from './LocationsMap';
 import MetricsDrilldown from './MetricsDrilldown';
+import { isAppLayout } from '../../lib/native';
+import MobileNav from './mobile/MobileNav';
+import AccountPanel from './mobile/AccountPanel';
+import AccountAvatarButton from './mobile/AccountAvatarButton';
+import SettingsPanel from './mobile/SettingsPanel';
+import LocationsList from './mobile/LocationsList';
+import {
+  useNavOrder,
+  mobileExtraNavItems,
+  sharedNavItem,
+  MOBILE_ACCOUNT_ID,
+  MOBILE_PREFS_ID,
+  type MobileNavItem,
+} from './mobile/navPrefs';
 
 // Leaflet and its CSS are only needed once a regional admin opens the map, so
 // the whole map bundle stays out of the initial download — same pattern as
@@ -212,6 +227,19 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
   const [staff, setStaff] = useState<{ id: string; name: string | null; email: string; role: 'admin' | 'teacher' }[]>([]);
   const [loadingStaff, setLoadingStaff] = useState(false);
 
+  const app = isAppLayout();
+  // On the web this dashboard is one long page and stays that way — scrolling
+  // past the parts you don't need is fine on a wide screen. On a phone that
+  // same page is minutes of scrolling to reach the proposal form at the
+  // bottom, so the app splits it across the tab bar. `show` is what keeps the
+  // two in sync: off the app it's always true, so the web page renders every
+  // section in its original order and nothing about it changes.
+  const [tab, setTab] = useHashTab<string>(
+    'overview',
+    ['overview', 'locations', 'proposals', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+  );
+  const show = (id: string) => !app || tab === id;
+
   useEffect(() => {
     if (!region) { setLoading(false); return; }
     loadData();
@@ -269,9 +297,65 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
 
   const regionLabel = region === 'north' ? text.north : region === 'south' ? text.south : '';
 
+  const navItems: MobileNavItem[] = [
+    sharedNavItem('home', language, 'overview'),
+    { id: 'locations', label: text.mapTitle, shortLabel: language === 'tr' ? 'Şubeler' : 'Vestigingen', icon: School },
+    {
+      id: 'proposals',
+      label: text.proposeLocalAdmin,
+      shortLabel: language === 'tr' ? 'Öneri' : 'Voordragen',
+      icon: UserPlus,
+    },
+  ];
+  const [navOrder, setNavOrder] = useNavOrder('regional_admin', [
+    'overview',
+    'locations',
+    'proposals',
+    MOBILE_PREFS_ID,
+  ]);
+  const allMobileItems: MobileNavItem[] = [...navItems, ...mobileExtraNavItems(language)];
+  const mobileById = Object.fromEntries(allMobileItems.map((i) => [i.id, i]));
+  const mobileItems = navOrder.map((id) => mobileById[id]).filter(Boolean) as MobileNavItem[];
+  const mobileNav = <MobileNav items={mobileItems} active={tab} onChange={setTab} language={language} />;
+
+  if (app && (tab === MOBILE_ACCOUNT_ID || tab === MOBILE_PREFS_ID)) {
+    return (
+      <div
+        className="size-full overflow-auto bg-gray-50 px-4 pt-6"
+        style={{ paddingBottom: 'calc(5.5rem + var(--safe-bottom))' }}
+      >
+        <div className="mx-auto mb-2 flex max-w-lg justify-end">
+          <AccountAvatarButton
+            onOpen={() => setTab(MOBILE_ACCOUNT_ID)}
+            active={tab === MOBILE_ACCOUNT_ID}
+          />
+        </div>
+        {tab === MOBILE_ACCOUNT_ID ? (
+          <AccountPanel onLogout={onLogout} />
+        ) : (
+          <SettingsPanel navItems={mobileItems} onReorder={setNavOrder} />
+        )}
+        {mobileNav}
+      </div>
+    );
+  }
+
   return (
-    <div className="size-full overflow-auto p-3 sm:p-4 md:p-6">
+    <div
+      className={`size-full overflow-auto ${app ? 'px-3 pt-5' : 'p-3 sm:p-4 md:p-6'}`}
+      style={app ? { paddingBottom: 'calc(5.5rem + var(--safe-bottom))' } : undefined}
+    >
+      {app && mobileNav}
       <div className="max-w-6xl mx-auto">
+        {app && (
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <h1 className="min-w-0 flex-1 text-2xl font-bold leading-tight text-gray-800">
+              {mobileById[tab]?.label ?? text.title}
+            </h1>
+            <AccountAvatarButton onOpen={() => setTab(MOBILE_ACCOUNT_ID)} />
+          </div>
+        )}
+        {!app && (
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
           <div className="flex items-center gap-3">
             <img src={booksLogo} alt="Rahman Eğitim" className="h-[52px] w-[52px] sm:h-[64px] sm:w-[64px] object-contain" />
@@ -298,6 +382,7 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
             <UserMenu onLogout={onLogout} />
           </div>
         </div>
+        )}
 
         {!region ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center text-gray-500 text-sm">
@@ -310,6 +395,7 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
           </div>
         ) : (
           <div className="space-y-4 sm:space-y-6">
+            {show('overview') && (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <MetricCard icon={School} label={text.schools} hint={text.schoolsHint} value={summary?.totals.activeLocations ?? 0} />
               <MetricCard icon={Users} label={text.students} hint={text.studentsHint} value={summary?.totals.students ?? 0} />
@@ -323,7 +409,9 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
               />
               <MetricCard icon={Send} label={text.pending} hint={text.pendingHint} value={summary?.totals.pendingEnrollments ?? 0} />
             </div>
+            )}
 
+            {show('locations') && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-lg font-semibold text-gray-800">{text.mapTitle}</h2>
@@ -341,20 +429,32 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
               {!selectedLocation ? (
                 <>
                   <p className="text-sm text-gray-500 mb-3">{text.selectLocationHint}</p>
-                  <Suspense
-                    fallback={
-                      <div className="flex items-center justify-center h-[24rem]">
-                        <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
-                      </div>
-                    }
-                  >
-                    <LocationsMap
+                  {app ? (
+                    // Same reasoning as the superadmin map: on a phone a
+                    // searchable list beats pins too small to hit, and skips
+                    // the Leaflet download entirely.
+                    <LocationsList
                       locations={(summary?.locations || []) as LocationRecord[]}
                       selectedId={null}
-                      onSelect={(loc) => setSelectedLocation(loc as RegionLocation)}
+                      onSelect={(loc) => setSelectedLocation(loc as unknown as RegionLocation)}
                       t={text as unknown as Record<string, string>}
                     />
-                  </Suspense>
+                  ) : (
+                    <Suspense
+                      fallback={
+                        <div className="flex items-center justify-center h-[24rem]">
+                          <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+                        </div>
+                      }
+                    >
+                      <LocationsMap
+                        locations={(summary?.locations || []) as LocationRecord[]}
+                        selectedId={null}
+                        onSelect={(loc) => setSelectedLocation(loc as RegionLocation)}
+                        t={text as unknown as Record<string, string>}
+                      />
+                    </Suspense>
+                  )}
                 </>
               ) : (
                 <div className="space-y-4">
@@ -412,7 +512,9 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
                 </div>
               )}
             </div>
+            )}
 
+            {show('overview') && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">{text.schoolBreakdown}</h2>
               {!summary || summary.locationBreakdown.length === 0 ? (
@@ -449,8 +551,9 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
                 </div>
               )}
             </div>
+            )}
 
-            {region && (
+            {show('overview') && region && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
                 <h2 className="text-lg font-semibold text-gray-800 mb-4">
                   {language === 'tr' ? 'Detaylı metrikler' : 'Gedetailleerde statistieken'}
@@ -459,6 +562,7 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
               </div>
             )}
 
+            {show('proposals') && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-1">{text.proposeLocalAdmin}</h2>
               <p className="text-xs text-gray-400 mb-4">{text.proposeHint}</p>
@@ -504,7 +608,9 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
                 {text.submit}
               </button>
             </div>
+            )}
 
+            {show('proposals') && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">{text.myProposals}</h2>
               {proposals.length === 0 ? (
@@ -529,6 +635,7 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
       </div>

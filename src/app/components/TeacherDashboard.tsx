@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, ClipboardList, BellRing, Settings, MessageSquare, CalendarDays, Award, Check, AlertTriangle, X, Frown, Meh, Smile, FolderOpen, FileText, Sparkles } from 'lucide-react';
+import { Moon, ClipboardList, Settings, Award, Check, AlertTriangle, X, Frown, Meh, Smile, FileText } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
@@ -23,6 +23,7 @@ import SettingsPanel from './mobile/SettingsPanel';
 import {
   useNavOrder,
   mobileExtraNavItems,
+  sharedNavItem,
   MOBILE_ACCOUNT_ID,
   MOBILE_PREFS_ID,
   type MobileNavItem,
@@ -467,12 +468,14 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   // agenda and absence reports are checked often, conferences and roster
   // management are comparatively occasional.
   const navItems = [
-    { id: 'signals', label: language === 'tr' ? 'Bugün' : 'Vandaag', icon: Sparkles },
+    // Start / Ana Sayfa, the same first tab every role lands on — see
+    // SHARED_NAV in navPrefs. What it shows here is the teacher's day.
+    sharedNavItem('home', language, 'signals'),
     { id: 'attendance', label: language === 'tr' ? 'Les Kaydı' : 'Les Registratie', shortLabel: language === 'tr' ? 'Ders' : 'Les', icon: ClipboardList },
-    { id: 'agenda', label: language === 'tr' ? 'Ajanda' : 'Agenda', icon: CalendarDays },
-    { id: 'meldingen', label: language === 'tr' ? 'Hastalık Bildirimleri' : 'Ziekmeldingen', shortLabel: language === 'tr' ? 'Bildirim' : 'Meldingen', icon: BellRing },
-    { id: 'oudergesprekken', label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken', shortLabel: language === 'tr' ? 'Görüşme' : 'Gesprekken', icon: MessageSquare },
-    { id: 'cases', label: language === 'tr' ? 'Vakalar' : 'Cases', icon: FolderOpen },
+    sharedNavItem('agenda', language),
+    sharedNavItem('meldingen', language),
+    sharedNavItem('oudergesprekken', language),
+    sharedNavItem('cases', language),
     { id: 'toets', label: language === 'tr' ? 'Sınav' : 'Toets', icon: FileText },
     ...(diplomaVisible ? [{ id: 'diploma', label: 'Diploma', icon: Award }] : []),
     { id: 'beheer', label: 'Beheer', icon: Settings },

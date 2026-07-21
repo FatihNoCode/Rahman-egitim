@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, PlayCircle, AlertTriangle, Check, Home, Receipt, Sparkles, MessageSquare, ArrowLeft } from 'lucide-react';
+import { Euro, Moon, PlayCircle, AlertTriangle, Check, Receipt, Sparkles, ArrowLeft } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import ProductTour from './ProductTour';
@@ -18,6 +18,7 @@ import SettingsPanel from './mobile/SettingsPanel';
 import {
   useNavOrder,
   mobileExtraNavItems,
+  sharedNavItem,
   MOBILE_ACCOUNT_ID,
   MOBILE_PREFS_ID,
   type MobileNavItem,
@@ -432,14 +433,10 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const selectedChild = students.find((s) => s.id === selectedChildId);
 
   const allNavItems: MobileNavItem[] = [
-    { id: 'overview', label: language === 'tr' ? 'Ana Sayfa' : 'Start', icon: Home },
+    // Start / Ana Sayfa — the shared landing tab; here it's the children.
+    sharedNavItem('home', language, 'overview'),
     { id: 'billing', label: language === 'tr' ? 'Ödemeler' : 'Facturatie', icon: Receipt },
-    {
-      id: 'oudergesprekken',
-      label: language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken',
-      shortLabel: language === 'tr' ? 'Görüşme' : 'Gesprekken',
-      icon: MessageSquare,
-    },
+    sharedNavItem('oudergesprekken', language),
     { id: 'alifba', label: 'Elif-Ba', icon: Sparkles },
     ...mobileExtraNavItems(language),
   ];
@@ -544,11 +541,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             {/* The home tab shows no title — "Ouderpaneel" only restated where
                 the user already is. Other destinations still name themselves. */}
             <h1 className="min-w-0 flex-1 text-2xl font-bold leading-tight text-gray-800">
-              {activeTab === 'overview'
-                ? ''
-                : activeTab === 'billing'
-                ? language === 'tr' ? 'Ödemeler' : 'Facturatie'
-                : language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken'}
+              {activeTab === 'overview' ? '' : byId[activeTab]?.label ?? ''}
             </h1>
             <AccountAvatarButton onOpen={() => setActiveTab(MOBILE_ACCOUNT_ID)} />
           </div>

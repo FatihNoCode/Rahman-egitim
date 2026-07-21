@@ -5,6 +5,8 @@ import ExamBuilder from './ExamBuilder';
 import ExamPrintView from './ExamPrintView';
 import { ExamDraft, EMPTY_EXAM } from './examTypes';
 import { notify, confirmDialog } from '../ui/feedback';
+import { isAppLayout } from '../../../lib/native';
+import DesktopOnly from '../mobile/DesktopOnly';
 
 interface ExamListViewProps {
   language: 'tr' | 'nl';
@@ -182,6 +184,35 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
 
 
   if (loading) return <div className="text-center py-6 text-gray-500 text-sm">{tr ? 'Yükleniyor...' : 'Laden...'}</div>;
+
+  // Writing a toets is the one part of this screen a phone can't carry: the
+  // builder is a wide grid of questions, answer options and scores that only
+  // works when several columns are visible at once. Everything else here — go
+  // live, watch results come in, grade the open questions, print — is exactly
+  // what a teacher wants *while standing in the classroom*, so only the
+  // builder is sent to the website and the rest of the tab stays.
+  if (mode.view === 'edit' && isAppLayout()) {
+    return (
+      <div className="pt-4">
+        <DesktopOnly
+          language={language}
+          title={tr ? 'Sınav oluşturma' : 'Toets maken'}
+          reason={
+            tr
+              ? 'Sınav düzenleyicisi aynı anda birden fazla sütun gerektirir ve telefon ekranına sığmaz. Sınavı web sitesinde hazırlayın; hazırladıktan sonra buradan canlı başlatabilir, sonuçları görebilir ve yazdırabilirsiniz.'
+              : 'De toetsbouwer heeft meerdere kolommen tegelijk nodig en past niet op een telefoonscherm. Maak de toets op de website — daarna kunt u hem hier live zetten, de resultaten volgen en afdrukken.'
+          }
+          tab="toets"
+        />
+        <button
+          onClick={() => setMode({ view: 'list' })}
+          className="mx-auto mt-4 block text-sm font-medium text-emerald-700"
+        >
+          ← {text.back}
+        </button>
+      </div>
+    );
+  }
 
   if (mode.view === 'edit') {
     return <ExamBuilder language={language} initial={mode.exam} onSave={saveExam} onCancel={() => setMode({ view: 'list' })} />;

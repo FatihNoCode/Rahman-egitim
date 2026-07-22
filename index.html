@@ -29,6 +29,19 @@
            walkthrough embeds it in an iframe. -->
       <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tile.openstreetmap.org; connect-src 'self' https://uriirwsjpzsjnaosqlph.supabase.co https://*.supabase.co https://api.alquran.cloud; frame-src 'self' https://accounts.google.com https://demo.arcade.software; base-uri 'self'; form-action 'self'; object-src 'none'" />
       <meta name="referrer" content="strict-origin-when-cross-origin" />
+      <!-- A white-background PNG, separate from the transparent logo used
+           on-page — a transparent tab icon is hard to see against a dark or
+           colored browser chrome. Regenerate via `node scripts/make-favicon.mjs`
+           if the logo changes.
+           Declared here rather than injected from an effect in App.tsx: as
+           markup the browser starts fetching it while the module graph is still
+           downloading, instead of only after React has mounted. -->
+      <link rel="icon" href="/src/imports/favicon.png" />
+      <!-- The logo is the first thing painted on both the web spinner and the
+           app's greeting splash, so it is on the critical path by definition.
+           Preloading lets it arrive alongside the JS rather than being
+           discovered once the first component renders. -->
+      <link rel="preload" as="image" href="/src/imports/logo.svg" />
       <!-- The Arabic faces used by ElifBaPage are self-hosted and bundled;
            see src/styles/fonts.css. Nothing here loads from a font CDN, so
            style-src/font-src above no longer allow one. -->

@@ -1,0 +1,61 @@
+{
+  // Vite strips types with esbuild and never checks them, so until this file
+  // existed a type error was only ever found by a user hitting the broken
+  // screen. `npm run typecheck` — and the CI gate in deploy-pages.yml — is what
+  // makes the types load-bearing.
+  //
+  // Full `strict` is on. That was worth checking rather than assuming: turning
+  // it on across all ~24k lines produced exactly one error (an untyped plugin
+  // parameter in vite.config.ts). The code was already written to this standard;
+  // it just had nothing verifying it. Keep it that way — the cost of holding the
+  // line here is far lower than the cost of getting back to it later.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+
+    "strict": true,
+
+    // Vite owns emit; tsc is only ever a checker here.
+    "noEmit": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // These two found 15 real leftovers on their first run — state nothing
+    // rendered, handlers left behind when a feature moved to another view, and
+    // two API calls whose responses were thrown away. Worth keeping on: that
+    // kind of residue is invisible in review and accumulates silently.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    // `vite/client` is what types the asset imports (logo.svg, favicon.png)
+    // and import.meta.env.
+    "types": ["vite/client"],
+
+    "baseUrl": ".",
+    "paths": {
+      "@": ["./src"],
+      "@/*": ["./src/*"],
+      // Several modules import the generated Supabase config as
+      // '/utils/supabase/info' — a Vite root-absolute specifier, which TS
+      // resolves only if it is spelled out here.
+      "/utils/*": ["./utils/*"]
+    }
+
+    // Deliberately NOT enabled — `noImplicitReturns`. The standard shape of a
+    // React effect is `useEffect(() => { if (x) return; ...; return cleanup })`,
+    // and Rollup's resolveId/manualChunks hooks return undefined to mean "no
+    // opinion". The rule flags 18 of those and finds nothing else, so it would
+    // only train people to ignore the checker.
+  },
+  "include": ["src", "utils", "vite.config.ts", "scripts"],
+  "exclude": ["node_modules", "dist", "android", "ios", "supabase"]
+}

@@ -34,13 +34,6 @@ interface Student {
   schoolId?: string;
 }
 
-interface Homework {
-  id: string;
-  description: string;
-  dueDate: string;
-  classId: string;
-}
-
 interface Class {
   id: string;
   name: string;
@@ -87,10 +80,8 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const t = translations[language];
   const [showDemo, setShowDemo] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
-  const [homework, setHomework] = useState<Homework[]>([]);
   const [homeworkCompletion, setHomeworkCompletion] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
-  const [classes, setClasses] = useState<Record<string, Class>>({});
   const [schoolNames, setSchoolNames] = useState<Record<string, string>>({});
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [lessons, setLessons] = useState<any[]>([]);
@@ -206,9 +197,8 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
   const loadData = async () => {
     try {
-      const [studentsData, homeworkData, classesData, completionData, conferData] = await Promise.all([
+      const [studentsData, classesData, completionData, conferData] = await Promise.all([
         apiRequest('/students'),
-        apiRequest('/homework'),
         apiRequest('/classes/all'),
         apiRequest('/homework/completion'),
         apiRequest('/oudergesprekken').catch(() => ({ sessions: [] })),
@@ -222,7 +212,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           classMap[cls.id] = cls;
         });
       }
-      setClasses(classMap);
 
       // Attach class names to students
       const studentsWithClassNames = (studentsData.students || []).map((student: Student) => ({
@@ -231,7 +220,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       }));
 
       setStudents(studentsWithClassNames);
-      setHomework(homeworkData.homework || []);
 
       // Only relevant for parents with children at more than one school —
       // used to disambiguate the child switcher below.

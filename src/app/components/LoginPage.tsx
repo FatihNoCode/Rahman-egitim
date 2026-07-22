@@ -37,7 +37,10 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<'parent' | 'teacher' | 'admin'>('parent');
+  // Self-registration always creates a parent; teachers and admins are invited
+  // by an existing admin instead. It was a useState whose setter nothing ever
+  // called, which read as though the form still offered a choice.
+  const role = 'parent';
   const [schoolId, setSchoolId] = useState('');
   const [schools, setSchools] = useState<{ id: string; name: string; city?: string }[]>([]);
 
@@ -704,7 +707,7 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
           onClick={() => { window.location.href = '/elif-ba'; }}
           className="w-full flex items-center justify-center gap-2 mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-sm transition text-sm sm:text-base"
         >
-          <span lang="ar" dir="rtl" style={{ fontFamily: 'serif', fontSize: 20 }}>أ ب</span>
+          <span lang="ar" dir="rtl" style={{ fontFamily: 'var(--font-arabic), serif', fontSize: 20 }}>أ ب</span>
           {language === 'tr' ? 'Elif-Be Öğren' : 'Elif-Ba leren'}
           <Sparkles className="h-4 w-4" />
         </button>

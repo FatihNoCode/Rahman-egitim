@@ -1,5 +1,4 @@
-/* Self-hosted Arabic display faces (Amiri, Scheherazade New), used by
-   ElifBaPage via its ARABIC_FONT stack.
+/* Self-hosted Arabic display faces (Amiri, Scheherazade New).
 
    These were previously pulled from the Google Fonts CDN by a <link> in
    index.html. Two reasons they now ship with the app instead:
@@ -16,13 +15,14 @@
         cross-origin request on the critical path.
 
    Only the `arabic` unicode-range subsets are vendored. Upstream also ships
-   latin/latin-ext cuts (~90 KB), but these families are only ever applied to
-   `lang="ar"` spans, so Latin text never renders in them.
+   latin/latin-ext cuts (~90 KB), but the unicode-range below means Latin text
+   never renders in these families, so those cuts would only ever be dead
+   weight.
 
-   Keeping unicode-range on each rule is what makes the cost acceptable: the
-   browser downloads a face only once a glyph in that range is actually
-   painted, so the ~376 KB here is fetched on ElifBaPage and nowhere else,
-   even though the declarations are global.
+   Keeping unicode-range on each rule is also what makes the cost acceptable:
+   the browser downloads a face only once a glyph in that range is actually
+   painted, so on a screen with no Arabic on it these files are never fetched,
+   even though the families are in every font stack the app uses.
 
    Files came from Google Fonts (Amiri v30, Scheherazade New v21); both are
    licensed under the SIL Open Font License 1.1 — see ATTRIBUTIONS.md. */
@@ -61,4 +61,53 @@
   font-display: swap;
   src: url('../assets/fonts/scheherazade-new-700-arabic.woff2') format('woff2');
   unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1;
+}
+
+/* ── Where the faces get applied ──────────────────────────────────────────────
+
+   Everywhere. Arabic turns up in more places than the Elif-Ba page: a Quran
+   gap-fill question in a toets, a surah name in a homework line, a du'a a
+   teacher pastes into a message, a child's name written in Arabic. Asking each
+   of those to opt in with `fontFamily: ARABIC_FONT` is a rule that gets
+   forgotten, and every place it is forgotten falls back to whatever Naskh the
+   OS happens to ship — which is how the same letter ends up looking like two
+   different letters in two parts of the app.
+
+   So instead of opting in per component, the two families lead *every* font
+   stack in the app. Latin text is untouched by this: the unicode-range on each
+   @font-face above tells the browser these families have nothing to offer
+   outside the Arabic blocks, so for a Latin codepoint it skips straight past
+   them to the next family in the list. One declaration, no per-component
+   memory, and no way for a new screen to miss it.
+
+   Scheherazade New leads over Amiri deliberately. Both are Quranic Naskh faces
+   of the kind Quran apps and sites use, but they are drawn for different jobs:
+   Amiri is a book face, with thin hairlines and tight counters that go muddy at
+   the sizes children actually read at. Scheherazade New is SIL's readability
+   cut — heavier strokes, open counters, clearly separated dots — which is what
+   matters when the whole point is telling ب from ت from ث. Amiri stays as the
+   fallback so nothing regresses to a system serif.
+
+   The three stacks below are Tailwind's own defaults with the Arabic families
+   spliced onto the front. --font-sans is the one that matters most: Preflight
+   feeds it to <html>, so it is what every element inherits unless something
+   overrides it. --font-serif and --font-mono are covered too, because a
+   `font-serif` or `font-mono` utility anywhere on the page would otherwise
+   knock the Arabic families back out of the stack for that subtree. */
+
+:root {
+  /* Declared outside @theme so it is always emitted, and so components that
+     have to name the stack in an inline style or a popup document (the diploma
+     print window) have one thing to reference rather than their own copy. */
+  --font-arabic: 'Scheherazade New', 'Amiri';
+}
+
+@theme {
+  --font-sans:
+    var(--font-arabic), ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-serif: var(--font-arabic), ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+  --font-mono:
+    var(--font-arabic), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
 }

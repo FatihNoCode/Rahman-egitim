@@ -1,9 +1,9 @@
-import { useState, useEffect, createContext, useContext, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, createContext, useContext, lazy, Suspense } from 'react';
 import { Mail } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../lib/supabase';
 import LoginPage from './components/LoginPage';
-import ProductTour, { hasSeenTour } from './components/ProductTour';
+import { hasSeenTour } from './components/tourSeen';
 import ErrorBoundary from './components/ErrorBoundary';
 import { FeedbackHost } from './components/ui/feedback';
 import { markSessionStart, clearSessionStart, isSessionExpired } from '../lib/session';
@@ -11,23 +11,30 @@ import { isNative, isAppLayout, NATIVE_AUTH_REDIRECT } from '../lib/native';
 import { logAction, logError } from '../lib/deviceLog';
 import GreetingSplash, { rememberGreeting, forgetGreeting } from './components/mobile/GreetingSplash';
 import logoUrl from '../imports/logo.svg';
-// A white-background PNG, separate from the transparent logo used on-page —
-// a transparent tab icon is hard to see against a dark or colored browser
-// chrome. Regenerate via `node scripts/make-favicon.mjs` if the logo changes.
-import faviconUrl from '../imports/favicon.png';
 
 // Role-specific dashboards and secondary pages are code-split so a user
 // only downloads the bundle for the view they actually land on.
-const ParentDashboard = lazy(() => import('./components/ParentDashboard'));
-const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
-const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
-const SuperAdminDashboard = lazy(() => import('./components/SuperAdminDashboard'));
+//
+// The dashboard loaders are named rather than inlined so boot can *start* one
+// before the session comes back — see prefetchDashboard below.
+const loadParentDashboard = () => import('./components/ParentDashboard');
+const loadTeacherDashboard = () => import('./components/TeacherDashboard');
+const loadAdminDashboard = () => import('./components/AdminDashboard');
+const loadSuperAdminDashboard = () => import('./components/SuperAdminDashboard');
+const loadRegionalAdminDashboard = () => import('./components/RegionalAdminDashboard');
+
+const ParentDashboard = lazy(loadParentDashboard);
+const TeacherDashboard = lazy(loadTeacherDashboard);
+const AdminDashboard = lazy(loadAdminDashboard);
+const SuperAdminDashboard = lazy(loadSuperAdminDashboard);
+const RegionalAdminDashboard = lazy(loadRegionalAdminDashboard);
+
+const ProductTour = lazy(() => import('./components/ProductTour'));
 const InvitePage = lazy(() => import('./components/InvitePage'));
 const InschrijvingPage = lazy(() => import('./components/InschrijvingPage'));
 const ResetPasswordPage = lazy(() => import('./components/ResetPasswordPage'));
 const ElifBaPage = lazy(() => import('./components/ElifBaPage'));
 const PrivacyPage = lazy(() => import('./components/PrivacyPage'));
-const RegionalAdminDashboard = lazy(() => import('./components/RegionalAdminDashboard'));
 const CompleteProfilePage = lazy(() => import('./components/CompleteProfilePage'));
 const ToetsPage = lazy(() => import('./components/ToetsPage'));
 
@@ -134,6 +141,47 @@ function PendingApprovalScreen({ email, language, onSignOut }: { email: string; 
   );
 }
 
+// The role this device last signed in as, remembered for the same reason the
+// greeting is (see rememberGreeting): so boot can act before the session comes
+// back. Cold start is otherwise a strict waterfall — download the app chunk,
+// ask /session who this is, and only *then* start downloading the dashboard,
+// which is the largest chunk in the app. Kicking that fetch off in parallel
+// with the session check hides it behind a request that has to happen anyway.
+//
+// A wrong guess costs one unused chunk fetch and nothing else: the render path
+// below still keys off the real role from the server, never off this value.
+const ROLE_KEY = 'ilimyolu:lastRole';
+
+const DASHBOARD_LOADERS: Record<User['role'], () => Promise<unknown>> = {
+  parent: loadParentDashboard,
+  teacher: loadTeacherDashboard,
+  admin: loadAdminDashboard,
+  superadmin: loadSuperAdminDashboard,
+  regional_admin: loadRegionalAdminDashboard,
+};
+
+function rememberRole(role?: User['role'] | null) {
+  try {
+    if (role) localStorage.setItem(ROLE_KEY, role);
+    else localStorage.removeItem(ROLE_KEY);
+  } catch {
+    /* private mode / storage full — boot just stays a waterfall */
+  }
+}
+
+function prefetchDashboard() {
+  let role: string | null = null;
+  try {
+    role = localStorage.getItem(ROLE_KEY);
+  } catch {
+    return;
+  }
+  const load = role ? DASHBOARD_LOADERS[role as User['role']] : undefined;
+  // Swallow failures: this is a head start, not a dependency. If it fails the
+  // real lazy() import below retries and surfaces the error properly.
+  void load?.().catch(() => {});
+}
+
 // The chosen language, kept across launches. Without this the app reset to
 // Dutch every cold start, so a Turkish-speaking parent had to re-pick it each
 // time they opened it — the one setting that must survive being force-quit.
@@ -151,14 +199,14 @@ function storedLanguage(): Language {
 export default function App() {
   const [language, setLanguageState] = useState<Language>(storedLanguage);
 
-  const setLanguage = (lang: Language) => {
+  const setLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);
     try {
       localStorage.setItem(LANGUAGE_KEY, lang);
     } catch {
       /* private mode / storage full — the choice just won't outlive the session */
     }
-  };
+  }, []);
 
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -207,7 +255,9 @@ export default function App() {
     pathSegments.includes('toets') ||
     pageParam === 'toets';
 
-  const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
+  // Stable across renders so it can be depended on from a child's effect
+  // without re-firing that effect on every unrelated App state change.
+  const apiRequest = useCallback(async (endpoint: string, options: RequestInit = {}) => {
     // Prefer the live Supabase session token (auto-refreshed) so long
     // sessions don't fail with an expired token; fall back to state/anon.
     let token = accessToken || publicAnonKey;
@@ -266,26 +316,12 @@ export default function App() {
       throw new Error(data.error || 'Request failed');
     }
     return data;
-  };
+  }, [accessToken, actingSchoolId, language]);
 
   useEffect(() => {
     if (!splashHeld) return;
     const id = setTimeout(() => setSplashHeld(false), 7000);
     return () => clearTimeout(id);
-  }, []);
-
-  useEffect(() => {
-    // Set page title
-    document.title = 'Rahman Eğitim';
-
-    // Set favicon
-    let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'icon';
-      document.head.appendChild(link);
-    }
-    link.href = faviconUrl;
   }, []);
 
   useEffect(() => {
@@ -348,6 +384,10 @@ export default function App() {
       return;
     }
 
+    // Past this point the visitor is on the authenticated side of the app, so
+    // the dashboard chunk is worth fetching now rather than after /session
+    // answers. Deliberately not awaited — it races the session check.
+    prefetchDashboard();
     checkSession();
 
     // OAuth redirects land back on the app with a session already established
@@ -428,6 +468,7 @@ export default function App() {
         }
         if (data.user) {
           rememberGreeting(data.user.name);
+          rememberRole(data.user.role);
           setUser(data.user);
         }
       }
@@ -453,7 +494,7 @@ export default function App() {
   // Demo-only role hop. Asks the server for a real session belonging to the
   // pre-seeded account for `role`, installs it, and resets the superadmin-only
   // acting-school state so the freshly assumed role starts from a clean slate.
-  const switchTestRole = async (role: TestRole) => {
+  const switchTestRole = useCallback(async (role: TestRole) => {
     const data = await apiRequest('/impersonate', {
       method: 'POST',
       body: JSON.stringify({ role }),
@@ -468,14 +509,17 @@ export default function App() {
       setActingSchoolId(null);
       setViewMode('superadmin');
       setMfaChallenge(false);
+      rememberRole(data.user?.role);
       setUser(data.user);
     }
-  };
+  }, [apiRequest]);
 
   const handleLogin = (userData: User, token: string) => {
     markSessionStart();
-    // So the next cold start can greet by name before the session resolves.
+    // So the next cold start can greet by name — and start fetching the right
+    // dashboard — before the session resolves.
     rememberGreeting(userData?.name);
+    rememberRole(userData?.role);
     logAction('Inloggen', `rol: ${userData?.role}`);
     setUser(userData);
     setAccessToken(token);
@@ -486,6 +530,7 @@ export default function App() {
     await supabase.auth.signOut();
     clearSessionStart();
     forgetGreeting();
+    rememberRole(null);
     setUser(null);
     setAccessToken(null);
     setActingSchoolId(null);
@@ -550,6 +595,21 @@ export default function App() {
     setViewMode('superadmin');
   };
 
+  // Memoised because every dashboard reads this context: without it, a new
+  // object identity on each App render re-renders every consumer in the tree,
+  // including the large table views, for state they do not read.
+  //
+  // Declared above the cold-start return below so the hook order stays fixed.
+  const contextValue = useMemo<AppContextType>(() => ({
+    language,
+    setLanguage,
+    user,
+    setUser,
+    accessToken,
+    apiRequest,
+    switchTestRole,
+  }), [language, setLanguage, user, accessToken, apiRequest, switchTestRole]);
+
   // Cold start. In the app this is the greeting rather than a spinner — see
   // GreetingSplash; the name comes from the last session, since the current one
   // is exactly what's still loading.
@@ -572,21 +632,15 @@ export default function App() {
     );
   }
 
-  const contextValue: AppContextType = {
-    language,
-    setLanguage,
-    user,
-    setUser,
-    accessToken,
-    apiRequest,
-    switchTestRole,
-  };
-
   return (
     <AppContext.Provider value={contextValue}>
       <FeedbackHost />
       {showTour && tourRole && (
-        <ProductTour role={tourRole} language={language} onClose={() => setShowTour(false)} />
+        // Its own boundary: the tour is an overlay, so it must not hold up the
+        // dashboard rendering underneath it while its chunk arrives.
+        <Suspense fallback={null}>
+          <ProductTour role={tourRole} language={language} onClose={() => setShowTour(false)} />
+        </Suspense>
       )}
       <div className="size-full bg-gray-50">
         <ErrorBoundary language={language}>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X, Clock, Sun, PartyPopper, Calendar as CalendarIcon, BookOpen, FileText, Frown, Meh, Smile, Check, Users } from 'lucide-react';
 
 interface Lesstructuur {
@@ -109,7 +109,15 @@ export default function AgendaCalendar({
   const monthNames = language === 'tr' ? MONTH_NAMES_TR : MONTH_NAMES_NL;
   const dayNamesShort = language === 'tr' ? DAY_NAMES_SHORT_TR : DAY_NAMES_SHORT_NL;
 
+  // Which load is the current one. loadAll fires from five places — mount,
+  // window focus, visibilitychange, a 60s poll, and the refreshKey effect — so
+  // two fetches overlapping is routine rather than exceptional, and without
+  // this a slow earlier response lands *after* a newer one and quietly puts
+  // stale lessons back on the calendar. Only the newest request may write.
+  const loadSeq = useRef(0);
+
   const loadAll = useCallback(() => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     const requests: Promise<any>[] = [
       apiRequest('/agenda/lesstructuren'),
@@ -122,6 +130,7 @@ export default function AgendaCalendar({
       requests.push(role === 'teacher' ? apiRequest('/classes').catch(() => ({ classes: [] })) : Promise.resolve({ classes: [] }));
     }
     return Promise.all(requests).then(([lsRes, vacRes, evtRes, hwRes, stuRes, clsRes]) => {
+      if (seq !== loadSeq.current) return;
       setLesstructuren(lsRes.lesstructuren || []);
       setVacations(vacRes.vacations || []);
       setEvents(evtRes.events || []);
@@ -135,13 +144,14 @@ export default function AgendaCalendar({
         setClassesById(clsMap);
       }
     }).catch(err => console.error('Load agenda calendar error:', err))
-      .finally(() => setLoading(false));
+      .finally(() => { if (seq === loadSeq.current) setLoading(false); });
   }, [apiRequest, showHomework, role]);
 
   useEffect(() => {
-    let cancelled = false;
     loadAll();
-    return () => { cancelled = true; };
+    // Invalidate whatever is still in flight, both when refreshKey moves on and
+    // when the calendar unmounts.
+    return () => { loadSeq.current++; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
 

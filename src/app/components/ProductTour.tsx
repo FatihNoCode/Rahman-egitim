@@ -1,22 +1,6 @@
 import { X } from 'lucide-react';
 import type { Language } from '../App';
-
-type TourRole = 'parent' | 'teacher' | 'admin';
-
-// Persisted in sessionStorage (not localStorage) so the tour shows again for
-// every parent on each new login session, rather than being suppressed forever
-// on a device. Dismissing it only hides it for the rest of the current
-// session; a mid-session refresh won't re-pop it, but the next login will.
-const storageKey = (role: TourRole) => `ilimyolu_tour_seen_${role}`;
-
-export function hasSeenTour(role: string): boolean {
-  if (role !== 'parent' && role !== 'teacher' && role !== 'admin') return true;
-  try {
-    return sessionStorage.getItem(storageKey(role)) === '1';
-  } catch {
-    return true;
-  }
-}
+import { markTourSeen, type TourRole } from './tourSeen';
 
 function ArcadeEmbed() {
   return (
@@ -42,11 +26,7 @@ interface ProductTourProps {
 
 export default function ProductTour({ role, language, onClose }: ProductTourProps) {
   const finish = () => {
-    try {
-      sessionStorage.setItem(storageKey(role), '1');
-    } catch {
-      // ignore storage failures — worst case the tour shows again
-    }
+    markTourSeen(role);
     onClose();
   };
 

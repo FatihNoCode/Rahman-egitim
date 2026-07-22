@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { ArrowLeft, Layers, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Layers, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import booksLogo from '../../imports/logo.svg';
@@ -52,25 +52,12 @@ interface Teacher {
   email: string;
 }
 
-interface PredefinedHomework {
-  id: string;
-  textTr: string;
-  textNl: string;
-}
-
 interface Student {
   id: string;
   name: string;
   parentId?: string;
   parentEmail?: string;
   classId?: string;
-}
-
-interface Parent {
-  id: string;
-  email: string;
-  lastCheckIn?: string;
-  children: Student[];
 }
 
 interface StudentWithStats extends Student {
@@ -120,16 +107,8 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   const [period2Started, setPeriod2Started] = useState(false);
   const [savingDiploma, setSavingDiploma] = useState(false);
 
-  // Class management
-  const [newClassName, setNewClassName] = useState('');
-  const [newClassTeacherId, setNewClassTeacherId] = useState('');
-  const [editingClass, setEditingClass] = useState<Class | null>(null);
-
   // Student management
   const [students, setStudents] = useState<StudentWithStats[]>([]);
-
-  // Parent management
-  const [parents, setParents] = useState<Parent[]>([]);
 
   // id -> name map built from /users, used to show parent names (not just
   // email) on the Klassen beheer roster.
@@ -230,19 +209,17 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
 
   const loadData = async () => {
     try {
-      const [metricsData, classesData, teachersData, studentsData, parentsData, usersData] = await Promise.all([
+      const [metricsData, classesData, teachersData, studentsData, usersData] = await Promise.all([
         apiRequest('/metrics'),
         apiRequest('/classes'),
         apiRequest('/teachers'),
         apiRequest('/students'),
-        apiRequest('/parents'),
         apiRequest('/users'),
       ]);
 
       setMetrics(metricsData);
       setClasses(classesData.classes || []);
       setTeachers(teachersData.teachers || []);
-      setParents(parentsData.parents || []);
       setStudents(studentsData.students || []);
 
       const nameByEmail: Record<string, string> = {};
@@ -255,48 +232,6 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
     }
   };
 
-  const createClass = async () => {
-    if (!newClassName) return;
-
-    try {
-      await apiRequest('/classes', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: newClassName,
-          teacherId: newClassTeacherId || null,
-        }),
-      });
-
-      notify.success(language === 'tr' ? 'Sınıf oluşturuldu!' : 'Klas aangemaakt!');
-      setNewClassName('');
-      setNewClassTeacherId('');
-      loadData();
-    } catch (error) {
-      console.error('Error creating class:', error);
-      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
-    }
-  };
-
-  const updateClass = async () => {
-    if (!editingClass) return;
-
-    try {
-      await apiRequest(`/classes/${editingClass.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          name: editingClass.name,
-          teacherId: editingClass.teacherId || null,
-        }),
-      });
-
-      notify.success(language === 'tr' ? 'Sınıf güncellendi!' : 'Klas bijgewerkt!');
-      setEditingClass(null);
-      loadData();
-    } catch (error) {
-      console.error('Error updating class:', error);
-      notify.error(language === 'tr' ? 'Hata oluştu!' : 'Er is een fout opgetreden!');
-    }
-  };
 
   const loadStudentStats = async () => {
     try {

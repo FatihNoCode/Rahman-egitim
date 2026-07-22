@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import { Award, Download, Star, FileText, CheckCircle2, Settings2, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 import { useApp } from '../App';
 import { notify } from './ui/feedback';
+import amiri400 from '../../assets/fonts/amiri-400-arabic.woff2?url';
+import amiri700 from '../../assets/fonts/amiri-700-arabic.woff2?url';
+import scheherazade400 from '../../assets/fonts/scheherazade-new-400-arabic.woff2?url';
+import scheherazade700 from '../../assets/fonts/scheherazade-new-700-arabic.woff2?url';
 
 interface Class {
   id: string;
@@ -25,6 +29,45 @@ type ModuleType = 'grade' | 'star';
 type Period = 'period1' | 'period2';
 interface ModuleConfig { key: string; type: ModuleType; }
 interface PeriodGrades { period1: Record<string, number>; period2: Record<string, number>; }
+
+// The Arabic faces, restated for the print window.
+//
+// A diploma is not rendered in the app document — it is written into a popup
+// with document.write (see openDiplomaDoc), and that popup gets none of the
+// app's stylesheets. So the app-wide rule in src/styles/fonts.css cannot reach
+// it, and a diploma carrying Arabic — a student's name, a teacher's name, the
+// personal note a teacher writes at the bottom — printed in whatever Naskh the
+// OS fell back to. Since this is the one artefact that leaves the building on
+// paper, it is the last place that should look different from the app.
+//
+// Same two families, same unicode-range, same reasoning as fonts.css; only the
+// delivery differs. The range keeps the behaviour identical too: a diploma with
+// no Arabic on it never fetches these files, so the print dialog is not held up
+// for a font it has no use for.
+const ARABIC_RANGE =
+  'U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1';
+
+// Built on demand rather than at module scope: the URLs have to be absolute
+// (the popup's own document is about:blank, so a relative path has nothing
+// useful to resolve against), and that needs `window`, which no module should
+// be reaching for just to finish importing.
+const arabicPrintCss = () =>
+  (
+    [
+      ['Scheherazade New', 400, scheherazade400],
+      ['Scheherazade New', 700, scheherazade700],
+      ['Amiri', 400, amiri400],
+      ['Amiri', 700, amiri700],
+    ] as const
+  )
+    .map(
+      ([family, weight, url]) => `@font-face {
+    font-family: '${family}'; font-style: normal; font-weight: ${weight}; font-display: swap;
+    src: url('${new URL(url, window.location.href).href}') format('woff2');
+    unicode-range: ${ARABIC_RANGE};
+  }`,
+    )
+    .join('\n  ');
 
 // The fixed set of subject modules a teacher can grade, with bilingual labels.
 const MODULES: { key: string; nl: string; tr: string }[] = [
@@ -393,9 +436,12 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
     const bgUrl = `${window.location.origin}/diploma-bg.svg`;
     const html = `<!DOCTYPE html><html lang="${language}"><head><meta charset="utf-8"><title>${text.diploma} - ${escapeHtml(titleName)}</title>
 <style>
+  ${arabicPrintCss()}
   @page { size: A4 landscape; margin: 0; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  html, body { margin: 0; padding: 0; font-family: Georgia, 'Times New Roman', serif; color: #1f2937; }
+  /* Arabic families first, exactly as in the app: unicode-range means Georgia
+     still sets every Latin word on the page. */
+  html, body { margin: 0; padding: 0; font-family: 'Scheherazade New', 'Amiri', Georgia, 'Times New Roman', serif; color: #1f2937; }
   .page { width: 297mm; height: 210mm; padding: 12mm; position: relative;
           background-color: #ffffff;
           background-image: url('${bgUrl}');

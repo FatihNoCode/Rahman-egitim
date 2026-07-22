@@ -22,6 +22,7 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
+      - run: npm run typecheck
 
       # dist/ is bundled into the app, so it must exist before cap sync copies
       # it into android/app/src/main/assets/public.

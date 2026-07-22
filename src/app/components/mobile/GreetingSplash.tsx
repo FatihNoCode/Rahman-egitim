@@ -53,15 +53,22 @@ interface GreetingSplashProps {
   onDone?: () => void;
 }
 
-// A hand-written face for the greeting. Nothing is downloaded: these are all
-// faces that already ship with the OS, so the splash never waits on a network
-// request and no request for a font leaves the device before the app renders.
+// A hand-written face for the greeting. Apart from the Arabic families — which
+// are bundled — nothing is downloaded: the rest already ship with the OS, so
+// the splash never waits on a network request and no request for a font leaves
+// the device before the app renders.
+//
+// The Arabic families lead because the greeting carries the user's own name,
+// and plenty of those are written in Arabic script. None of the copperplate
+// faces below have Arabic glyphs, so without this the name alone would drop to
+// whatever the OS picks while the salaam stayed handwritten.
+//
 // Snell Roundhand is the iOS/macOS one — a genuine copperplate script with the
 // swirl the greeting wants; the rest are the equivalents on other platforms,
 // ending in the generic `cursive` so a device with none of them still gets
 // something joined-up rather than the UI sans.
 const SCRIPT_FONT =
-  "'Snell Roundhand', 'Apple Chancery', 'Segoe Script', 'Bradley Hand', 'Dancing Script', cursive";
+  "var(--font-arabic), 'Snell Roundhand', 'Apple Chancery', 'Segoe Script', 'Bradley Hand', 'Dancing Script', cursive";
 
 // Per-character cadence. Slow enough to read as writing rather than as a
 // machine printing — the previous 45ms was closer to a stutter.

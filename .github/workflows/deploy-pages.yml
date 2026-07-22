@@ -23,6 +23,11 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
+      # Before the build, not after: `vite build` strips types without checking
+      # them, so it will happily produce a green build out of code that throws
+      # on the device. This is the only thing standing between a type error and
+      # production.
+      - run: npm run typecheck
       - run: npm run build
       # SPA fallback: the app parses window.location.pathname manually
       # (e.g. /invite/:token, /inschrijving), so deep links need to be

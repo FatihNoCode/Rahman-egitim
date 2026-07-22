@@ -7,4 +7,4 @@
 //
 // Bump this in the same commit as any change that ships to the app, so what's
 // on the phone and what's in the repo can always be matched up.
-export const APP_VERSION = '3.0';
+export const APP_VERSION = '3.2';

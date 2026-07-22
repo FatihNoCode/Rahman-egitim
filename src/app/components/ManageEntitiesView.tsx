@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Pencil, Plus, Trash2, ArrowLeft, X, Check, Frown, Meh, Smile, Circle } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
 

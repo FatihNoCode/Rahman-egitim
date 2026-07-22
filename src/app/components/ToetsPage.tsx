@@ -78,7 +78,7 @@ export default function ToetsPage() {
     }
   };
 
-  const submit = async (auto = false) => {
+  const submit = async () => {
     if (submittingRef.current) return;
     submittingRef.current = true;
     setBusy(true);
@@ -106,7 +106,7 @@ export default function ToetsPage() {
     const tick = () => {
       const ms = new Date(endsAt).getTime() - Date.now();
       setRemaining(Math.max(0, Math.floor(ms / 1000)));
-      if (ms <= 0) submit(true);
+      if (ms <= 0) submit();
     };
     tick();
     const interval = setInterval(tick, 1000);
@@ -259,7 +259,7 @@ export default function ToetsPage() {
               </div>
             ))}
 
-            <button onClick={() => submit(false)} disabled={busy}
+            <button onClick={() => submit()} disabled={busy}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-xl transition disabled:opacity-50">
               {busy ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'Inleveren / Teslim et'}
             </button>

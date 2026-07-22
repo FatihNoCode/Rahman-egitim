@@ -128,15 +128,6 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
     }
   };
 
-  // Calculate a preview of how many slots would be generated
-  const previewSlotCount = (() => {
-    if (!startTime || !endTime || !minutesPerSlot) return 0;
-    const [sH, sM] = startTime.split(':').map(Number);
-    const [eH, eM] = endTime.split(':').map(Number);
-    const available = (eH * 60 + eM) - (sH * 60 + sM);
-    return Math.floor(available / minutesPerSlot);
-  })();
-
   return (
     <div>
       {/* Create new conference */}

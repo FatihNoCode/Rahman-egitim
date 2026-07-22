@@ -3,17 +3,14 @@ import { projectId, publicAnonKey } from '/utils/supabase/info';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
 
-// The Naskh face every Arabic glyph in this page is drawn in (bundled, see
-// src/styles/fonts.css).
-//
-// Scheherazade New leads rather than Amiri. Both are Quranic Naskh faces of the
-// kind Quran apps and sites use, but they are drawn for different jobs: Amiri
-// is a book face, with thin hairlines and tight counters that go muddy at the
-// sizes children actually read at. Scheherazade New is SIL's readability cut —
-// heavier strokes, open counters, clearly separated dots — which is exactly
-// what matters on a page whose whole purpose is telling ب from ت from ث.
-// Amiri stays as the fallback so nothing regresses to a system serif.
-const ARABIC_FONT = "'Scheherazade New', 'Amiri', serif";
+// The Naskh face every Arabic glyph in this page is drawn in. The families
+// themselves now lead every font stack in the app (see src/styles/fonts.css for
+// why, and for why Scheherazade New leads over Amiri), so the spans below would
+// inherit them even without this. It stays because these spans set an explicit
+// fontSize anyway, and naming the family next to it says "this is Arabic, drawn
+// on purpose" rather than leaving it to inheritance on the one page where the
+// letterforms *are* the subject matter.
+const ARABIC_FONT = "var(--font-arabic), serif";
 
 // Steady "tap to hear" affordance inside the big letter cards: a raised, round
 // chip that reads as a button rather than a jittering emoji.
@@ -297,27 +294,6 @@ function Confetti({ show }: { show: boolean }) {
         }
       `}</style>
     </div>
-  );
-}
-
-function LetterCard({ letter, size = 'md', onClick, glow }: {
-  letter: ArabicLetter; size?: 'sm'|'md'|'lg'; onClick?: () => void; glow?: boolean;
-}) {
-  const sizes = { sm: 'text-4xl p-3', md: 'text-6xl p-4', lg: 'text-8xl p-6' };
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-2xl bg-white shadow-md flex flex-col items-center gap-1 transition-all duration-150 select-none
-        ${onClick ? 'cursor-pointer hover:scale-105 active:scale-95' : 'cursor-default'}
-        ${glow ? 'ring-4 ring-yellow-400 shadow-yellow-300 shadow-lg' : ''}
-        ${sizes[size]}
-      `}
-    >
-      <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, lineHeight: 1.35 }} className={sizes[size].split(' ')[0]}>
-        {letter.arabic}
-      </span>
-      <span className="text-xs font-bold text-gray-500">{letter.nameNl}</span>
-    </button>
   );
 }
 
@@ -745,7 +721,7 @@ function HarakatLearnGame({ letters, onComplete }: {
       </div>
 
       <div className="flex gap-4">
-        {HARAKATS.map((h, i) => (
+        {HARAKATS.map((h) => (
           <div key={h.id} className={`px-3 py-1 rounded-full text-sm font-bold transition
             ${h.id === harakat.id ? 'bg-white text-gray-800 scale-110 shadow-lg' : 'bg-white/20 text-white/60'}`}>
             {h.emoji} {h.nameNl}
@@ -855,11 +831,19 @@ function HarakatQuizGame({ letters, onComplete }: {
           return (
             <button key={h.id} onClick={() => choose(h.id)}
               className={`${cls} w-28 h-32 rounded-2xl flex flex-col items-center justify-center gap-1 shadow-md font-bold hover:scale-105 active:scale-95 transition-all`}>
-              {/* U+25CC ◌ renders as a proper dotted-circle placeholder in
-                  most system fonts; Amiri draws it as a hollow box, so pin
-                  this to the system font stack while the combining harakat
-                  still stacks on top / under. */}
-              <span lang="ar" dir="rtl" style={{ fontFamily: 'system-ui, "Segoe UI", sans-serif', fontSize: 56, lineHeight: 1.1 }}>{`◌${h.symbol}`}</span>
+              {/* The one span on this page that does *not* end up drawn in the
+                  Naskh face, and it has to be that way. The harakat hangs off
+                  U+25CC ◌, a Geometric Shapes codepoint the Arabic subsets do
+                  not cover; ◌ plus its mark is a single grapheme cluster, and
+                  the browser will not split a cluster across fonts, so the
+                  pair falls through together to the system stack. That is the
+                  wanted outcome — ◌ renders as a real dotted circle there,
+                  where asking Amiri for it gives a hollow .notdef box, and the
+                  marks themselves come out identical either way (measured).
+                  The Arabic families still lead, so this reads like every other
+                  stack in the app and would start using them the moment the
+                  carrier becomes a real Arabic letter. */}
+              <span lang="ar" dir="rtl" style={{ fontFamily: 'var(--font-arabic), system-ui, "Segoe UI", sans-serif', fontSize: 56, lineHeight: 1.1 }}>{`◌${h.symbol}`}</span>
               <span className="text-sm">{h.nameNl}</span>
             </button>
           );
@@ -2737,13 +2721,6 @@ export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange }: Eli
   // "Start" always makes sure we have a player name first (for the leaderboard).
   const startPlaying = () => setView(name ? 'map' : 'name');
 
-  const LangButton = (
-    <button onClick={toggleLang}
-      className="px-3 py-1.5 rounded-full bg-white/20 text-white font-bold text-sm hover:bg-white/30 transition">
-      {lang === 'nl' ? '🇳🇱 NL' : '🇹🇷 TR'}
-    </button>
-  );
-
   if (typeof view === 'object') {
     return (
       <StageView
@@ -2792,12 +2769,23 @@ export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange }: Eli
     <div className="min-h-full bg-gradient-to-b from-slate-600 via-slate-700 to-slate-600 flex flex-col items-center justify-between p-6 relative">
       <TopThreeCorner playerName={name} lang={lang} onOpen={() => setView('leaderboard')} />
 
-      <div className="w-full flex items-center">
+      {/* Elif-Ba keeps its own language, separate from the rest of the app:
+          it is a public page a child opens on their own, often on a parent's
+          device that is set to the other language. The toggle sits on the left
+          so it stays clear of the leaderboard card pinned to the top right. */}
+      <div className="w-full flex items-center gap-3">
         {onBack ? (
           <button onClick={onBack} className="text-white/60 hover:text-white font-medium transition text-sm">
             {tr('backToLogin', lang)}
           </button>
         ) : null}
+        <button
+          onClick={toggleLang}
+          className="px-3 py-1.5 rounded-full bg-white/10 border border-white/10 text-white font-bold text-sm hover:bg-white/20 transition"
+          aria-label={lang === 'nl' ? 'Türkçe' : 'Nederlands'}
+        >
+          {lang === 'nl' ? 'NL' : 'TR'}
+        </button>
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center gap-8 text-center">

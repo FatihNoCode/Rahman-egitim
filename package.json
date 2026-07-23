@@ -7,7 +7,8 @@
     "build": "vite build",
     "dev": "vite",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release": "bash scripts/release-ios.sh"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",

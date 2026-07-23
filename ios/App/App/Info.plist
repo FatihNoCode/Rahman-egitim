@@ -42,6 +42,13 @@
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 	</array>
+	<!-- The app is a portrait-only, single-column design (see the orientation
+	     note above). iPad multitasking (Split View/Slide Over) requires an app
+	     to support all four orientations; declaring it requires the full screen
+	     opts out of multitasking so portrait-only is allowed. Without this the
+	     App Store rejects the upload for iPad orientation coverage. -->
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<!-- Supabase sends OAuth and password-reset callbacks to this scheme; see

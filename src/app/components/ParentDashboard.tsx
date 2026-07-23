@@ -1,14 +1,14 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, AlertTriangle, Check, Receipt, Sparkles } from 'lucide-react';
+import { Euro, Moon, AlertTriangle, Check, Receipt, Sparkles, ArrowLeft } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
 import ChildSwitcher from './ChildSwitcher';
 import { notify } from './ui/feedback';
-import { isAppLayout, isNative } from '../../lib/native';
+import { isAppLayout } from '../../lib/native';
 import { logAction } from '../../lib/deviceLog';
 import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
@@ -23,23 +23,13 @@ import {
   type MobileNavItem,
 } from './mobile/navPrefs';
 
-// Elif-Ba is not a screen in this app any more: it is the game on the website,
-// and it is kept in one place so a fix to it lands for everyone at once
-// instead of only for whoever updated their app. The nav entry stays — parents
-// look for it there — but it hands off to the site rather than rendering a
-// second, drifting copy in a webview tab.
+// The app carries the Elif-Ba game itself — it is built to work offline and is
+// the reason a child opens the app at all, so it renders in a full-bleed
+// destination below (the `app && activeTab === 'alifba'` branch). The website,
+// by contrast, has its own dedicated Elif-Ba page, so on the web the same nav
+// entry links there instead of embedding a second copy.
+const ElifBaPage = lazy(() => import('./ElifBaPage'));
 const ELIF_BA_URL = 'https://rahmanegitim.com/elif-ba';
-
-async function openElifBa() {
-  if (isNative()) {
-    // In-app browser rather than an app switch: the child comes back to the
-    // dashboard with a swipe, and the parent's session is never interrupted.
-    const { Browser } = await import('@capacitor/browser');
-    await Browser.open({ url: ELIF_BA_URL });
-    return;
-  }
-  window.open(ELIF_BA_URL, '_blank', 'noopener');
-}
 
 interface Student {
   id: string;
@@ -113,13 +103,17 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [deadlinePassed, setDeadlinePassed] = useState(false);
   const app = isAppLayout();
 
+  // Elif-Ba takes over the screen once a child presses Start — see the alifba
+  // branch below. false until ElifBaPage reports it's back on its start screen.
+  const [elifbaAtHome, setElifbaAtHome] = useState(true);
+  const [elifbaGoHome, setElifbaGoHome] = useState(0);
   // In the app layout the bottom tab bar adds Elif-Ba and Preferences as
   // top-level destinations; on the web only the overview/billing split exists.
   // MOBILE_ACCOUNT_ID stays a valid tab (the avatar navigates to it) even
   // though it no longer appears on the bar.
   const [activeTab, setActiveTab] = useHashTab<string>(
     'overview',
-    ['overview', 'billing', 'oudergesprekken', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['overview', 'billing', 'oudergesprekken', 'alifba', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   // MOBILE_ACCOUNT_ID is deliberately absent: account is reached from the
   // avatar in the top-right corner, not from the tab bar.
@@ -442,12 +436,12 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const orderedIds = navOrder.filter((id) => byId[id]);
   const navItems = orderedIds.map((id) => byId[id]);
 
-  // Elif-Ba never becomes the active tab — picking it opens the website and
-  // leaves the user standing where they were, so there is no empty screen to
-  // come back from.
+  // On the website the Elif-Ba entry hands off to the site's own Elif-Ba page
+  // rather than becoming a tab; in the app it *is* a tab, rendered by the
+  // full-screen branch below, so there it selects normally.
   const selectTab = (id: string) => {
-    if (id === 'alifba') {
-      openElifBa();
+    if (id === 'alifba' && !app) {
+      window.open(ELIF_BA_URL, '_blank', 'noopener');
       return;
     }
     setActiveTab(id);
@@ -462,6 +456,50 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       floating={floating}
     />
   );
+
+  // App layout: Elif-Ba is a full-bleed destination with its own dark theme,
+  // rendered edge-to-edge above the bottom tab bar rather than inside the
+  // padded gray dashboard shell.
+  //
+  // Once the child presses Start, the tab bar goes away entirely: the games are
+  // played with a finger near the bottom of the screen, and a live tab bar
+  // there means every mis-swipe drops them out of a game. A back button in the
+  // top corner — out of the play area — returns them to the Elif-Ba start
+  // screen, where the bar comes back.
+  if (app && activeTab === 'alifba') {
+    return (
+      // safe-top: `fixed inset-0` opts out of the safe-area padding #root
+      // carries, so on iOS this view has to add the status-bar gap itself.
+      <div className="safe-top fixed inset-0 flex flex-col bg-slate-700">
+        {!elifbaAtHome && (
+          <button
+            type="button"
+            onClick={() => setElifbaGoHome((n) => n + 1)}
+            aria-label={language === 'tr' ? 'Geri' : 'Terug'}
+            className="absolute right-3 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur transition active:scale-90"
+            style={{ top: 'calc(var(--safe-top) + 0.75rem)' }}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        )}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <Suspense
+            fallback={
+              <div className="flex size-full items-center justify-center">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+              </div>
+            }
+          >
+            <ElifBaPage
+              goHomeSignal={elifbaGoHome}
+              onAtHomeChange={setElifbaAtHome}
+            />
+          </Suspense>
+        </div>
+        {elifbaAtHome && mobileNav(false)}
+      </div>
+    );
+  }
 
   // App layout: Preferences is a tab-bar destination; Account is reached from
   // the avatar button, but renders here as the same kind of full-screen panel.
@@ -605,13 +643,15 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             >
               {language === 'tr' ? 'Ödemeler' : 'Facturatie'}
             </button>
-            <button
-              onClick={() => openElifBa()}
+            <a
+              href={ELIF_BA_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1.5"
             >
               <Sparkles className="h-3.5 w-3.5" />
               Elif-Ba
-            </button>
+            </a>
           </div>
         )}
 

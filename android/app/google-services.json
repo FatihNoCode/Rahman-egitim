@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "230368252884",
+    "project_id": "rahman-egitim-24259",
+    "storage_bucket": "rahman-egitim-24259.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:230368252884:android:3a927bca58511305be3c41",
+        "android_client_info": {
+          "package_name": "com.rahmanegitim.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHDpg34jwRmcIhuvZ6Z52hMbTthvnvNLM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

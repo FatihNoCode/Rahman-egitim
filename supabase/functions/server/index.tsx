@@ -88,6 +88,24 @@ const PENDING_EXEMPT_EXACT = [
   '/make-server-6679cacd/me',
 ];
 
+// Org-wide superadmin management surfaces (regions, locations, the school
+// catalog, MFA policy, and the demo-tester portal itself) that a demo tester
+// should never be able to reach, even if some route's own role check were
+// ever missing or buggy. Every one of these is verified superadmin-only with
+// no admin/teacher/parent branch — unlike e.g. /users, which admins
+// legitimately use for their own (demo) school and which already scopes
+// itself off the caller's own schoolId. This is a second line of defence on
+// top of that per-route ownership scoping, not a replacement for it.
+const DEMO_TESTER_BLOCKED_PREFIXES = [
+  '/make-server-6679cacd/regional-admins',
+  '/make-server-6679cacd/local-admin-proposals',
+  '/make-server-6679cacd/locations',
+  '/make-server-6679cacd/schools',
+  '/make-server-6679cacd/mfa-policy',
+  '/make-server-6679cacd/demo-testers',
+  '/make-server-6679cacd/migrate/',
+];
+
 app.use('/*', async (c, next) => {
   const path = new URL(c.req.url).pathname;
   if (PENDING_EXEMPT_EXACT.includes(path)) return next();
@@ -104,6 +122,11 @@ app.use('/*', async (c, next) => {
   if (!user) return next();
 
   const userData = await getUserData(user.id);
+
+  if (userData?.isDemoTester && DEMO_TESTER_BLOCKED_PREFIXES.some((p) => path.startsWith(p))) {
+    return c.json({ error: 'Not available for demo accounts' }, 403);
+  }
+
   // Accounts predating the approval flow have no `status` and are approved.
   if (userData?.status === 'pending') {
     return c.json({ error: 'ACCOUNT_PENDING' }, 403);
@@ -1165,84 +1188,287 @@ app.get("/make-server-6679cacd/session", async (c) => {
   }
 });
 
-// ============= DEMO ROLE SWITCHING =============
+// ============= MULTI-ROLE SWITCHING =============
 //
-// A convenience for the demo/showcase environment only: the master demo
-// account can hop between the pre-seeded per-role accounts without signing out
-// and back in. It is deliberately narrow — it will only ever mint a session for
-// one of the fixed demo emails below, and only when the caller is authenticated
-// as IMPERSONATION_MASTER. Nothing here can target an arbitrary account, so it
-// is not a general impersonation backdoor.
-//
-// The session is minted the honest way: an admin-generated magic link for the
-// target account, immediately exchanged for real tokens via verifyOtp. That
-// keeps every downstream permission check correct (the client ends up holding a
-// genuine session for the target user) and means no demo password is ever
-// embedded in the shipped app.
-const IMPERSONATION_TARGETS: Record<string, string> = {
-  superadmin: 'onderwijs.rahman@gmail.com',
-  regional_admin: 'onderwijs.rahman+1@gmail.com',
-  admin: 'onderwijs.rahman+2@gmail.com',
-  teacher: 'onderwijs.rahman+3@gmail.com',
-  parent: 'onderwijs.rahman+4@gmail.com',
-};
-// The closed set of demo accounts allowed to use this. Because it is closed and
-// every target is also a member, a caller can hop back and forth between roles
-// (e.g. after switching to the parent account, switch back to superadmin)
-// without ever being able to touch an account outside this family.
-const IMPERSONATION_FAMILY = new Set(Object.values(IMPERSONATION_TARGETS).map((e) => e.toLowerCase()));
+// Any account can be given more than one role — `roles` on the KV user
+// record — and hop between them without signing out. `role` is always the
+// single "currently active" one every other route already checks; switching
+// just rewrites it (and the flat schoolId/classId/region fields, from that
+// role's stored roleContext) on the same account. No new session is minted —
+// it's the same account, same tokens, just a different active role.
+function roleContextFor(role: string, roleContext: Record<string, any> | undefined) {
+  return (roleContext && roleContext[role]) || {};
+}
 
-app.post("/make-server-6679cacd/impersonate", async (c) => {
+function applyActiveRole(userData: any, role: string) {
+  const ctx = roleContextFor(role, userData.roleContext);
+  return {
+    ...userData,
+    role,
+    schoolId: 'schoolId' in ctx ? ctx.schoolId : userData.schoolId,
+    classId: 'classId' in ctx ? ctx.classId : userData.classId,
+    region: 'region' in ctx ? ctx.region : userData.region,
+  };
+}
+
+app.post("/make-server-6679cacd/switch-role", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error || !user) return c.json({ error: 'Unauthorized' }, 401);
 
-    // Gate hard on the concrete demo emails, not on role — the whole point is
-    // that this only ever works within the fixed demo family.
-    if (!IMPERSONATION_FAMILY.has((user.email || '').toLowerCase())) {
-      return c.json({ error: 'Not available for this account' }, 403);
-    }
+    const userData = await getUserData(user.id);
+    if (!userData) return c.json({ error: 'User not found' }, 404);
 
     const { role } = await c.req.json().catch(() => ({ role: undefined }));
-    const targetEmail = IMPERSONATION_TARGETS[role as string];
-    if (!targetEmail) return c.json({ error: 'Unknown role' }, 400);
+    const roles: string[] = Array.isArray(userData.roles) && userData.roles.length > 0 ? userData.roles : [userData.role];
+    if (!role || !roles.includes(role)) {
+      return c.json({ error: 'Role not assigned to this account' }, 403);
+    }
+
+    const updated = applyActiveRole(userData, role);
+    await kv.set(`user:${user.id}`, updated);
+
+    return c.json({ user: { ...updated, id: user.id, mfaRequired: await mfaRequiredForRole(updated) } });
+  } catch (err) {
+    console.log('Switch role error:', err);
+    return c.json({ error: 'Failed to switch role' }, 500);
+  }
+});
+
+// ============= DEMO TESTERS =============
+//
+// Lets a superadmin hand any email address a throwaway account for testing,
+// with one or more of parent/teacher/admin, without exposing any real
+// school's data. Every tester is pinned to the single seeded demo school
+// (DEMO_SCHOOL_ID, "Darul Furkan (Demo)") regardless of role — the same
+// ownership checks every other admin/teacher/parent route already enforces
+// (schoolId / class / child ownership, keyed off the caller's own record, not
+// anything client-supplied) then keep them contained to it, the same way they
+// contain any other admin/teacher/parent to their own school. The
+// DEMO_TESTER_BLOCKED_PREFIXES check above is the second line of defence.
+const DEMO_SCHOOL_ID = '75c1a8c0-9368-474f-ba32-2fa1994da5d7'; // "Darul Furkan (Demo)"
+const DEMO_CHILD_STUDENT_ID = '24df7ee9-7c6f-497c-abe1-f084515abaa1'; // "Ömer Demir", already seeded there
+const DEMO_TEACHER_CLASS_ID = '36ab7b8f-515e-453b-8863-5262feb2c4f7'; // "Darul Furkan Erkek"
+
+const PORTAL_ROLES = ['parent', 'teacher', 'admin'] as const;
+type PortalRole = typeof PORTAL_ROLES[number];
+function isPortalRole(v: unknown): v is PortalRole {
+  return v === 'parent' || v === 'teacher' || v === 'admin';
+}
+
+function buildDemoRoleContext(roles: PortalRole[]) {
+  const ctx: Record<string, any> = {};
+  if (roles.includes('admin')) ctx.admin = { schoolId: DEMO_SCHOOL_ID };
+  if (roles.includes('teacher')) ctx.teacher = { schoolId: DEMO_SCHOOL_ID, classId: DEMO_TEACHER_CLASS_ID };
+  if (roles.includes('parent')) ctx.parent = { schoolId: DEMO_SCHOOL_ID };
+  return ctx;
+}
+
+// Adds the tester to the shared demo class's roster alongside the existing
+// demo teacher, rather than creating a class per tester — it's synthetic
+// data, sharing it is fine.
+async function ensureTesterTeacherClass(testerId: string) {
+  const classIds: string[] = await kv.get(`teacher_classes:${testerId}`) || [];
+  if (!classIds.includes(DEMO_TEACHER_CLASS_ID)) {
+    await kv.set(`teacher_classes:${testerId}`, [...classIds, DEMO_TEACHER_CLASS_ID]);
+  }
+}
+
+async function ensureTesterParentChild(testerId: string) {
+  const existing = await kv.get(`parent_children:${testerId}`);
+  if (!existing || existing.length === 0) {
+    await kv.set(`parent_children:${testerId}`, [DEMO_CHILD_STUDENT_ID]);
+  }
+}
+
+app.post("/make-server-6679cacd/demo-testers", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error || !user) return c.json({ error: 'Unauthorized' }, 401);
+    const requester = await getUserData(user.id);
+    if (requester?.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmins can manage demo testers' }, 403);
+    }
+
+    const { email: rawEmail, roles: rawRoles } = await c.req.json();
+    const email = String(rawEmail || '').trim().toLowerCase();
+    if (!email) return c.json({ error: 'email is required' }, 400);
+    const roles = Array.isArray(rawRoles) ? rawRoles.filter(isPortalRole) : [];
+    if (roles.length === 0) return c.json({ error: 'At least one role (parent, teacher, admin) is required' }, 400);
 
     const admin = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    const allUsers = await kv.getByPrefix('user:');
+    const existing = allUsers.find((u: any) => u && u.email === email);
+    if (existing && !existing.isDemoTester) {
+      return c.json({ error: 'This email already has a real account' }, 400);
+    }
+
+    let userId: string;
+    if (existing) {
+      userId = existing.id;
+    } else {
+      const { data, error: createError } = await admin.auth.admin.createUser({
+        email,
+        email_confirm: true,
+      });
+      if (createError || !data?.user) {
+        console.log('Create demo tester error:', createError);
+        return c.json({ error: createError?.message || 'Could not create account' }, 400);
+      }
+      userId = data.user.id;
+    }
+
+    const roleContext = buildDemoRoleContext(roles as PortalRole[]);
+    const activeRole = roles[0];
+    const ctx = roleContext[activeRole] || {};
+    const record = {
+      ...(existing || {}),
+      id: userId,
+      email,
+      name: existing?.name || email.split('@')[0],
+      role: activeRole,
+      roles,
+      roleContext,
+      schoolId: ctx.schoolId,
+      classId: ctx.classId,
+      isDemoTester: true,
+      mfaExempt: true,
+      status: 'approved',
+      hasAccount: true,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`user:${userId}`, record);
+
+    if (roles.includes('teacher')) await ensureTesterTeacherClass(userId);
+    if (roles.includes('parent')) await ensureTesterParentChild(userId);
+
     const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
       type: 'magiclink',
-      email: targetEmail,
+      email,
     });
-    const tokenHash = (linkData as any)?.properties?.hashed_token;
-    if (linkErr || !tokenHash) {
-      console.log('Impersonate generateLink error:', linkErr);
-      return c.json({ error: 'Could not start test session' }, 500);
+    const actionLink = (linkData as any)?.properties?.action_link;
+    if (linkErr || !actionLink) {
+      console.log('Demo tester generateLink error:', linkErr);
+    } else {
+      const roleLabels = roles.join(', ');
+      await sendEmail(
+        email,
+        'Toegang tot de testomgeving | Test ortamına erişim - Rahman Eğitim',
+        emailWrapper('Testomgeving', `
+          <p style="color:#374151;line-height:1.6">Hallo,</p>
+          <p style="color:#374151;line-height:1.6">U bent uitgenodigd om de Rahman Eğitim-app te testen met de volgende rol(len): <strong>${escapeHtml(roleLabels)}</strong>.</p>
+          <p style="color:#374151;line-height:1.6">Dit is een afgeschermde testomgeving met verzonnen gegevens — u heeft geen toegang tot echte scholen of leerlingen.</p>
+          <p style="margin:20px 0"><a href="${actionLink}" style="background:#059669;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Inloggen</a></p>
+          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+          <p style="color:#374151;line-height:1.6">Merhaba,</p>
+          <p style="color:#374151;line-height:1.6">Rahman Eğitim uygulamasını şu rol(ler)le test etmeye davet edildiniz: <strong>${escapeHtml(roleLabels)}</strong>.</p>
+          <p style="color:#374151;line-height:1.6">Bu, uydurma verilerle çalışan izole bir test ortamıdır — gerçek okul veya öğrenci verilerine erişiminiz yoktur.</p>
+          <p style="margin:20px 0"><a href="${actionLink}" style="background:#059669;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Giriş yap</a></p>
+        `),
+      );
     }
 
-    const anon = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-    );
-    const { data: sessionData, error: verifyErr } = await anon.auth.verifyOtp({
-      type: 'magiclink',
-      token_hash: tokenHash,
-    });
-    if (verifyErr || !sessionData?.session || !sessionData.user) {
-      console.log('Impersonate verifyOtp error:', verifyErr);
-      return c.json({ error: 'Could not start test session' }, 500);
-    }
-
-    const targetData = await getUserData(sessionData.user.id);
-    return c.json({
-      accessToken: sessionData.session.access_token,
-      refreshToken: sessionData.session.refresh_token,
-      user: { ...targetData, id: sessionData.user.id, mfaRequired: await mfaRequiredForRole(targetData) },
-    });
+    return c.json({ success: true, tester: { id: userId, email, roles } });
   } catch (err) {
-    console.log('Impersonate error:', err);
-    return c.json({ error: 'Failed to switch role' }, 500);
+    console.log('Create demo tester error:', err);
+    return c.json({ error: 'Failed to create demo tester' }, 500);
+  }
+});
+
+app.get("/make-server-6679cacd/demo-testers", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error || !user) return c.json({ error: 'Unauthorized' }, 401);
+    const requester = await getUserData(user.id);
+    if (requester?.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmins can list demo testers' }, 403);
+    }
+
+    const allUsers = await kv.getByPrefix('user:');
+    const testers = allUsers
+      .filter((u: any) => u && u.isDemoTester)
+      .map((u: any) => ({ id: u.id, email: u.email, roles: u.roles || [u.role], createdAt: u.createdAt }));
+
+    return c.json({ testers });
+  } catch (err) {
+    console.log('List demo testers error:', err);
+    return c.json({ error: 'Failed to list demo testers' }, 500);
+  }
+});
+
+app.patch("/make-server-6679cacd/demo-testers/:id", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error || !user) return c.json({ error: 'Unauthorized' }, 401);
+    const requester = await getUserData(user.id);
+    if (requester?.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmins can manage demo testers' }, 403);
+    }
+
+    const id = c.req.param('id');
+    const existing = await getUserData(id);
+    if (!existing?.isDemoTester) return c.json({ error: 'Not a demo tester' }, 404);
+
+    const { roles: rawRoles } = await c.req.json();
+    const roles = Array.isArray(rawRoles) ? rawRoles.filter(isPortalRole) : [];
+    if (roles.length === 0) return c.json({ error: 'At least one role is required' }, 400);
+
+    const roleContext = buildDemoRoleContext(roles as PortalRole[]);
+    const activeRole = roles.includes(existing.role) ? existing.role : roles[0];
+    const ctx = roleContext[activeRole] || {};
+    const updated = {
+      ...existing,
+      roles,
+      roleContext,
+      role: activeRole,
+      schoolId: ctx.schoolId,
+      classId: ctx.classId,
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`user:${id}`, updated);
+
+    if (roles.includes('teacher')) await ensureTesterTeacherClass(id);
+    if (roles.includes('parent')) await ensureTesterParentChild(id);
+
+    return c.json({ success: true, tester: { id, email: updated.email, roles } });
+  } catch (err) {
+    console.log('Update demo tester error:', err);
+    return c.json({ error: 'Failed to update demo tester' }, 500);
+  }
+});
+
+app.delete("/make-server-6679cacd/demo-testers/:id", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error || !user) return c.json({ error: 'Unauthorized' }, 401);
+    const requester = await getUserData(user.id);
+    if (requester?.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmins can manage demo testers' }, 403);
+    }
+
+    const id = c.req.param('id');
+    const existing = await getUserData(id);
+    if (!existing?.isDemoTester) return c.json({ error: 'Not a demo tester' }, 404);
+
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+    await admin.auth.admin.deleteUser(id).catch((err: unknown) => console.log('Delete demo tester auth user error:', err));
+    await kv.del(`user:${id}`);
+    await kv.del(`teacher_classes:${id}`);
+    await kv.del(`parent_children:${id}`);
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Remove demo tester error:', err);
+    return c.json({ error: 'Failed to remove demo tester' }, 500);
   }
 });
 

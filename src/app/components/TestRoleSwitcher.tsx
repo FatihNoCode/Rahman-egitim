@@ -3,20 +3,22 @@ import { FlaskConical, Check, Loader2, ShieldCheck, Map, Building2, GraduationCa
 import { useApp, type TestRole, type Language } from '../App';
 import { notify } from './ui/feedback';
 
-// Demo-only control: lets the pre-seeded demo accounts hop between roles without
-// signing out and back in. Rendered on both the mobile settings screen and the
-// web account menu, so it lives in one place and is styled to sit inside a card.
+// Lets an account with more than one assigned role (your own account, or a
+// Demo Portal tester) hop between them without signing out. Rendered on both
+// the mobile settings screen and the web account menu, so it lives in one
+// place and is styled to sit inside a card.
 //
-// Visibility is the caller's responsibility (gate on isDemoFamily(user.email))
-// — this component assumes it should be shown.
+// Visibility is the caller's responsibility (gate on user.roles.length > 1)
+// — this component assumes it should be shown, and renders whichever of
+// user.roles it was actually given rather than a fixed list.
 
-const ROLES: { role: TestRole; icon: typeof ShieldCheck; nl: string; tr: string; hint: string }[] = [
-  { role: 'superadmin', icon: ShieldCheck, nl: 'Superadmin', tr: 'Süper yönetici', hint: 'onderwijs.rahman' },
-  { role: 'regional_admin', icon: Map, nl: 'Regio-beheerder', tr: 'Bölge yöneticisi', hint: '+1 · noord' },
-  { role: 'admin', icon: Building2, nl: 'Lokale beheerder', tr: 'Yerel yönetici', hint: '+2 · Darul Furkan' },
-  { role: 'teacher', icon: GraduationCap, nl: 'Leraar', tr: 'Öğretmen', hint: '+3 · Darul Furkan Erkek' },
-  { role: 'parent', icon: Users, nl: 'Ouder / leerling', tr: 'Veli / öğrenci', hint: '+4' },
-];
+const ROLE_LABELS: Record<TestRole, { icon: typeof ShieldCheck; nl: string; tr: string }> = {
+  superadmin: { icon: ShieldCheck, nl: 'Superadmin', tr: 'Süper yönetici' },
+  regional_admin: { icon: Map, nl: 'Regio-beheerder', tr: 'Bölge yöneticisi' },
+  admin: { icon: Building2, nl: 'Lokale beheerder', tr: 'Yerel yönetici' },
+  teacher: { icon: GraduationCap, nl: 'Leraar', tr: 'Öğretmen' },
+  parent: { icon: Users, nl: 'Ouder / leerling', tr: 'Veli / öğrenci' },
+};
 
 const T = {
   nl: {
@@ -40,6 +42,7 @@ export default function TestRoleSwitcher({ language }: { language: Language }) {
 
   // Which role is live now — used to mark the current row and disable it.
   const current = user?.role as TestRole | undefined;
+  const roles = (user?.roles?.length ? user.roles : current ? [current] : []) as TestRole[];
 
   const pick = async (role: TestRole) => {
     if (busy || role === current || !switchTestRole) return;
@@ -63,7 +66,8 @@ export default function TestRoleSwitcher({ language }: { language: Language }) {
         </div>
       </div>
       <div className="px-2 pb-2">
-        {ROLES.map(({ role, icon: Icon, hint, ...labels }) => {
+        {roles.map((role) => {
+          const { icon: Icon, ...labels } = ROLE_LABELS[role];
           const isCurrent = role === current;
           const isBusy = busy === role;
           return (
@@ -86,7 +90,6 @@ export default function TestRoleSwitcher({ language }: { language: Language }) {
                 <span className={`block truncate text-sm font-medium ${isCurrent ? 'text-emerald-800' : 'text-gray-700'}`}>
                   {labels[language]}
                 </span>
-                <span className="block truncate text-[11px] text-gray-400">{hint}</span>
               </span>
               {isBusy ? (
                 <Loader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-600" />

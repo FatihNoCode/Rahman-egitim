@@ -50,6 +50,12 @@ interface User {
   name: string;
   phone?: string;
   role: 'parent' | 'teacher' | 'admin' | 'superadmin' | 'regional_admin';
+  // Every role this account may act as. Absent or single-entry for a regular
+  // account; more than one entry is what makes the role switcher (see
+  // TestRoleSwitcher) appear — used by your own account and by demo testers
+  // created through the Demo Portal.
+  roles?: User['role'][];
+  isDemoTester?: boolean;
   status?: 'pending' | 'approved';
   lastCheckIn?: string;
   signature?: string | null;
@@ -62,23 +68,8 @@ interface User {
   mfaSetupRequired?: boolean;
 }
 
-// Roles the demo master account can hop to for testing, without signing out.
+// Roles an account with more than one assigned role can hop between.
 export type TestRole = 'superadmin' | 'regional_admin' | 'admin' | 'teacher' | 'parent';
-
-// The demo accounts allowed to switch roles from the settings screen. Kept in
-// sync with IMPERSONATION_TARGETS in the server function. Any of them may hop
-// to any other, so the switcher stays available after you assume a role.
-export const DEMO_MASTER_EMAIL = 'onderwijs.rahman@gmail.com';
-const DEMO_FAMILY_EMAILS = new Set([
-  'onderwijs.rahman@gmail.com',
-  'onderwijs.rahman+1@gmail.com',
-  'onderwijs.rahman+2@gmail.com',
-  'onderwijs.rahman+3@gmail.com',
-  'onderwijs.rahman+4@gmail.com',
-]);
-export function isDemoFamily(email?: string | null) {
-  return !!email && DEMO_FAMILY_EMAILS.has(email.toLowerCase());
-}
 
 interface AppContextType {
   language: Language;
@@ -87,8 +78,8 @@ interface AppContextType {
   setUser: (user: User | null) => void;
   accessToken: string | null;
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
-  // Demo-only: swap the live session for one of the pre-seeded per-role demo
-  // accounts. Available only when signed in as DEMO_MASTER_EMAIL.
+  // Switch the active role on an account with more than one assigned role
+  // (see User.roles) — your own account, or a Demo Portal tester.
   switchTestRole?: (role: TestRole) => Promise<void>;
 }
 
@@ -477,25 +468,20 @@ export default function App() {
     }
   };
 
-  // Demo-only role hop. Asks the server for a real session belonging to the
-  // pre-seeded account for `role`, installs it, and resets the superadmin-only
-  // acting-school state so the freshly assumed role starts from a clean slate.
+  // Switches the active role on the *same* account/session — for accounts
+  // with more than one assigned role (see User.roles): your own account, or
+  // a Demo Portal tester. No new tokens are minted; the server just flips
+  // which role is active and returns the updated profile.
   const switchTestRole = useCallback(async (role: TestRole) => {
-    const data = await apiRequest('/impersonate', {
+    const data = await apiRequest('/switch-role', {
       method: 'POST',
       body: JSON.stringify({ role }),
     });
-    if (data.accessToken && data.refreshToken) {
-      await supabase.auth.setSession({
-        access_token: data.accessToken,
-        refresh_token: data.refreshToken,
-      });
-      markSessionStart();
-      setAccessToken(data.accessToken);
+    if (data.user) {
       setActingSchoolId(null);
       setViewMode('superadmin');
       setMfaChallenge(false);
-      rememberRole(data.user?.role);
+      rememberRole(data.user.role);
       setUser(data.user);
     }
   }, [apiRequest]);

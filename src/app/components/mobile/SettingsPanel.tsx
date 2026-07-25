@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Globe, PlayCircle, Shield, Info, ChevronRight, ChevronDown, GripVertical, LayoutGrid, Lock, LifeBuoy, Share2, Copy, Trash2 } from 'lucide-react';
-import { useApp, isDemoFamily } from '../../App';
+import { useApp } from '../../App';
 import TestRoleSwitcher from '../TestRoleSwitcher';
 import { type MobileNavItem, VISIBLE_SLOTS } from './navPrefs';
 import { selectionStart, selectionChanged, selectionEnd } from '../../../lib/haptics';
@@ -172,7 +172,7 @@ function DeviceLogCard({ text }: { text: (typeof T)['nl'] }) {
 export default function SettingsPanel({ onShowDemo, navItems, onReorder }: SettingsPanelProps) {
   const { language, setLanguage, user } = useApp();
   const text = T[language];
-  const showTestRoles = isDemoFamily(user?.email);
+  const showTestRoles = (user?.roles?.length ?? 0) > 1;
 
   // Collapsed until asked for. Reordering the tab bar is a once-in-a-while
   // thing, and unfolded by default it dominated a screen whose main job is

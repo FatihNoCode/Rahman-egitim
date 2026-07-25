@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { useApp, isDemoFamily } from '../App';
+import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
 import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2, BarChart3, GraduationCap, BookOpen, CalendarCheck, Send } from 'lucide-react';
@@ -44,6 +44,15 @@ interface RegionalAdminRecord {
   name: string | null;
   phone: string | null;
   region: 'north' | 'south';
+  createdAt: string;
+}
+
+type PortalRole = 'parent' | 'teacher' | 'admin';
+
+interface DemoTesterRecord {
+  id: string;
+  email: string;
+  roles: PortalRole[];
   createdAt: string;
 }
 
@@ -164,6 +173,20 @@ const rt = {
     school: 'School',
     location: 'Vestiging',
     noSchools: 'Nog geen scholen',
+    demoTestersTab: 'Demo testers',
+    demoTestersTitle: 'Demo testers',
+    demoTestersHint: 'Voeg een e-mailadres toe en kies rollen — die persoon krijgt een inlogmail en test in een afgeschermde omgeving, zonder toegang tot echte scholen of leerlingen.',
+    newDemoTester: 'Nieuwe test-account',
+    roleParent: 'Ouder',
+    roleTeacher: 'Leraar',
+    roleAdmin: 'Lokale beheerder',
+    addTester: 'Toevoegen',
+    noDemoTesters: 'Nog geen test-accounts',
+    testerAdded: 'Test-account toegevoegd, inlogmail verstuurd',
+    testerAddFailed: 'Kon test-account niet toevoegen',
+    testerRemoveFailed: 'Kon toegang niet intrekken',
+    confirmRemoveTester: 'Toegang van dit test-account intrekken?',
+    revokeAccess: 'Toegang intrekken',
   },
   tr: {
     regionalTab: 'Bölge yöneticileri',
@@ -214,6 +237,20 @@ const rt = {
     school: 'Okul',
     location: 'Şube',
     noSchools: 'Henüz okul yok',
+    demoTestersTab: 'Demo test hesapları',
+    demoTestersTitle: 'Demo test hesapları',
+    demoTestersHint: 'Bir e-posta adresi ekleyin ve rol(ler) seçin — o kişi bir giriş e-postası alır ve gerçek okul veya öğrenci verilerine erişimi olmayan izole bir ortamda test eder.',
+    newDemoTester: 'Yeni test hesabı',
+    roleParent: 'Veli',
+    roleTeacher: 'Öğretmen',
+    roleAdmin: 'Yerel yönetici',
+    addTester: 'Ekle',
+    noDemoTesters: 'Henüz test hesabı yok',
+    testerAdded: 'Test hesabı eklendi, giriş e-postası gönderildi',
+    testerAddFailed: 'Test hesabı eklenemedi',
+    testerRemoveFailed: 'Erişim iptal edilemedi',
+    confirmRemoveTester: 'Bu test hesabının erişimi iptal edilsin mi?',
+    revokeAccess: 'Erişimi iptal et',
   },
 };
 
@@ -286,11 +323,69 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   const [mfaPolicy, setMfaPolicy] = useState<{ admin: boolean; regional_admin: boolean } | null>(null);
   const [savingMfaPolicyRole, setSavingMfaPolicyRole] = useState<'admin' | 'regional_admin' | null>(null);
 
+  const [demoTesters, setDemoTesters] = useState<DemoTesterRecord[]>([]);
+  const [loadingDemoTesters, setLoadingDemoTesters] = useState(false);
+  const [newTesterEmail, setNewTesterEmail] = useState('');
+  const [newTesterRoles, setNewTesterRoles] = useState<PortalRole[]>([]);
+  const [creatingTester, setCreatingTester] = useState(false);
+  const [removingTesterId, setRemovingTesterId] = useState<string | null>(null);
+
   useEffect(() => {
     loadData();
     loadRegionalData();
     loadMfaPolicy();
+    loadDemoTesters();
   }, []);
+
+  const loadDemoTesters = async () => {
+    setLoadingDemoTesters(true);
+    try {
+      const data = await apiRequest('/demo-testers');
+      setDemoTesters(data.testers || []);
+    } catch (error) {
+      console.error('Error loading demo testers:', error);
+    } finally {
+      setLoadingDemoTesters(false);
+    }
+  };
+
+  const toggleNewTesterRole = (role: PortalRole) => {
+    setNewTesterRoles((current) =>
+      current.includes(role) ? current.filter((r) => r !== role) : [...current, role],
+    );
+  };
+
+  const createDemoTester = async () => {
+    if (!newTesterEmail.trim() || newTesterRoles.length === 0) return;
+    setCreatingTester(true);
+    try {
+      await apiRequest('/demo-testers', {
+        method: 'POST',
+        body: JSON.stringify({ email: newTesterEmail.trim(), roles: newTesterRoles }),
+      });
+      setNewTesterEmail('');
+      setNewTesterRoles([]);
+      notify.success(rtx.testerAdded);
+      await loadDemoTesters();
+    } catch (error: any) {
+      notify.error(error.message || rtx.testerAddFailed);
+    } finally {
+      setCreatingTester(false);
+    }
+  };
+
+  const removeDemoTester = async (id: string) => {
+    if (!(await confirmDialog({ description: rtx.confirmRemoveTester, destructive: true }))) return;
+    setRemovingTesterId(id);
+    try {
+      await apiRequest(`/demo-testers/${id}`, { method: 'DELETE' });
+      await loadDemoTesters();
+    } catch (error: any) {
+      notify.error(error.message || rtx.testerRemoveFailed);
+    } finally {
+      setRemovingTesterId(null);
+    }
+  };
 
   const loadMfaPolicy = async () => {
     try {
@@ -540,9 +635,9 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
         )}
 
         {/* The dropdown version of this lives inside UserMenu, but on the native
-            shell it's been unreliable to reach, so demo accounts also get it
-            inline where a tap can't miss it. */}
-        {isNative() && isDemoFamily(user?.email) && (
+            shell it's been unreliable to reach, so multi-role accounts also
+            get it inline where a tap can't miss it. */}
+        {isNative() && (user?.roles?.length ?? 0) > 1 && (
           <div className="mb-4 sm:mb-6">
             <TestRoleSwitcher language={language} />
           </div>
@@ -856,6 +951,89 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                           {p.status === 'approved' ? rtx.approved : rtx.rejected}
                         </span>
                       )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-1">{rtx.demoTestersTitle}</h2>
+              <p className="text-xs text-gray-400 mb-4">{rtx.demoTestersHint}</p>
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-gray-700 mb-2">{rtx.newDemoTester}</p>
+                <div className="flex flex-col sm:flex-row gap-2 mb-2">
+                  <input
+                    type="email"
+                    value={newTesterEmail}
+                    onChange={(e) => setNewTesterEmail(e.target.value)}
+                    placeholder={rtx.email}
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    onClick={createDemoTester}
+                    disabled={creatingTester || !newTesterEmail.trim() || newTesterRoles.length === 0}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {rtx.addTester}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    ['parent', rtx.roleParent],
+                    ['teacher', rtx.roleTeacher],
+                    ['admin', rtx.roleAdmin],
+                  ] as [PortalRole, string][]).map(([role, label]) => (
+                    <label
+                      key={role}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer select-none transition ${
+                        newTesterRoles.includes(role)
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={newTesterRoles.includes(role)}
+                        onChange={() => toggleNewTesterRole(role)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {loadingDemoTesters ? (
+                <div className="text-center py-8 text-gray-400">
+                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                  {t.loading}
+                </div>
+              ) : demoTesters.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">{rtx.noDemoTesters}</div>
+              ) : (
+                <div className="space-y-2">
+                  {demoTesters.map((tester) => (
+                    <div key={tester.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100">
+                      <div>
+                        <p className="font-semibold text-gray-800 text-sm">{tester.email}</p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {tester.roles.map((role) => (
+                            <span key={role} className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                              {role === 'parent' ? rtx.roleParent : role === 'teacher' ? rtx.roleTeacher : rtx.roleAdmin}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => removeDemoTester(tester.id)}
+                        disabled={removingTesterId === tester.id}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-50"
+                        title={rtx.revokeAccess}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   ))}
                 </div>

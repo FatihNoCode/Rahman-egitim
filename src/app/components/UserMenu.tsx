@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, ShieldCheck, FlaskConical } from 'lucide-react';
-import { useApp, supabase, isDemoFamily } from '../App';
+import { useApp, supabase } from '../App';
 import TestRoleSwitcher from './TestRoleSwitcher';
 import { startTotpEnroll, confirmTotpEnroll } from '../../lib/mfaEnroll';
 import { notify, confirmDialog } from './ui/feedback';
@@ -135,7 +135,7 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
   const text = t[language];
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<'menu' | 'profile' | 'notifications' | 'delete' | 'security' | 'testrole'>('menu');
-  const showTestRoles = isDemoFamily(user?.email);
+  const showTestRoles = (user?.roles?.length ?? 0) > 1;
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');

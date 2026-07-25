@@ -211,6 +211,33 @@ function decodeAal(token: string): string {
   }
 }
 
+// Generates an 8-character password for a demo tester account — random,
+// with a guaranteed mix of upper/lower/digit/symbol so it always clears
+// validatePassword below, and it's emailed to the tester directly since this
+// is a throwaway demo account, not a real one: they log in with it as-is and
+// are never asked to change it.
+function generateTesterPassword(): string {
+  const randomFrom = (chars: string) => {
+    const idx = crypto.getRandomValues(new Uint32Array(1))[0] % chars.length;
+    return chars[idx];
+  };
+  // Ambiguous characters (0/O, 1/l/I) excluded so the password is easy to
+  // read and retype off an email.
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const symbols = '!@#$%&*';
+  const all = upper + lower + digits + symbols;
+  const chars = [randomFrom(upper), randomFrom(lower), randomFrom(digits), randomFrom(symbols)];
+  while (chars.length < 8) chars.push(randomFrom(all));
+  // Fisher-Yates, so the guaranteed-category characters aren't always first.
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
+}
+
 // Server-side password-strength gate. Applied to every endpoint that sets a
 // password (self-signup, admin reset, invite completion) so strength is
 // enforced regardless of what the client validates. Returns an error string
@@ -1307,12 +1334,25 @@ app.post("/make-server-6679cacd/demo-testers", async (c) => {
       return c.json({ error: 'This email already has a real account' }, 400);
     }
 
+    // Always issue a fresh password and email it — re-adding an existing
+    // tester (e.g. to change their roles) also serves as "resend my
+    // credentials" for someone who lost the original email. This is a
+    // throwaway demo account, so there's no self-service reset flow to
+    // point them at instead, and no need for them to change it afterwards.
+    const password = generateTesterPassword();
+
     let userId: string;
     if (existing) {
       userId = existing.id;
+      const { error: updateError } = await admin.auth.admin.updateUserById(userId, { password });
+      if (updateError) {
+        console.log('Reset demo tester password error:', updateError);
+        return c.json({ error: updateError.message || 'Could not update account' }, 400);
+      }
     } else {
       const { data, error: createError } = await admin.auth.admin.createUser({
         email,
+        password,
         email_confirm: true,
       });
       if (createError || !data?.user) {
@@ -1347,32 +1387,34 @@ app.post("/make-server-6679cacd/demo-testers", async (c) => {
     if (roles.includes('teacher')) await ensureTesterTeacherClass(userId);
     if (roles.includes('parent')) await ensureTesterParentChild(userId);
 
-    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
-      type: 'magiclink',
+    const ROLE_LABELS_NL: Record<PortalRole, string> = { parent: 'Ouder', teacher: 'Leraar', admin: 'Lokale beheerder' };
+    const ROLE_LABELS_TR: Record<PortalRole, string> = { parent: 'Veli', teacher: 'Öğretmen', admin: 'Yerel yönetici' };
+    const roleLabelsNl = roles.map((r: PortalRole) => ROLE_LABELS_NL[r]).join(', ');
+    const roleLabelsTr = roles.map((r: PortalRole) => ROLE_LABELS_TR[r]).join(', ');
+    await sendEmail(
       email,
-    });
-    const actionLink = (linkData as any)?.properties?.action_link;
-    if (linkErr || !actionLink) {
-      console.log('Demo tester generateLink error:', linkErr);
-    } else {
-      const roleLabels = roles.join(', ');
-      await sendEmail(
-        email,
-        'Toegang tot de testomgeving | Test ortamına erişim - Rahman Eğitim',
-        emailWrapper('Testomgeving', `
-          <p style="color:#374151;line-height:1.6">Hallo,</p>
-          <p style="color:#374151;line-height:1.6">U bent uitgenodigd om de Rahman Eğitim-app te testen met de volgende rol(len): <strong>${escapeHtml(roleLabels)}</strong>.</p>
-          <p style="color:#374151;line-height:1.6">Dit is een afgeschermde testomgeving met verzonnen gegevens — u heeft geen toegang tot echte scholen of leerlingen.</p>
-          <p style="margin:20px 0"><a href="${actionLink}" style="background:#059669;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Inloggen</a></p>
-          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-          <p style="color:#374151;line-height:1.6">Merhaba,</p>
-          <p style="color:#374151;line-height:1.6">Rahman Eğitim uygulamasını şu rol(ler)le test etmeye davet edildiniz: <strong>${escapeHtml(roleLabels)}</strong>.</p>
-          <p style="color:#374151;line-height:1.6">Bu, uydurma verilerle çalışan izole bir test ortamıdır — gerçek okul veya öğrenci verilerine erişiminiz yoktur.</p>
-          <p style="margin:20px 0"><a href="${actionLink}" style="background:#059669;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Giriş yap</a></p>
-        `),
-      );
-    }
+      'Uw testaccount | Test hesabınız - Rahman Eğitim',
+      emailWrapper('Testaccount', `
+        <p style="color:#374151;line-height:1.6">Hallo,</p>
+        <p style="color:#374151;line-height:1.6">U bent uitgenodigd om de Rahman Eğitim-app te testen met de volgende rol(len): <strong>${escapeHtml(roleLabelsNl)}</strong>.</p>
+        <p style="color:#374151;line-height:1.6">Dit is een afgeschermde testomgeving met verzonnen gegevens — u heeft geen toegang tot echte scholen of leerlingen.</p>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="color:#374151;margin:0 0 6px;line-height:1.6">E-mailadres: <strong>${escapeHtml(email)}</strong></p>
+          <p style="color:#374151;margin:0;line-height:1.6">Wachtwoord: <strong style="font-family:monospace;font-size:15px">${escapeHtml(password)}</strong></p>
+        </div>
+        <p style="color:#374151;line-height:1.6">U kunt direct inloggen met dit wachtwoord — u hoeft het niet te wijzigen, dit is een testomgeving.</p>
+        <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+        <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+        <p style="color:#374151;line-height:1.6">Merhaba,</p>
+        <p style="color:#374151;line-height:1.6">Rahman Eğitim uygulamasını şu rol(ler)le test etmeye davet edildiniz: <strong>${escapeHtml(roleLabelsTr)}</strong>.</p>
+        <p style="color:#374151;line-height:1.6">Bu, uydurma verilerle çalışan izole bir test ortamıdır — gerçek okul veya öğrenci verilerine erişiminiz yoktur.</p>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="color:#374151;margin:0 0 6px;line-height:1.6">E-posta: <strong>${escapeHtml(email)}</strong></p>
+          <p style="color:#374151;margin:0;line-height:1.6">Şifre: <strong style="font-family:monospace;font-size:15px">${escapeHtml(password)}</strong></p>
+        </div>
+        <p style="color:#374151;line-height:1.6">Bu şifreyle doğrudan giriş yapabilirsiniz — değiştirmenize gerek yok, bu bir test ortamıdır.</p>
+      `),
+    );
 
     return c.json({ success: true, tester: { id: userId, email, roles } });
   } catch (err) {

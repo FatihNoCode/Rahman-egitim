@@ -12,6 +12,7 @@ import {
   CalendarX,
   BookX,
   ClipboardList,
+  History,
   Smile,
 } from 'lucide-react';
 
@@ -78,6 +79,28 @@ interface ArchivedTask {
   link?: string;
   completedAt: string;
   completedByName?: string;
+}
+
+/**
+ * One thread of contact the school has kept about a student — see the outreach
+ * ladder on the server. The history is the part that matters here: it answers
+ * "have we already told this family?", which before this existed nobody could
+ * answer, so either everyone assumed someone had, or three people told them.
+ */
+interface OutreachEntry {
+  event: string;
+  at: string;
+  summaryNl: string;
+  summaryTr: string;
+}
+
+interface OutreachTrack {
+  id: string;
+  family: string;
+  stage: string;
+  openedAt: string;
+  resolvedAt?: string | null;
+  history: OutreachEntry[];
 }
 
 interface SignalsViewProps {
@@ -185,6 +208,8 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
         archive: 'Tamamlanan görevler',
         archiveEmpty: 'Henüz tamamlanan görev yok.',
         undo: 'Geri al',
+        contactHistory: 'Şimdiye kadar yapılanlar',
+        noContact: 'Bu öğrenci için henüz iletişim kaydı yok.',
         // Turkish takes no plural after a number, so one form covers both.
         students: (n: number) => `${n} öğrenci`,
         tasks: (n: number) => `${n} görev`,
@@ -206,6 +231,8 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
         archive: 'Afgeronde taken',
         archiveEmpty: 'Er is nog niets afgerond.',
         undo: 'Ongedaan maken',
+        contactHistory: 'Wat er tot nu toe is gedaan',
+        noContact: 'Er is voor deze leerling nog geen contact vastgelegd.',
         students: (n: number) => `${n} ${n === 1 ? 'leerling' : 'leerlingen'}`,
         tasks: (n: number) => `${n} ${n === 1 ? 'taak' : 'taken'}`,
       };
@@ -222,6 +249,10 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archive, setArchive] = useState<ArchivedTask[]>([]);
   const [archiveLoaded, setArchiveLoaded] = useState(false);
+  // Contact history per student, fetched the first time a card is opened
+  // rather than for the whole list up front — most cards are never expanded,
+  // and a school-sized list would otherwise be dozens of pointless requests.
+  const [outreach, setOutreach] = useState<Record<string, OutreachTrack[]>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -289,6 +320,17 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
     } finally {
       load();
     }
+  };
+
+  // Opening a student card is what asks for their contact history. A failed
+  // fetch stores an empty list: the card still opens and still shows the
+  // signals, which is the part that matters.
+  const expandStudent = (studentId: string | null) => {
+    setExpanded(studentId);
+    if (!studentId || outreach[studentId]) return;
+    apiRequest(`/outreach/student/${studentId}`)
+      .then((res) => setOutreach((prev) => ({ ...prev, [studentId]: res?.tracks || [] })))
+      .catch(() => setOutreach((prev) => ({ ...prev, [studentId]: [] })));
   };
 
   const toggleArchive = () => {
@@ -481,7 +523,7 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
                             return (
                               <div key={student.studentId}>
                                 <button
-                                  onClick={() => setExpanded(studentOpen ? null : student.studentId)}
+                                  onClick={() => expandStudent(studentOpen ? null : student.studentId)}
                                   className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 transition"
                                 >
                                   <div className="min-w-0">
@@ -509,6 +551,45 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
                                         </div>
                                       );
                                     })}
+
+                                    {/* What the school has already said, and to
+                                        whom. Without this the second person to
+                                        look at a child starts from nothing. */}
+                                    {outreach[student.studentId] && (
+                                      <div className="pt-3 mt-1 border-t border-gray-200">
+                                        <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                                          <History className="w-3.5 h-3.5" />
+                                          {text.contactHistory}
+                                        </p>
+                                        {outreach[student.studentId].length === 0 ? (
+                                          <p className="text-sm text-gray-400">{text.noContact}</p>
+                                        ) : (
+                                          <ol className="space-y-1.5">
+                                            {outreach[student.studentId]
+                                              .flatMap((track) =>
+                                                track.history.map((entry, i) => ({
+                                                  ...entry,
+                                                  key: `${track.id}:${i}`,
+                                                })),
+                                              )
+                                              .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+                                              .map((entry) => (
+                                                <li key={entry.key} className="flex items-baseline gap-2 text-sm">
+                                                  <span className="text-xs text-gray-400 shrink-0 tabular-nums">
+                                                    {new Date(entry.at).toLocaleDateString(tr ? 'tr-TR' : 'nl-NL', {
+                                                      day: 'numeric',
+                                                      month: 'short',
+                                                    })}
+                                                  </span>
+                                                  <span className="text-gray-600">
+                                                    {tr ? entry.summaryTr : entry.summaryNl}
+                                                  </span>
+                                                </li>
+                                              ))}
+                                          </ol>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>

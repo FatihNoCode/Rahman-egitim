@@ -1084,27 +1084,178 @@ export function buildAdminFeed(input: AdminFeedInput): FeedItem[] {
   return items.sort((a, b) => LEVEL_WEIGHT[b.level] - LEVEL_WEIGHT[a.level]);
 }
 
-/**
- * Compare a fresh signal set against the previously stored snapshot and return
- * only students whose situation genuinely got worse. The cron job notifies on
- * these, which is what stops a daily digest from becoming noise people mute.
- */
-export function diffSignals(
-  previous: Record<string, { level: Level; keys: string[] }> | null,
-  current: StudentSignals[],
-): StudentSignals[] {
-  if (!previous) return current.filter((s) => s.level === 'high');
-  return current.filter((s) => {
-    const before = previous[s.studentId];
-    if (!before) return s.level === 'high';
-    // Escalated in severity, or picked up a new kind of problem.
-    if (LEVEL_WEIGHT[s.level] > LEVEL_WEIGHT[before.level]) return true;
-    return s.signals.some((sig) => !before.keys.includes(sig.key)) && s.level === 'high';
-  });
+// ── 6. The parent's own worklist ────────────────────────────────────────────
+//
+// Every other role in this app has a list that says what is waiting on them.
+// A parent had nothing: they opened the app, looked at a calendar, and were
+// left to work out for themselves whether anything needed doing. Most of the
+// phone calls a school fields are the consequence — a form nobody knew was
+// open, a payment nobody knew was outstanding, a sick note nobody knew was
+// missing.
+//
+// So parents get the same treatment, with one difference: a parent's tasks
+// cannot be ticked off. Each one describes a thing only the parent can do, and
+// doing it makes the entry disappear on the next load. A checkbox next to
+// "your child was absent and we never heard why" would let it be dismissed
+// without ever being answered, which is precisely the outcome to avoid.
+
+export interface ParentFeedInput {
+  today: string;
+  /** This parent's children: { id, name, classId, className }. */
+  children: any[];
+  /** Attendance rows covering their classes. */
+  attendance: any[];
+  /** Sick notes already filed by this parent: { studentId, lessonDate }. */
+  notifications: any[];
+  /** Homework assigned to their classes/children. */
+  homework: any[];
+  /** Completion rows for their children. */
+  completions: any[];
+  /** Conference sessions at their school, today or later. */
+  conferences: any[];
+  /** Outstanding schoolgeld per child id, in euros. */
+  outstandingByChild?: Record<string, number>;
+  /** Whether the account itself is still missing a phone number. */
+  missingPhone?: boolean;
+  /** How far back an unexplained absence is still worth asking about. */
+  unreportedWindowDays?: number;
 }
 
-export function snapshotOf(signals: StudentSignals[]): Record<string, { level: Level; keys: string[] }> {
-  const out: Record<string, { level: Level; keys: string[] }> = {};
-  for (const s of signals) out[s.studentId] = { level: s.level, keys: s.signals.map((x) => x.key) };
-  return out;
+export function buildParentFeed(input: ParentFeedInput): FeedItem[] {
+  const items: FeedItem[] = [];
+  const list = <T,>(v: T[] | undefined | null): T[] => (Array.isArray(v) ? v : []);
+  const children = list(input.children).filter((c) => c?.id);
+  if (!children.length) return items;
+
+  const today = input.today;
+  const windowDays = input.unreportedWindowDays ?? 21;
+  const cutoff = new Date(Date.parse(`${today}T00:00:00Z`) - windowDays * DAY_MS).toISOString().slice(0, 10);
+  const attendance = list(input.attendance);
+  const notifications = list(input.notifications);
+
+  for (const child of children) {
+    const named = children.length > 1 ? `${child.name}: ` : '';
+    const nameOnly = child.name || '';
+
+    // 1. Absent, and the school was never told why. The single most valuable
+    //    thing to put in front of a parent — it is usually news to them.
+    const reported = new Set(
+      notifications
+        .filter((n) => n?.studentId === child.id && n.lessonDate)
+        .map((n) => String(n.lessonDate).slice(0, 10)),
+    );
+    const unexplained = attendance
+      .filter((a) => a?.date && a.date >= cutoff && a.date <= today)
+      .filter((a) => a.records?.some((r: any) => r.studentId === child.id && r.present === false))
+      .map((a) => String(a.date))
+      .filter((date) => !reported.has(date))
+      .sort();
+
+    if (unexplained.length) {
+      const last = unexplained[unexplained.length - 1];
+      items.push({
+        key: `parent_absence_unexplained:${child.id}:${last}`,
+        level: 'high',
+        titleNl: `${named}afwezig geweest zonder ziekmelding`,
+        titleTr: `${named}bildirimsiz devamsızlık`,
+        bodyNl:
+          unexplained.length === 1
+            ? `${nameOnly} was op ${last} afwezig en wij hebben geen ziekmelding ontvangen. Laat het ons weten als er iets speelde.`
+            : `${nameOnly} was ${unexplained.length}× afwezig zonder ziekmelding, laatst op ${last}. Laat het ons weten als er iets speelde.`,
+        bodyTr:
+          unexplained.length === 1
+            ? `${nameOnly} ${last} tarihinde derse gelmedi ve tarafımıza bir bildirim ulaşmadı. Bir durum olduysa lütfen bize bildirin.`
+            : `${nameOnly} ${unexplained.length} kez bildirimsiz devamsız oldu, en son ${last}. Bir durum olduysa lütfen bize bildirin.`,
+        // Opens the ziekmelding form directly rather than dropping the parent
+        // on a dashboard to hunt for it — the whole task is one short form.
+        link: `#report-absence:${child.id}`,
+        count: unexplained.length,
+      });
+    }
+
+    // 2. Homework that is due and still not ticked off.
+    const done = new Set(
+      list(input.completions)
+        .filter((c) => c?.studentId === child.id && c.completed !== false)
+        .map((c) => c.homeworkId),
+    );
+    const openHomework = list(input.homework).filter((h) => {
+      if (!h?.id) return false;
+      if (!h.dueDate || h.dueDate < today) return false; // overdue is the school's call, not a nag
+      const mine = Array.isArray(h.studentIds) ? h.studentIds.includes(child.id) : h.classId === child.classId;
+      return mine && !done.has(h.id);
+    });
+    if (openHomework.length) {
+      const soonest = openHomework
+        .map((h) => String(h.dueDate))
+        .sort()[0];
+      items.push({
+        key: `parent_homework_open:${child.id}:${soonest}`,
+        level: 'low',
+        titleNl: `${named}huiswerk staat nog open`,
+        titleTr: `${named}ödev bekliyor`,
+        bodyNl: `${openHomework.length} ${openHomework.length === 1 ? 'opdracht' : 'opdrachten'} nog te doen, eerstvolgende inleverdatum ${soonest}.`,
+        bodyTr: `${openHomework.length} ödev yapılmayı bekliyor, en yakın teslim tarihi ${soonest}.`,
+        link: '#overview',
+        count: openHomework.length,
+      });
+    }
+
+    // 3. Outstanding schoolgeld. Low on purpose: money is a reminder, not an
+    //    emergency, and ranking it above a missing child would be grotesque.
+    const outstanding = Number(input.outstandingByChild?.[child.id]) || 0;
+    if (outstanding > 0) {
+      items.push({
+        key: `parent_payment_due:${child.id}`,
+        level: 'low',
+        titleNl: `${named}openstaand schoolgeld`,
+        titleTr: `${named}ödenmemiş okul ücreti`,
+        bodyNl: `Er staat nog € ${outstanding.toFixed(2)} open. Bekijk het overzicht voor de details.`,
+        bodyTr: `Halen € ${outstanding.toFixed(2)} tutarında ödenmemiş bakiye var. Ayrıntılar için özete bakın.`,
+        link: '#billing',
+      });
+    }
+
+    // 4. A conference round is open and this child has no slot yet.
+    for (const session of list(input.conferences)) {
+      if (!session?.id || !session.date || session.date < today) continue;
+      const slots = list(session.slots);
+      if (slots.some((s: any) => s?.studentId === child.id)) continue;
+      if (!slots.some((s: any) => !s?.bookedBy)) continue; // nothing left to book
+      items.push({
+        key: `parent_conference_unbooked:${child.id}:${session.id}`,
+        level: 'medium',
+        titleNl: `${named}kies een tijdslot voor het oudergesprek`,
+        titleTr: `${named}veli görüşmesi için saat seçin`,
+        bodyNl: `Het oudergesprek op ${session.date} staat gepland en u heeft nog geen tijd gekozen.`,
+        bodyTr: `${session.date} tarihli veli görüşmesi planlandı ve henüz bir saat seçmediniz.`,
+        link: '#oudergesprekken',
+      });
+    }
+  }
+
+  // 5. The account itself. A school that cannot reach a parent by phone is one
+  //    incident away from a real problem, so this is asked once and then never
+  //    again — it disappears the moment a number is saved.
+  if (input.missingPhone) {
+    items.push({
+      key: 'parent_profile_phone',
+      level: 'medium',
+      titleNl: 'Vul uw telefoonnummer aan',
+      titleTr: 'Telefon numaranızı ekleyin',
+      bodyNl: 'Wij hebben geen telefoonnummer van u. Zonder nummer kunnen wij u niet bereiken als er tijdens de les iets is.',
+      bodyTr: 'Kayıtlarımızda telefon numaranız yok. Numara olmadan ders sırasında bir durum olduğunda size ulaşamayız.',
+      link: '#account',
+    });
+  }
+
+  return items.sort((a, b) => LEVEL_WEIGHT[b.level] - LEVEL_WEIGHT[a.level]);
 }
+
+// Note: this file used to end with diffSignals/snapshotOf — a day-on-day
+// comparison that decided which staff alerts were "new enough" to send. The
+// outreach ladder (outreach.tsx) replaced that mechanism outright: it keeps a
+// durable track per concern instead of a nightly snapshot, so "has this
+// already been raised?" is answered by the track's own history rather than by
+// diffing two scans. They were removed rather than left behind, so there is
+// only one place that decides when a concern is acted on.

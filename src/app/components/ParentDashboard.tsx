@@ -7,6 +7,8 @@ import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
 import ChildSwitcher from './ChildSwitcher';
+import ActionCenter from './ActionCenter';
+import MomentsFeed from './MomentsFeed';
 import { notify } from './ui/feedback';
 import { isAppLayout } from '../../lib/native';
 import { logAction } from '../../lib/deviceLog';
@@ -128,6 +130,13 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [billingRecord, setBillingRecord] = useState<any>(null);
   const [billingPayments, setBillingPayments] = useState<PaymentLogEntry[]>([]);
   const [loadingBilling, setLoadingBilling] = useState(false);
+  // Bumped whenever something happens that could resolve a worklist entry — a
+  // ziekmelding filed, a slot booked. The list re-fetches instead of leaving a
+  // task on screen that has already been done.
+  const [actionRefresh, setActionRefresh] = useState(0);
+  // On the website the profile form lives inside the UserMenu dropdown, so the
+  // "vul uw telefoonnummer aan" task opens it through this signal.
+  const [profileSignal, setProfileSignal] = useState(0);
 
   useEffect(() => {
     loadData();
@@ -320,6 +329,30 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     setShowAbsenceModal(true);
   };
 
+  /**
+   * Where a worklist entry takes the reader.
+   *
+   * The entries come from the server as hash links, and most of them are just
+   * tabs. Two are not: the ziekmelding opens a form rather than a page (and
+   * carries the child it is about), and the profile task has to reach a panel
+   * that lives in different places on the app and on the website. Handling
+   * those here keeps the server's feed free of client routing knowledge.
+   */
+  const handleActionNavigate = (link: string) => {
+    const [target, arg] = link.replace(/^#/, '').split(':');
+
+    if (target === 'report-absence') {
+      openAbsenceModal(arg || selectedChildId);
+      return;
+    }
+    if (target === 'account') {
+      if (app) setActiveTab(MOBILE_ACCOUNT_ID);
+      else setProfileSignal((n) => n + 1);
+      return;
+    }
+    setActiveTab(target);
+  };
+
   const submitAbsenceNotification = async () => {
     if (!selectedStudent || !absenceDate) {
       notify.error(language === 'tr' ? 'Lütfen tüm alanları doldurun' : 'Vul alle velden in');
@@ -355,6 +388,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       setSelectedStudent('');
       setAbsenceDate('');
       setAbsenceReason('');
+      setActionRefresh((n) => n + 1);
     } catch (error: any) {
       console.error('Error reporting absence:', error);
       notify.error(error.message || 'Error reporting absence');
@@ -383,6 +417,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       // Refresh sessions
       const conferData = await apiRequest('/oudergesprekken').catch(() => ({ sessions: [] }));
       setConferSessions(conferData.sessions || []);
+      setActionRefresh((n) => n + 1);
     } catch (err: any) {
       const msg = err.message || '';
       if (msg.includes('already booked') || msg.includes('Already booked')) {
@@ -571,7 +606,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                 NL
               </button>
             </div>
-            <UserMenu onLogout={onLogout} />
+            <UserMenu onLogout={onLogout} openProfileSignal={profileSignal} />
           </div>
         </div>
         )}
@@ -794,6 +829,18 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
         {selectedChild && activeTab === 'overview' && (
         <>
+        {/* What needs this family, before anything the school merely wants to
+            show them. Spans every child, not just the selected one — a parent
+            should never have to flip through the switcher to discover that
+            something was waiting on the other child. */}
+        <ActionCenter
+          language={language}
+          apiRequest={apiRequest}
+          onNavigate={handleActionNavigate}
+          refreshKey={actionRefresh}
+          showAllClear
+        />
+
         {showStats && stats && (
           <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
             <div className="flex justify-between items-center mb-3 sm:mb-4">
@@ -898,6 +945,15 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           </div>
         )}
 
+
+        {/* The good news, above the calendar. Scoped to the selected child so
+            a compliment reads as being about them rather than about a class. */}
+        <MomentsFeed
+          language={language}
+          apiRequest={apiRequest}
+          filterStudentId={selectedChild.id}
+          limit={5}
+        />
 
         {/* Agenda: lesson days, vacations, events, lesson reports & homework */}
         <div className="mb-4 sm:mb-6">

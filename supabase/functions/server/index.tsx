@@ -8,14 +8,27 @@ import {
   computeExamAnalysis,
   buildTodayFeed,
   buildAdminFeed,
+  buildParentFeed,
   computeAbsenceFlags,
   weakTopics,
   needsGrading,
-  diffSignals,
-  snapshotOf,
   type SignalContext,
   type FeedItem,
 } from "./signals.tsx";
+import {
+  planOutreach,
+  outreachTasks,
+  FAMILY_LABELS,
+  type OutreachTrack,
+} from "./outreach.tsx";
+import {
+  buildParentDigest,
+  buildTeacherDigest,
+  buildAdminDigest,
+  digestHtml,
+  type ChildWeek,
+  type Digest,
+} from "./digest.tsx";
 
 const app = new Hono();
 
@@ -8748,11 +8761,72 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
     const userData = await getUserData(user.id);
-    if (!['teacher', 'admin', 'regional_admin', 'superadmin'].includes(userData?.role)) {
+    if (!['parent', 'teacher', 'admin', 'regional_admin', 'superadmin'].includes(userData?.role)) {
       return c.json({ error: 'Unauthorized' }, 403);
     }
 
     const today = new Date().toISOString().slice(0, 10);
+
+    // ── Parents ──
+    // A parent's list is built from their own children only, and never touches
+    // the risk engine: "your son is flagged as at-risk" is not something a
+    // dashboard should break to a family. What they get instead are the things
+    // they can actually act on, and the ladder tells them about a concern in
+    // words a person wrote (see outreach.tsx).
+    if (userData.role === 'parent') {
+      const childIds: string[] = await kv.get(`parent_children:${user.id}`) || [];
+      const children = (await kv.mget(childIds.map((id: string) => `student:${id}`))).filter((s: any) => s?.id);
+      if (!children.length) return c.json({ feed: [], generatedAt: new Date().toISOString() });
+
+      const classIds = new Set(children.map((s: any) => s.classId).filter(Boolean));
+      const childSchoolIds = new Set(children.map((s: any) => s.schoolId).filter(Boolean));
+      const classes = (await kv.getByPrefix('class:')).filter((cl: any) => cl?.id && classIds.has(cl.id));
+      const classById = new Map(classes.map((cl: any) => [cl.id, cl]));
+
+      const conferences = (await kv.getByPrefix('oudergesprek:')).filter(
+        (s: any) => s?.id && childSchoolIds.has(s.schoolId) && s.date >= today,
+      );
+
+      // Outstanding schoolgeld per child, from the same tiers the reminder
+      // mail and the admin feed use.
+      const outstandingByChild: Record<string, number> = {};
+      for (const schoolId of childSchoolIds) {
+        const settings = await kv.get(`boekhouding:settings:${schoolId}`) || DEFAULT_BOEKHOUDING_SETTINGS;
+        const tiers = settings.schoolgeld || DEFAULT_BOEKHOUDING_SETTINGS.schoolgeld;
+        for (const child of children.filter((s: any) => s.schoolId === schoolId)) {
+          const record = (await kv.get(`boekhouding:student:${child.id}`)) || defaultBoekhoudingRecord(child.id);
+          const required = record.isMember
+            ? (record.hasSibling ? tiers.memberWithSibling : tiers.memberNoSibling)
+            : (record.hasSibling ? tiers.noMemberWithSibling : tiers.noMemberNoSibling);
+          const paid = Number(record.payments?.schoolgeld) || 0;
+          if (paid < required) outstandingByChild[child.id] = required - paid;
+        }
+      }
+
+      const feed = buildParentFeed({
+        today,
+        children: children.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          classId: s.classId,
+          className: classById.get(s.classId)?.name || null,
+        })),
+        attendance: (await kv.getByPrefix('attendance:')).filter((a: any) => a?.classId && classIds.has(a.classId)),
+        notifications: (await kv.getByPrefix('absence_notification:')).filter(
+          (n: any) => n?.studentId && childIds.includes(n.studentId),
+        ),
+        homework: (await kv.getByPrefix('homework:')).filter((h: any) => h?.classId && classIds.has(h.classId)),
+        completions: (await kv.getByPrefix('homework_completion:')).filter(
+          (x: any) => x?.studentId && childIds.includes(x.studentId),
+        ),
+        conferences,
+        outstandingByChild,
+        missingPhone: !String(userData.phone || '').trim(),
+      });
+
+      return c.json({ feed, generatedAt: new Date().toISOString() });
+    }
+
     const { classes, ctx } = await loadSignalScope(user.id, userData, c.req.header('X-School-Id') || undefined);
     const studentSignals = computeStudentSignals(ctx);
     const schoolIds = await getUserSchoolIds(user.id, userData);
@@ -8809,8 +8883,15 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
         }
       }
 
+      // Concerns the ladder has climbed all the way to the beheerder: the
+      // family was told, the teacher rang, and it is still not better.
+      const escalated = schoolId
+        ? outreachTasks(await loadOutreachTracks(schoolId), 'admin')
+        : [];
+
       const LEVELS: Record<string, number> = { high: 3, medium: 2, low: 1 };
       feed = [
+        ...escalated,
         ...computeAbsenceFlags(ctx),
         ...buildAdminFeed({
           today,
@@ -8859,16 +8940,26 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
         }
       }
 
-      feed = buildTodayFeed({
-        role: userData.role,
-        today,
-        classes: lessonToday ? classes : [],
-        attendance: ctx.attendance,
-        ungradedExams,
-        openCases,
-        unbookedConferences,
-        studentSignals,
-      });
+      // Families the ladder has asked *this* teacher to phone, narrowed to
+      // their own classes — a teacher must not be handed another class's call.
+      const myClassIds = new Set(classes.map((cl: any) => cl.id));
+      const myTracks = schoolId
+        ? (await loadOutreachTracks(schoolId)).filter((t) => t.classId && myClassIds.has(t.classId))
+        : [];
+
+      feed = [
+        ...outreachTasks(myTracks, 'teacher'),
+        ...buildTodayFeed({
+          role: userData.role,
+          today,
+          classes: lessonToday ? classes : [],
+          attendance: ctx.attendance,
+          ungradedExams,
+          openCases,
+          unbookedConferences,
+          studentSignals,
+        }),
+      ];
     }
 
     // Anything already ticked off drops out of the feed and lives on in the
@@ -8957,6 +9048,240 @@ app.get("/make-server-6679cacd/signals/tasks/archive", async (c) => {
   }
 });
 
+// ── Outreach tracks ─────────────────────────────────────────────────────────
+//
+// The ladder's state. One record per open concern per student, written by the
+// nightly scan (see the cron below) and read here so staff can see what the
+// school has already said to a family before they say it again.
+
+async function loadOutreachTracks(schoolId: string): Promise<OutreachTrack[]> {
+  const rows = await kv.getByPrefix(`outreach:${schoolId}:`);
+  return rows.filter((t: any) => t?.id) as OutreachTrack[];
+}
+
+async function saveOutreachTrack(track: OutreachTrack) {
+  await kv.set(`outreach:${track.schoolId}:${track.id}`, track);
+}
+
+/**
+ * Everything the school has done about one student, newest first.
+ *
+ * This is the answer to the question that used to have none: "has anyone
+ * actually contacted this family?". Without it the second teacher to notice a
+ * problem starts from zero, and the family gets told the same thing twice by
+ * two people who each thought they were first.
+ */
+app.get("/make-server-6679cacd/outreach/student/:studentId", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (!['teacher', 'admin', 'regional_admin', 'superadmin'].includes(userData?.role)) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const studentId = c.req.param('studentId');
+    const student = await kv.get(`student:${studentId}`);
+    if (!student) return c.json({ error: 'Student not found' }, 404);
+    if (!student.classId || !(await userHasClassAccess(user.id, userData, student.classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const tracks = (await loadOutreachTracks(student.schoolId || ''))
+      .filter((t) => t.studentId === studentId)
+      .sort((a, b) => String(b.openedAt).localeCompare(String(a.openedAt)));
+
+    return c.json({ tracks });
+  } catch (err) {
+    console.log('Outreach history error:', err);
+    return c.json({ error: 'Failed to load outreach history' }, 500);
+  }
+});
+
+// ============= MOMENTS =============
+//
+// A short, positive note a teacher writes about a child — "kende alle letters
+// vandaag", "hielp een klasgenoot uit zichzelf". It is the only thing in this
+// app that exists purely to be *good news*.
+//
+// That is not decoration. Every other message a parent gets from a school is
+// an obligation or a problem, and a channel that only ever carries bad news is
+// one people learn to avoid — which is exactly the parent you most need to
+// reach when something is wrong. Moments are what make the app worth opening,
+// and an opened app is what makes the rest of this system work.
+//
+// Text only, deliberately: photos of other people's children carry a consent
+// problem this school has no process for, and one badly-shared photo would
+// cost more trust than the feature could ever earn.
+
+const MOMENT_KINDS = ['praise', 'milestone', 'note'] as const;
+
+app.post("/make-server-6679cacd/moments", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (!['teacher', 'admin', 'superadmin'].includes(userData?.role)) {
+      return c.json({ error: 'Only teachers and admins can post moments' }, 403);
+    }
+
+    const { studentIds, classId, kind, text } = await c.req.json();
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return c.json({ error: 'Select at least one student' }, 400);
+    }
+    if (studentIds.length > 40) return c.json({ error: 'Too many students at once' }, 400);
+    const body = String(text || '').trim();
+    if (!body) return c.json({ error: 'Text is required' }, 400);
+    if (body.length > 500) return c.json({ error: 'Text is too long' }, 400);
+    const momentKind = MOMENT_KINDS.includes(kind) ? kind : 'praise';
+
+    const students = (await kv.mget(studentIds.map((id: string) => `student:${id}`))).filter((s: any) => s?.id);
+    if (students.length !== studentIds.length) return c.json({ error: 'Unknown student' }, 400);
+    for (const s of students) {
+      if (!s.classId || !(await userHasClassAccess(user.id, userData, s.classId))) {
+        return c.json({ error: 'Unauthorized for one of the selected students' }, 403);
+      }
+    }
+
+    const schoolId = students[0].schoolId || userData.schoolId || null;
+    if (!schoolId) return c.json({ error: 'Could not determine school' }, 400);
+
+    const id = crypto.randomUUID();
+    const record = {
+      id,
+      schoolId,
+      classId: classId || students[0].classId || null,
+      studentIds,
+      kind: momentKind,
+      text: body,
+      createdBy: user.id,
+      createdByName: userData.name || '',
+      createdAt: new Date().toISOString(),
+    };
+    await kv.set(`moment:${id}`, record);
+    const ids: string[] = await kv.get(`moment_ids:${schoolId}`) || [];
+    ids.unshift(id);
+    // Capped: this is a running feed, not an archive. Older entries stay
+    // readable through the student's own file, not through the school index.
+    if (ids.length > 500) ids.length = 500;
+    await kv.set(`moment_ids:${schoolId}`, ids);
+
+    // Tell the parents right away. This is the one notification in the system
+    // nobody minds receiving, so it goes out immediately rather than waiting
+    // for the weekly digest.
+    for (const student of students) {
+      if (!student.parentId) continue;
+      await notifyUser(student.parentId, {
+        type: 'moment',
+        titleNl: `Een mooi moment van ${student.name}`,
+        titleTr: `${student.name} için güzel bir an`,
+        bodyNl: body,
+        bodyTr: body,
+        link: '#overview',
+      });
+    }
+
+    return c.json({ moment: record });
+  } catch (err) {
+    console.log('Create moment error:', err);
+    return c.json({ error: 'Failed to create moment' }, 500);
+  }
+});
+
+// The feed. A parent sees their own children's moments; staff see the ones
+// from the classes they teach, so a teacher can check what has already been
+// said before adding to it.
+app.get("/make-server-6679cacd/moments", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (!userData) return c.json({ error: 'User not found' }, 404);
+
+    let allowedStudentIds: Set<string>;
+    let schoolIds: Set<string>;
+
+    if (userData.role === 'parent') {
+      const childIds: string[] = await kv.get(`parent_children:${user.id}`) || [];
+      allowedStudentIds = new Set(childIds);
+      const children = (await kv.mget(childIds.map((id: string) => `student:${id}`))).filter((s: any) => s?.id);
+      schoolIds = new Set(children.map((s: any) => s.schoolId).filter(Boolean));
+    } else {
+      schoolIds = await getUserSchoolIds(user.id, userData);
+      const classes = (await kv.getByPrefix('class:')).filter(
+        (cl: any) => cl?.id && schoolIds.has(cl.schoolId),
+      );
+      const mine = userData.role === 'teacher'
+        ? classes.filter((cl: any) => cl.teacherId === user.id)
+        : classes;
+      const classIds = new Set(mine.map((cl: any) => cl.id));
+      const students = (await kv.getByPrefix('student:')).filter(
+        (s: any) => s?.id && classIds.has(s.classId),
+      );
+      allowedStudentIds = new Set(students.map((s: any) => s.id));
+    }
+
+    const ids: string[] = [];
+    for (const schoolId of schoolIds) {
+      ids.push(...((await kv.get(`moment_ids:${schoolId}`)) || []));
+    }
+    const moments = (await kv.mget([...new Set(ids)].map((id) => `moment:${id}`)))
+      .filter((m: any) => m?.id && (m.studentIds || []).some((sid: string) => allowedStudentIds.has(sid)))
+      .sort((a: any, b: any) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .slice(0, 60);
+
+    // A parent must never learn which *other* children were praised in the
+    // same breath, so the list is narrowed to their own before it goes out.
+    // One mget rather than a lookup per student: a teacher's roster is large
+    // enough that the difference is the whole response time.
+    const named = await kv.mget([...allowedStudentIds].map((sid) => `student:${sid}`));
+    const studentNames = new Map<string, string>(
+      named.filter((s: any) => s?.id && s.name).map((s: any) => [s.id, s.name]),
+    );
+
+    return c.json({
+      moments: moments.map((m: any) => {
+        const visible = (m.studentIds || []).filter((sid: string) => allowedStudentIds.has(sid));
+        return {
+          id: m.id,
+          kind: m.kind,
+          text: m.text,
+          createdAt: m.createdAt,
+          createdByName: m.createdByName,
+          studentIds: visible,
+          studentNames: visible.map((sid: string) => studentNames.get(sid) || ''),
+        };
+      }),
+    });
+  } catch (err) {
+    console.log('List moments error:', err);
+    return c.json({ error: 'Failed to load moments' }, 500);
+  }
+});
+
+app.delete("/make-server-6679cacd/moments/:id", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    const moment = await kv.get(`moment:${c.req.param('id')}`);
+    if (!moment) return c.json({ error: 'Not found' }, 404);
+    // The author can retract their own; an admin can remove any in their school.
+    const isAuthor = moment.createdBy === user.id;
+    const isAdmin = ['admin', 'superadmin'].includes(userData?.role)
+      && (await getUserSchoolIds(user.id, userData)).has(moment.schoolId);
+    if (!isAuthor && !isAdmin) return c.json({ error: 'Unauthorized' }, 403);
+
+    await kv.del(`moment:${moment.id}`);
+    const ids: string[] = await kv.get(`moment_ids:${moment.schoolId}`) || [];
+    await kv.set(`moment_ids:${moment.schoolId}`, ids.filter((id: string) => id !== moment.id));
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Delete moment error:', err);
+    return c.json({ error: 'Failed to delete moment' }, 500);
+  }
+});
+
 // Item analysis for one exam: which questions worked and which did not.
 app.get("/make-server-6679cacd/exams/:id/analysis", async (c) => {
   try {
@@ -8986,6 +9311,421 @@ app.get("/make-server-6679cacd/exams/:id/analysis", async (c) => {
 // Protected by a shared secret header (not a user JWT) since it's called by
 // the database, not a logged-in user. Every check below is deduplicated via
 // a one-time `reminder_sent:...` KV flag so re-running this often is safe.
+// ── The nightly outreach scan ───────────────────────────────────────────────
+//
+// Recomputes every student's signals for one school, hands them to the ladder
+// (see outreach.tsx), and performs whatever the ladder decided: telling a
+// family, asking a teacher to ring them, pulling in the beheerder, opening a
+// case, or quietly closing a concern that has resolved itself.
+//
+// The ladder decides; this function only delivers. That split is what makes it
+// safe to run every night — the same scan on the same data produces the same
+// (empty) plan, so nothing is ever sent twice.
+
+interface SchoolScanData {
+  classes: any[];
+  students: any[];
+  ctx: SignalContext;
+}
+
+async function loadSchoolScanData(schoolId: string): Promise<SchoolScanData | null> {
+  const classes = (await kv.getByPrefix('class:')).filter((cl: any) => cl?.id && cl.schoolId === schoolId);
+  const classIds = new Set(classes.map((cl: any) => cl.id));
+  const students = (await kv.getByPrefix('student:')).filter((s: any) => s?.id && classIds.has(s.classId));
+  if (!students.length) return null;
+  const studentIds = new Set(students.map((s: any) => s.id));
+
+  const year = await getCurrentSchoolYear(schoolId);
+  const ctx: SignalContext = {
+    students,
+    classes,
+    notifications: (await kv.getByPrefix('absence_notification:')).filter(
+      (n: any) => n?.studentId && studentIds.has(n.studentId),
+    ),
+    attendance: (await kv.getByPrefix('attendance:')).filter((a: any) => a?.classId && classIds.has(a.classId)),
+    behavior: (await kv.getByPrefix('behavior:')).filter((b: any) => b?.studentId && studentIds.has(b.studentId)),
+    homework: (await kv.getByPrefix('homework:')).filter((h: any) => h?.classId && classIds.has(h.classId)),
+    completions: (await kv.getByPrefix('homework_completion:')).filter(
+      (x: any) => x?.studentId && studentIds.has(x.studentId),
+    ),
+    attempts: (await kv.getByPrefix('exam_attempt:')).filter((a: any) => a?.studentId && studentIds.has(a.studentId)),
+    since: year?.startDate ? String(year.startDate).slice(0, 10) : undefined,
+  };
+  return { classes, students, ctx };
+}
+
+async function runOutreachScan(
+  school: any,
+  admins: any[],
+  nowIso: string,
+): Promise<{ parentsInformed: number; teacherCalls: number; escalations: number; resolved: number }> {
+  const counts = { parentsInformed: 0, teacherCalls: 0, escalations: 0, resolved: 0 };
+  const data = await loadSchoolScanData(school.id);
+  if (!data) return counts;
+
+  const { classes, students, ctx } = data;
+  const signals = computeStudentSignals(ctx);
+  const studentById = new Map(students.map((s: any) => [s.id, s]));
+  const classById = new Map(classes.map((cl: any) => [cl.id, cl]));
+
+  const actions = planOutreach({
+    now: nowIso,
+    tracks: await loadOutreachTracks(school.id),
+    signals,
+    classNameById: new Map(classes.map((cl: any) => [cl.id, cl.name])),
+    schoolId: school.id,
+  });
+
+  for (const action of actions) {
+    const track = action.track;
+    const student = studentById.get(track.studentId);
+    const cls = track.classId ? classById.get(track.classId) : null;
+
+    if (action.kind === 'open' && action.audience === 'parent') {
+      // The whole point of the ladder: the family hears about it first, and
+      // hears about it early, while it is still a small thing to fix.
+      if (student?.parentId) {
+        await notifyUser(student.parentId, {
+          type: 'outreach_parent',
+          titleNl: action.titleNl,
+          titleTr: action.titleTr,
+          bodyNl: action.bodyNl,
+          bodyTr: action.bodyTr,
+          link: '#overview',
+        });
+        counts.parentsInformed++;
+      }
+      // The class teacher is told too, in-app only. Not as a task — there is
+      // nothing for them to do yet — but because a parent may well reply to
+      // this in the playground on Saturday, and a teacher who has not been
+      // told looks like a school that does not talk to itself.
+      if (cls?.teacherId) {
+        await createNotification(cls.teacherId, {
+          type: 'outreach_informed',
+          titleNl: `Ouders van ${track.studentName} geïnformeerd`,
+          titleTr: `${track.studentName} velisi bilgilendirildi`,
+          bodyNl: `Over de ${FAMILY_LABELS[track.family].nl}. ${track.reasonNl}`,
+          bodyTr: `${FAMILY_LABELS[track.family].tr} hakkında. ${track.reasonTr}`,
+          link: '#signals',
+        });
+      }
+    }
+
+    if (action.kind === 'escalate' && action.audience === 'teacher' && cls?.teacherId) {
+      await notifyUser(cls.teacherId, {
+        type: 'outreach_call',
+        titleNl: action.titleNl,
+        titleTr: action.titleTr,
+        bodyNl: action.bodyNl,
+        bodyTr: action.bodyTr,
+        link: '#signals',
+      });
+      counts.teacherCalls++;
+    }
+
+    if (action.kind === 'escalate' && action.audience === 'admin') {
+      // Open the dossier before it is needed, not after. A case created now
+      // carries the whole history the ladder has been keeping; one created in
+      // six months' time starts from whatever anyone still remembers.
+      if (action.openCase && !track.caseId && student) {
+        const caseId = crypto.randomUUID();
+        const parent = student.parentId ? await kv.get(`user:${student.parentId}`) : null;
+        const record = {
+          id: caseId,
+          schoolId: school.id,
+          classIds: track.classId ? [track.classId] : [],
+          studentIds: [track.studentId],
+          studentNames: [track.studentName],
+          parentEmail: parent?.email || '',
+          parentPhone: parent?.phone || '',
+          explanation:
+            `Automatisch aangemaakt door de opvolging. ${track.reasonNl} ` +
+            `De ouders zijn geïnformeerd op ${String(track.openedAt).slice(0, 10)} en de leerkracht is gevraagd contact op te nemen, ` +
+            `maar de situatie is sindsdien niet verbeterd.`,
+          desiredAction:
+            `Bespreek ${track.studentName} en bepaal de vervolgstap (gesprek met de ouders, aangepaste begeleiding of afsluiten).`,
+          createdBy: null,
+          createdByName: 'Automatische opvolging',
+          createdByRole: 'system',
+          status: 'open',
+          adminComment: null,
+          forwardedAt: null,
+          fixedAt: null,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        };
+        await kv.set(`case:${caseId}`, record);
+        const ids: string[] = await kv.get(`case_ids:${school.id}`) || [];
+        ids.unshift(caseId);
+        await kv.set(`case_ids:${school.id}`, ids);
+        track.caseId = caseId;
+      }
+
+      for (const admin of admins) {
+        await notifyUser(admin.id, {
+          type: 'outreach_escalated',
+          titleNl: action.titleNl,
+          titleTr: action.titleTr,
+          bodyNl: action.bodyNl,
+          bodyTr: action.bodyTr,
+          link: '#cases',
+        });
+      }
+      counts.escalations++;
+    }
+
+    if (action.kind === 'resolve') {
+      // Only worth announcing when a person was actually working on it —
+      // closing a concern the family fixed on their own needs no ceremony.
+      if (track.stage !== 'parent_informed') {
+        if (cls?.teacherId) {
+          await createNotification(cls.teacherId, {
+            type: 'outreach_resolved',
+            titleNl: action.titleNl || `${track.studentName}: opgelost`,
+            titleTr: action.titleTr || `${track.studentName}: çözüldü`,
+            bodyNl: action.bodyNl,
+            bodyTr: action.bodyTr,
+            link: '#signals',
+          });
+        }
+        counts.resolved++;
+      }
+    }
+
+    await saveOutreachTrack(track);
+  }
+
+  return counts;
+}
+
+// ── The weekly digest ───────────────────────────────────────────────────────
+//
+// One mail per person per week. Built per school so the underlying data is
+// loaded once rather than once per family.
+
+function addDaysIso(iso: string, days: number): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+async function sendWeeklyDigests(school: any, from: string, to: string, admins: any[]): Promise<number> {
+  const data = await loadSchoolScanData(school.id);
+  if (!data) return 0;
+  const { classes, students, ctx } = data;
+  const inWindow = (date: any) => {
+    const d = String(date || '').slice(0, 10);
+    return d >= from && d <= to;
+  };
+
+  const classById = new Map(classes.map((cl: any) => [cl.id, cl]));
+  const weekAttendance = ctx.attendance.filter((a: any) => inWindow(a.date));
+  const weekBehavior = (ctx.behavior || []).filter((b: any) => inWindow(b.date));
+  const weekHomework = (ctx.homework || []).filter((h: any) => inWindow(h.dueDate));
+  const completed = new Set(
+    (ctx.completions || [])
+      .filter((c: any) => c?.completed !== false)
+      .map((c: any) => `${c.studentId}:${c.homeworkId}`),
+  );
+  const reportedAbsence = new Set(
+    (ctx.notifications || []).map((n: any) => `${n.studentId}:${String(n.lessonDate).slice(0, 10)}`),
+  );
+
+  // Lesson days the school actually ran this week, taken from the union of
+  // every class's registrations. Measuring a class against *its own*
+  // registrations would be circular — it can never show a gap — so the school
+  // as a whole is the yardstick.
+  const schoolLessonDates = new Set(weekAttendance.map((a: any) => String(a.date)));
+
+  const momentIds: string[] = await kv.get(`moment_ids:${school.id}`) || [];
+  const weekMoments = (await kv.mget(momentIds.slice(0, 200).map((id) => `moment:${id}`)))
+    .filter((m: any) => m?.id && inWindow(m.createdAt));
+
+  const eventIds: string[] = await kv.get(`agenda_event_ids:${school.id}`) || [];
+  const upcoming = (await kv.mget(eventIds.map((id) => `agenda_event:${id}`)))
+    .filter((e: any) => e?.date && e.date > to && e.date <= addDaysIso(to, 7))
+    .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)))
+    .map((e: any) => ({ date: e.date, title: e.title }));
+
+  let sent = 0;
+
+  const deliver = async (userId: string, digest: Digest) => {
+    if (digest.empty) return;
+    await notifyUser(userId, {
+      type: 'weekly_digest',
+      titleNl: digest.headlineNl,
+      titleTr: digest.headlineTr,
+      // The bell entry is a one-liner; the mail carries the whole thing.
+      bodyNl: digest.sections[0]?.lines[0]?.nl || 'Het weekoverzicht staat klaar.',
+      bodyTr: digest.sections[0]?.lines[0]?.tr || 'Haftalık özet hazır.',
+      link: '#overview',
+      emailSubject: `${digest.headlineNl} | ${digest.headlineTr}`,
+      emailHtml: emailWrapper(digest.headlineNl, digestHtml(digest)),
+    });
+    sent++;
+  };
+
+  // ── Parents ──
+  const byParent = new Map<string, any[]>();
+  for (const student of students) {
+    if (!student.parentId) continue;
+    if (!byParent.has(student.parentId)) byParent.set(student.parentId, []);
+    byParent.get(student.parentId)!.push(student);
+  }
+
+  for (const [parentId, children] of byParent) {
+    const weeks: ChildWeek[] = children.map((child: any) => {
+      const rows = weekAttendance.filter((a: any) =>
+        a.records?.some((r: any) => r.studentId === child.id),
+      );
+      const present = rows.filter(
+        (a: any) => a.records.find((r: any) => r.studentId === child.id)?.present !== false,
+      ).length;
+      const absentDates = rows
+        .filter((a: any) => a.records.find((r: any) => r.studentId === child.id)?.present === false)
+        .map((a: any) => String(a.date).slice(0, 10));
+
+      const due = weekHomework.filter((h: any) =>
+        Array.isArray(h.studentIds) ? h.studentIds.includes(child.id) : h.classId === child.classId,
+      );
+      const ratings = weekBehavior
+        .filter((b: any) => b.studentId === child.id && typeof b.rating === 'number')
+        .map((b: any) => b.rating);
+
+      return {
+        name: child.name,
+        className: classById.get(child.classId)?.name || null,
+        lessons: rows.length,
+        present,
+        reported: absentDates.filter((d: string) => reportedAbsence.has(`${child.id}:${d}`)).length,
+        homeworkDue: due.length,
+        homeworkDone: due.filter((h: any) => completed.has(`${child.id}:${h.id}`)).length,
+        behaviorAvg: ratings.length ? ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length : null,
+        moments: weekMoments
+          .filter((m: any) => (m.studentIds || []).includes(child.id))
+          .map((m: any) => ({ textNl: m.text, textTr: m.text })),
+      };
+    });
+
+    await deliver(
+      parentId,
+      buildParentDigest({
+        children: weeks,
+        upcoming,
+        // The open items are the same ones the in-app list shows, so the mail
+        // and the app never disagree about what is outstanding.
+        openItems: buildParentFeed({
+          today: to,
+          children: children.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            classId: s.classId,
+            className: classById.get(s.classId)?.name || null,
+          })),
+          attendance: ctx.attendance,
+          notifications: ctx.notifications || [],
+          homework: ctx.homework,
+          completions: ctx.completions,
+          conferences: [],
+        }).map((i) => ({ titleNl: i.titleNl, titleTr: i.titleTr })),
+      }),
+    );
+  }
+
+  // ── Teachers ──
+  const signals = computeStudentSignals(ctx);
+  const tracks = await loadOutreachTracks(school.id);
+  const teacherIds = new Set(classes.map((cl: any) => cl.teacherId).filter(Boolean));
+
+  for (const teacherId of teacherIds) {
+    const mine = classes.filter((cl: any) => cl.teacherId === teacherId);
+    const myClassIds = new Set(mine.map((cl: any) => cl.id));
+
+    await deliver(
+      teacherId,
+      buildTeacherDigest({
+        classes: mine.map((cl: any) => ({
+          name: cl.name,
+          lessonsHeld: schoolLessonDates.size,
+          lessonsRegistered: weekAttendance.filter((a: any) => a.classId === cl.id).length,
+        })),
+        atRisk: signals
+          .filter((s) => s.level === 'high' && s.classId && myClassIds.has(s.classId))
+          .map((s) => ({
+            studentName: s.studentName,
+            reasonNl: s.signals.map((x) => x.titleNl).join(', '),
+            reasonTr: s.signals.map((x) => x.titleTr).join(', '),
+          })),
+        callsToMake: tracks
+          .filter((t) => !t.resolvedAt && t.stage === 'teacher_call' && t.classId && myClassIds.has(t.classId))
+          .map((t) => ({ studentName: t.studentName })),
+      }),
+    );
+  }
+
+  // ── Beheerders ──
+  if (admins.length) {
+    const registrationIds: string[] = await kv.get('inschrijving_ids') || [];
+    const registrations = await kv.mget(registrationIds.map((id: string) => `inschrijving:${id}`));
+    const pending = registrations.filter(
+      (r: any) => r && r.schoolId === school.id && !['geaccepteerd', 'afgewezen'].includes(r.status),
+    ).length;
+
+    const caseIds: string[] = await kv.get(`case_ids:${school.id}`) || [];
+    const cases = (await kv.mget(caseIds.map((id: string) => `case:${id}`))).filter((k: any) => k?.id);
+    const open = cases.filter((k: any) => !['fixed', 'archived'].includes(k.status));
+    const stuck = open.filter((k: any) => {
+      const ts = Date.parse(k.statusChangedAt || k.updatedAt || k.createdAt || '');
+      return Number.isFinite(ts) && Date.now() - ts > 14 * 86_400_000;
+    }).length;
+
+    const settings = await kv.get(`boekhouding:settings:${school.id}`) || DEFAULT_BOEKHOUDING_SETTINGS;
+    const tiers = settings.schoolgeld || DEFAULT_BOEKHOUDING_SETTINGS.schoolgeld;
+    const records = await kv.getByPrefix('boekhouding:student:');
+    const byStudent = new Map(records.filter((r: any) => r?.studentId).map((r: any) => [r.studentId, r]));
+    let outstanding = 0;
+    for (const student of students) {
+      const record = byStudent.get(student.id) || defaultBoekhoudingRecord(student.id);
+      const required = record.isMember
+        ? (record.hasSibling ? tiers.memberWithSibling : tiers.memberNoSibling)
+        : (record.hasSibling ? tiers.noMemberWithSibling : tiers.noMemberNoSibling);
+      if ((Number(record.payments?.schoolgeld) || 0) < required) outstanding++;
+    }
+
+    let marks = 0;
+    let presentMarks = 0;
+    for (const row of weekAttendance) {
+      for (const r of row.records || []) {
+        marks++;
+        if (r.present !== false) presentMarks++;
+      }
+    }
+
+    const gaps = classes
+      .map((cl: any) => ({
+        name: cl.name,
+        missing: schoolLessonDates.size - weekAttendance.filter((a: any) => a.classId === cl.id).length,
+      }))
+      .filter((g: any) => g.missing > 0);
+
+    const digest = buildAdminDigest({
+      schoolName: school.name || 'School',
+      pendingRegistrations: pending,
+      openCases: open.length,
+      stuckCases: stuck,
+      outstandingPayments: outstanding,
+      atRiskCount: signals.filter((s) => s.level === 'high').length,
+      escalations: tracks
+        .filter((t) => !t.resolvedAt && t.stage === 'admin_escalated')
+        .map((t) => ({ studentName: t.studentName, reasonNl: t.reasonNl, reasonTr: t.reasonTr })),
+      registrationGaps: gaps,
+      attendanceRate: marks > 0 ? presentMarks / marks : null,
+    });
+
+    for (const admin of admins) await deliver(admin.id, digest);
+  }
+
+  return sent;
+}
+
 app.post("/make-server-6679cacd/cron/tick", async (c) => {
   try {
     const secret = c.req.header('X-Cron-Secret');
@@ -9174,61 +9914,51 @@ app.post("/make-server-6679cacd/cron/tick", async (c) => {
       }
     }
 
-    // ── 6. Early-warning: tell staff when a student's situation worsens ──
-    // Runs once a day per school. We compare against yesterday's snapshot and
-    // notify only on genuine deterioration (see diffSignals) — a daily digest
-    // of the same names is what makes people mute notifications.
-    let riskAlerts = 0;
+    // ── 6. The outreach ladder ──
+    //
+    // This replaced a plain "tell staff when a student gets worse" alert. That
+    // alert was honest work and still went nowhere: it told the people who
+    // were already busy, told them again next week in the same words, and
+    // never once told the family — who are usually the only people able to fix
+    // it, and usually the last to hear.
+    //
+    // Now a concern is *carried*: the family hears the same day, and if it
+    // stays unresolved it climbs to the teacher, then to the beheerder, on its
+    // own clock. See outreach.tsx for the rungs.
+    const outreach = { parentsInformed: 0, teacherCalls: 0, escalations: 0, resolved: 0 };
     for (const school of schools) {
       const flagKey = `reminder_sent:risk_scan:${school.id}:${todayStr}`;
       if (await kv.get(flagKey)) continue;
       await kv.set(flagKey, true);
 
-      const classes = (await kv.getByPrefix('class:')).filter((cl: any) => cl?.id && cl.schoolId === school.id);
-      const classIds = new Set(classes.map((cl: any) => cl.id));
-      const students = (await kv.getByPrefix('student:')).filter((s: any) => s?.id && classIds.has(s.classId));
-      if (!students.length) continue;
-      const studentIds = new Set(students.map((s: any) => s.id));
+      const counts = await runOutreachScan(
+        school,
+        adminsBySchool.get(school.id) || [],
+        now.toISOString(),
+      );
+      outreach.parentsInformed += counts.parentsInformed;
+      outreach.teacherCalls += counts.teacherCalls;
+      outreach.escalations += counts.escalations;
+      outreach.resolved += counts.resolved;
+    }
 
-      const year = await getCurrentSchoolYear(school.id);
-      const ctx: SignalContext = {
-        students,
-        classes,
-        attendance: (await kv.getByPrefix('attendance:')).filter((a: any) => a?.classId && classIds.has(a.classId)),
-        behavior: (await kv.getByPrefix('behavior:')).filter((b: any) => b?.studentId && studentIds.has(b.studentId)),
-        homework: (await kv.getByPrefix('homework:')).filter((h: any) => h?.classId && classIds.has(h.classId)),
-        completions: (await kv.getByPrefix('homework_completion:')).filter((x: any) => x?.studentId && studentIds.has(x.studentId)),
-        attempts: (await kv.getByPrefix('exam_attempt:')).filter((a: any) => a?.studentId && studentIds.has(a.studentId)),
-        since: year?.startDate ? String(year.startDate).slice(0, 10) : undefined,
-      };
-
-      const current = computeStudentSignals(ctx);
-      const previous = await kv.get(`signal_snapshot:${school.id}`);
-      const worsened = diffSignals(previous, current);
-      await kv.set(`signal_snapshot:${school.id}`, snapshotOf(current));
-
-      for (const student of worsened) {
-        const cls = classes.find((cl: any) => cl.id === student.classId);
-        const reasonNl = student.signals.map((s: any) => s.titleNl).join(', ');
-        const reasonTr = student.signals.map((s: any) => s.titleTr).join(', ');
-
-        // The class teacher owns the first conversation; admins get the same
-        // alert so nothing depends on one person reading their mail.
-        const recipients = new Set<string>();
-        if (cls?.teacherId) recipients.add(cls.teacherId);
-        for (const admin of adminsBySchool.get(school.id) || []) recipients.add(admin.id);
-
-        for (const recipientId of recipients) {
-          await notifyUser(recipientId, {
-            type: 'student_at_risk',
-            titleNl: `${student.studentName} heeft aandacht nodig`,
-            titleTr: `${student.studentName} ilgi gerektiriyor`,
-            bodyNl: `${cls?.name ? cls.name + ' — ' : ''}${reasonNl}. Bekijk de details en plan zo nodig een gesprek.`,
-            bodyTr: `${cls?.name ? cls.name + ' — ' : ''}${reasonTr}. Ayrıntıları inceleyin ve gerekirse bir görüşme planlayın.`,
-            link: '#signals',
-          });
-          riskAlerts++;
-        }
+    // ── 7. The weekly digest ──
+    // Mondays, after the weekend's lessons are in the books. Keyed on the date
+    // rather than a week number: it only ever runs on a Monday, so the date is
+    // already unique per week and needs no second calendar to reason about.
+    let digestsSent = 0;
+    if (dayOfWeek === 1) {
+      const from = new Date(now.getTime() - 7 * 86_400_000).toISOString().slice(0, 10);
+      for (const school of schools) {
+        const flagKey = `reminder_sent:weekly_digest:${school.id}:${todayStr}`;
+        if (await kv.get(flagKey)) continue;
+        await kv.set(flagKey, true);
+        digestsSent += await sendWeeklyDigests(
+          school,
+          from,
+          todayStr,
+          adminsBySchool.get(school.id) || [],
+        );
       }
     }
 
@@ -9239,7 +9969,8 @@ app.post("/make-server-6679cacd/cron/tick", async (c) => {
       oudergesprekReminders,
       newYearReminders,
       caseEscalations,
-      riskAlerts,
+      outreach,
+      digestsSent,
     });
   } catch (err) {
     console.log('Cron tick error:', err);

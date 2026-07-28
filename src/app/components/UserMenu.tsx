@@ -19,6 +19,15 @@ interface Notification {
 
 interface UserMenuProps {
   onLogout: () => void;
+  /**
+   * Bump to open this menu straight onto "Mijn gegevens".
+   *
+   * The parent worklist can ask for a missing phone number, and on the website
+   * the profile form lives behind this dropdown — so the task needs a way to
+   * take the reader there rather than telling them to go and find it. In the
+   * app the same task lands on the account tab instead, which needs no signal.
+   */
+  openProfileSignal?: number;
 }
 
 const t = {
@@ -130,7 +139,7 @@ function fileToSignatureDataUrl(file: File): Promise<string> {
   });
 }
 
-export default function UserMenu({ onLogout }: UserMenuProps) {
+export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuProps) {
   const { language, user, setUser, apiRequest } = useApp();
   const text = t[language];
   const [open, setOpen] = useState(false);
@@ -301,6 +310,14 @@ export default function UserMenu({ onLogout }: UserMenuProps) {
     setEditSignature(user?.signature || null);
     setEditNotificationPref(((user as any)?.notificationPref as any) || 'email');
   };
+
+  // Zero is the initial value and means "nobody asked" — only a bump counts,
+  // so the menu never springs open on its own the first time it renders.
+  useEffect(() => {
+    if (!openProfileSignal) return;
+    openMenu();
+    setView('profile');
+  }, [openProfileSignal]);
 
   const saveProfile = async () => {
     setSaving(true);

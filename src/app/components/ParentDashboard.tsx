@@ -288,6 +288,19 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     setDeadlinePassed(now >= deadline);
   };
 
+  // Who Elif-Ba may play as. The enrolled children of this account, and only
+  // those — the name lands on a leaderboard their classmates read, so it is
+  // not a field a child gets to type into.
+  //
+  // Up here with the other hooks, above the `if (loading)` return further
+  // down. Anything below that early return runs on some renders and not
+  // others, which for a hook means React counts a different number of them
+  // between two renders and throws.
+  const elifBaPlayers = useMemo(
+    () => students.map((s) => ({ id: s.id, name: s.name })),
+    [students],
+  );
+
   // Own booked oudergesprek slots, surfaced in the agenda. With multiple
   // children the child's name disambiguates which booking is for whom.
   const myBookedConferences = useMemo(() => {
@@ -477,14 +490,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const navItems = orderedIds.map((id) => byId[id]);
 
   const selectTab = (id: string) => setActiveTab(id);
-
-  // Who Elif-Ba may play as. The enrolled children of this account, and only
-  // those — the name lands on a leaderboard their classmates read, so it is
-  // not a field a child gets to type into.
-  const elifBaPlayers = useMemo(
-    () => students.map((s) => ({ id: s.id, name: s.name })),
-    [students],
-  );
 
   const mobileNav = (floating = true) => (
     <MobileNav

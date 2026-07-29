@@ -146,7 +146,7 @@ const GROUP_LABELS: Record<string, { nl: string; tr: string }> = {
   exam_ungraded: { nl: 'Toetsen om na te kijken', tr: 'Değerlendirilecek sınavlar' },
   conference_unbooked: { nl: 'Gesprekken zonder ingeschreven ouders', tr: 'Veli kaydı olmayan görüşmeler' },
   vacation_agenda: { nl: 'Vakanties nog niet in de agenda', tr: 'Ajandaya eklenmemiş tatiller' },
-  attendance_missing: { nl: 'Aanwezigheid nog niet ingevuld', tr: 'Devamsızlık henüz girilmedi' },
+  attendance_missing: { nl: 'Aanwezigheid nog niet ingevuld', tr: 'Yoklama henüz girilmedi' },
 };
 
 interface Group {

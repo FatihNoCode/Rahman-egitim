@@ -354,7 +354,7 @@ export default function ManageEntitiesView({
       setStudentDetails(sortedData);
     } catch (error) {
       console.error('Error loading student details:', error);
-      notify.error(language === 'tr' ? 'Öğrenci bilgileri yüklenemedi!' : 'Kan leerling gegevens niet laden!');
+      notify.error(language === 'tr' ? 'Öğrenci bilgileri yüklenemedi!' : 'Kan de leerlinggegevens niet laden!');
     } finally {
       setLoadingDetails(false);
     }
@@ -368,7 +368,7 @@ export default function ManageEntitiesView({
       setParentDetails(response.parent);
     } catch (error) {
       console.error('Error loading parent details:', error);
-      notify.error(language === 'tr' ? 'Veli bilgileri yüklenemedi!' : 'Kan ouder gegevens niet laden!');
+      notify.error(language === 'tr' ? 'Veli bilgileri yüklenemedi!' : 'Kan de oudergegevens niet laden!');
     } finally {
       setLoadingDetails(false);
     }
@@ -474,7 +474,7 @@ export default function ManageEntitiesView({
                     {/* Attendance */}
                     <div className="bg-gray-50 p-3 rounded">
                       <p className="text-sm font-medium text-gray-600 mb-1">
-                        {language === 'tr' ? 'Devamsızlık' : 'Aanwezigheid'}
+                        {language === 'tr' ? 'Yoklama' : 'Aanwezigheid'}
                       </p>
                       {att ? (
                         <p className={`font-semibold ${att.color}`}>{att.label}</p>

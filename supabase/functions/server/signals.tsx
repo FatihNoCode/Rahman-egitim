@@ -612,7 +612,7 @@ export function buildTodayFeed(input: FeedInput): FeedItem[] {
       key: `attendance_missing:${input.today}`,
       level: 'high',
       titleNl: 'Aanwezigheid nog niet ingevuld',
-      titleTr: 'Devamsızlık henüz girilmedi',
+      titleTr: 'Yoklama henüz girilmedi',
       bodyNl: `${missing.length} ${missing.length === 1 ? 'klas' : 'klassen'}: ${missing.map((c) => c.name).join(', ')}.`,
       bodyTr: `${missing.length} sınıf: ${missing.map((c) => c.name).join(', ')}.`,
       // A teacher registers the lesson on their own Les-tab; a beheerder does
@@ -901,7 +901,9 @@ export function holidaysForYear(year: number): Holiday[] {
     {
       slug: `hemelvaart-${year}`,
       nameNl: 'Hemelvaart',
-      nameTr: 'Miraç tatili (Hemelvaart)',
+      // Not 'Miraç': Hemelvaart is Ascension Day, a different event from the
+      // Isra' wal-Mi'raj, and naming it so in Turkish is simply wrong.
+      nameTr: 'Hemelvaart tatili',
       startDate: iso(addDays(easter, 39)),
       endDate: iso(addDays(easter, 40)),
     },

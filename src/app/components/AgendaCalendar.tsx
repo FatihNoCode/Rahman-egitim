@@ -86,6 +86,19 @@ function mondayFirstIndex(dow: number) {
   return (dow + 6) % 7;
 }
 
+/** The Monday of the week `d` falls in. */
+function mondayOf(d: Date) {
+  const m = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  m.setDate(m.getDate() - mondayFirstIndex(m.getDay()));
+  return m;
+}
+
+function addDays(d: Date, n: number) {
+  const next = new Date(d);
+  next.setDate(next.getDate() + n);
+  return next;
+}
+
 export default function AgendaCalendar({
   language, apiRequest, refreshKey, role,
   selectedChildId, lessons, behaviorList, homeworkCompletion, onToggleHomeworkCompletion,
@@ -100,10 +113,12 @@ export default function AgendaCalendar({
   const [classesById, setClassesById] = useState<Record<string, string>>({});
   const [studentsById, setStudentsById] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [monthCursor, setMonthCursor] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
+  // The middle of the three visible week rows. A full month grid meant five or
+  // six rows of mostly-empty squares to find the two days that matter; three
+  // weeks — last week, this week, next week — is the span anyone actually
+  // plans over, and the week in focus sits in the middle so both directions
+  // are visible at once.
+  const [weekCursor, setWeekCursor] = useState(() => mondayOf(new Date()));
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const monthNames = language === 'tr' ? MONTH_NAMES_TR : MONTH_NAMES_NL;
@@ -212,22 +227,28 @@ export default function AgendaCalendar({
     return (ymd: string) => (conferences || []).filter(cf => cf.date === ymd);
   }, [conferences]);
 
-  const year = monthCursor.getFullYear();
-  const month = monthCursor.getMonth();
-  const firstOfMonth = new Date(year, month, 1);
-  const startWeekday = mondayFirstIndex(firstOfMonth.getDay());
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
   const todayYmd = toYMD(new Date());
 
-  const cells: (string | null)[] = [];
-  for (let i = 0; i < startWeekday; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(toYMD(new Date(year, month, d)));
+  // 21 days: the week before the cursor, the cursor's week, the week after.
+  const gridStart = addDays(weekCursor, -7);
+  const cells: string[] = Array.from({ length: 21 }, (_, i) => toYMD(addDays(gridStart, i)));
+  const gridEnd = addDays(gridStart, 20);
+  const onCurrentWeek = toYMD(weekCursor) === toYMD(mondayOf(new Date()));
 
-  const goPrevMonth = () => setMonthCursor(new Date(year, month - 1, 1));
-  const goNextMonth = () => setMonthCursor(new Date(year, month + 1, 1));
+  // The window regularly straddles a month boundary, so the heading names the
+  // span rather than a single month.
+  const rangeLabel =
+    gridStart.getMonth() === gridEnd.getMonth()
+      ? `${monthNames[gridStart.getMonth()]} ${gridStart.getFullYear()}`
+      : gridStart.getFullYear() === gridEnd.getFullYear()
+        ? `${monthNames[gridStart.getMonth()]} – ${monthNames[gridEnd.getMonth()]} ${gridEnd.getFullYear()}`
+        : `${monthNames[gridStart.getMonth()]} ${gridStart.getFullYear()} – ${monthNames[gridEnd.getMonth()]} ${gridEnd.getFullYear()}`;
+
+  const goPrevWeek = () => setWeekCursor((w) => addDays(w, -7));
+  const goNextWeek = () => setWeekCursor((w) => addDays(w, 7));
   const goToday = () => {
     const now = new Date();
-    setMonthCursor(new Date(now.getFullYear(), now.getMonth(), 1));
+    setWeekCursor(mondayOf(now));
     setSelectedDate(toYMD(now));
   };
 
@@ -260,79 +281,109 @@ export default function AgendaCalendar({
     <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 items-start">
     <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-2 sm:p-3 w-full lg:w-80 lg:shrink-0">
       <div className="flex items-center justify-between mb-2">
-        <button onClick={goPrevMonth} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500">
+        <button
+          onClick={goPrevWeek}
+          title={language === 'tr' ? 'Önceki hafta' : 'Vorige week'}
+          aria-label={language === 'tr' ? 'Önceki hafta' : 'Vorige week'}
+          className="p-1 rounded-lg hover:bg-gray-100 text-gray-500"
+        >
           <ChevronLeft className="w-4 h-4" />
         </button>
         <div className="flex items-center gap-1.5">
-          <h3 className="font-bold text-gray-800 text-xs sm:text-sm">{monthNames[month]} {year}</h3>
-          <button onClick={goToday} className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full hover:bg-emerald-100">
+          <h3 className="font-bold text-gray-800 text-xs sm:text-sm">{rangeLabel}</h3>
+          <button
+            onClick={goToday}
+            className={`text-[10px] px-1.5 py-0.5 rounded-full transition ${
+              onCurrentWeek
+                ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                : 'text-white bg-emerald-600 hover:bg-emerald-700'
+            }`}
+          >
             {language === 'tr' ? 'Bugün' : 'Vandaag'}
           </button>
         </div>
-        <button onClick={goNextMonth} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500">
+        <button
+          onClick={goNextWeek}
+          title={language === 'tr' ? 'Sonraki hafta' : 'Volgende week'}
+          aria-label={language === 'tr' ? 'Sonraki hafta' : 'Volgende week'}
+          className="p-1 rounded-lg hover:bg-gray-100 text-gray-500"
+        >
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-0.5 mb-0.5">
+      <div className="grid grid-cols-7 gap-1 mb-1">
         {dayNamesShort.map((n, i) => (
-          <div key={i} className="text-center text-[8px] sm:text-[10px] font-semibold text-gray-400 py-0.5">{n}</div>
+          <div key={i} className="text-center text-[9px] sm:text-[10px] font-semibold text-gray-400 py-0.5">{n}</div>
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-0.5">
-        {cells.map((ymd, i) => {
-          if (!ymd) return <div key={i} />;
+      {/* The colour of a square answers exactly one question — what kind of
+          day is this — and the three answers are mutually exclusive. Anything
+          *on* the day is a small icon underneath instead: a second colour
+          scale layered over the first was the thing nobody could read, and an
+          icon of a book needs no key at all. */}
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((ymd) => {
           const dow = new Date(ymd + 'T00:00:00').getDay();
           const vacation = vacationForDate(ymd);
           const lesstructuur = lesstructuurForDate(ymd, dow);
           const dayEvents = eventsForDate(ymd);
           const dayHomework = showHomework ? homeworkForDate(ymd) : [];
           const dayLesson = lessonForDate(ymd);
+          const dayConferences = conferencesForDate(ymd);
           const isToday = ymd === todayYmd;
+          const isSelected = ymd === selectedDate;
           const dayNum = parseInt(ymd.split('-')[2], 10);
 
           // Priority: vacation (no school) > event (special day) > lesson day.
-          let bgClass = 'bg-white hover:bg-gray-50 border-gray-100';
-          let textClass = 'text-gray-600';
-          if (vacation) { bgClass = 'bg-yellow-100 hover:bg-yellow-200 border-yellow-300'; textClass = 'text-yellow-800'; }
-          else if (dayEvents.length > 0) { bgClass = 'bg-purple-100 hover:bg-purple-200 border-purple-300'; textClass = 'text-purple-800'; }
-          else if (lesstructuur) { bgClass = 'bg-emerald-100 hover:bg-emerald-200 border-emerald-300'; textClass = 'text-emerald-800'; }
+          let bgClass = 'bg-white hover:bg-gray-50 border-gray-200';
+          let textClass = 'text-gray-500';
+          if (vacation) { bgClass = 'bg-amber-100 hover:bg-amber-200 border-amber-200'; textClass = 'text-amber-900'; }
+          else if (dayEvents.length > 0) { bgClass = 'bg-purple-100 hover:bg-purple-200 border-purple-200'; textClass = 'text-purple-900'; }
+          else if (lesstructuur) { bgClass = 'bg-emerald-100 hover:bg-emerald-200 border-emerald-200'; textClass = 'text-emerald-900'; }
 
           return (
             <button
               key={ymd}
               onClick={() => setSelectedDate(ymd)}
-              className={`relative aspect-square rounded-md border text-[9px] sm:text-[11px] flex flex-col items-center justify-center transition ${bgClass} ${isToday ? 'ring-1 ring-emerald-600' : ''}`}
+              aria-current={isToday ? 'date' : undefined}
+              className={`aspect-square rounded-lg border flex flex-col items-center justify-center gap-0.5 transition ${bgClass} ${
+                isSelected ? 'ring-2 ring-emerald-700 ring-offset-1' : isToday ? 'ring-2 ring-gray-800' : ''
+              }`}
             >
-              <span className={`font-medium ${textClass}`}>{dayNum}</span>
-              {dayHomework.length > 0 && (
-                <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-indigo-600" />
-              )}
-              {conferencesForDate(ymd).length > 0 && (
-                <span className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-teal-600" />
-              )}
-              {dayLesson && (
-                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-600" />
-              )}
+              <span className={`text-[11px] sm:text-xs leading-none ${isToday ? 'font-bold text-gray-900' : `font-medium ${textClass}`}`}>
+                {dayNum}
+              </span>
+              <span className="flex items-center gap-0.5 h-2.5">
+                {dayHomework.length > 0 && <BookOpen className="w-2.5 h-2.5 text-gray-600" />}
+                {dayLesson && <FileText className="w-2.5 h-2.5 text-gray-600" />}
+                {dayConferences.length > 0 && <Users className="w-2.5 h-2.5 text-gray-600" />}
+              </span>
             </button>
           );
         })}
       </div>
 
-      <div className="flex flex-wrap gap-1.5 mt-2 text-[9px] sm:text-[10px] text-gray-500">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-emerald-100 border border-emerald-300 inline-block" />{language === 'tr' ? 'Ders günü' : 'Lesdag'}</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-yellow-100 border border-yellow-300 inline-block" />{language === 'tr' ? 'Tatil' : 'Vakantie'}</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-purple-100 border border-purple-300 inline-block" />{language === 'tr' ? 'Etkinlik' : 'Evenement'}</span>
-        {showHomework && (
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-600 inline-block" />{language === 'tr' ? 'Ödev' : 'Huiswerk'}</span>
-        )}
-        {lessons && (
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block" />{language === 'tr' ? 'Ders Özeti' : 'Lesverslag'}</span>
-        )}
-        {conferences && conferences.length > 0 && (
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-600 inline-block" />{language === 'tr' ? 'Veli Görüşmesi' : 'Oudergesprek'}</span>
-        )}
+      <div className="mt-2.5 space-y-1.5 text-[10px] text-gray-500">
+        <div className="flex flex-wrap gap-x-2.5 gap-y-1">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-200 inline-block" />{language === 'tr' ? 'Ders günü' : 'Lesdag'}</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-amber-100 border border-amber-200 inline-block" />{language === 'tr' ? 'Tatil' : 'Vakantie'}</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-purple-100 border border-purple-200 inline-block" />{language === 'tr' ? 'Etkinlik' : 'Evenement'}</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-white border border-gray-200 inline-block" />{language === 'tr' ? 'Ders yok' : 'Geen les'}</span>
+        </div>
+        <div className="flex flex-wrap gap-x-2.5 gap-y-1">
+          {showHomework && (
+            <span className="flex items-center gap-1"><BookOpen className="w-2.5 h-2.5 text-gray-600" />{language === 'tr' ? 'Ödev' : 'Huiswerk'}</span>
+          )}
+          {lessons && (
+            <span className="flex items-center gap-1"><FileText className="w-2.5 h-2.5 text-gray-600" />{language === 'tr' ? 'Ders özeti' : 'Lesverslag'}</span>
+          )}
+          {conferences && conferences.length > 0 && (
+            <span className="flex items-center gap-1"><Users className="w-2.5 h-2.5 text-gray-600" />{language === 'tr' ? 'Veli görüşmesi' : 'Oudergesprek'}</span>
+          )}
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded border-2 border-gray-800 inline-block" />{language === 'tr' ? 'Bugün' : 'Vandaag'}</span>
+        </div>
       </div>
     </div>
 

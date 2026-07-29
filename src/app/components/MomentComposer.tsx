@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Sparkles, Award, MessageCircle, Send, ChevronDown, ChevronUp } from 'lucide-react';
 import { notify } from './ui/feedback';
 
@@ -14,7 +14,15 @@ import { notify } from './ui/feedback';
  * It starts collapsed. This sits under the worklist on the teacher's start
  * screen, and an open form there would push the actual work below the fold to
  * make room for something optional.
+ *
+ * When a class has gone a fortnight without one, the header says so — kindly.
+ * Parents never see an empty "Güzel anlar" box (MomentsFeed hides itself), so
+ * this is the only place the silence is visible, and a teacher who simply
+ * never got round to it deserves a reminder rather than a scoreboard.
  */
+
+/** How long a class may go without a moment before the header nudges. */
+const NUDGE_AFTER_DAYS = 14;
 
 interface Student {
   id: string;
@@ -69,6 +77,8 @@ export default function MomentComposer({
         selectAll: 'Tümü',
         clear: 'Temizle',
         noStudents: 'Bu sınıfta öğrenci yok.',
+        nudge: 'Bir süredir güzel bir an paylaşılmadı.',
+        nudgeHint: 'Güzel söz sadakadır — tek bir cümle bile veliye çok şey ifade eder.',
       }
     : {
         title: 'Deel een mooi moment',
@@ -83,6 +93,8 @@ export default function MomentComposer({
         selectAll: 'Allemaal',
         clear: 'Wissen',
         noStudents: 'Deze klas heeft nog geen leerlingen.',
+        nudge: 'Er is al een tijd geen mooi moment gedeeld.',
+        nudgeHint: 'Een goed woord is een sadaqa — één zin betekent al veel voor een ouder.',
       };
 
   const [open, setOpen] = useState(false);
@@ -90,6 +102,24 @@ export default function MomentComposer({
   const [picked, setPicked] = useState<string[]>([]);
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [stale, setStale] = useState(false);
+
+  // Only to decide whether to nudge — nothing here is rendered, so a failed
+  // fetch simply means no nudge rather than an error the teacher must handle.
+  const checkFreshness = useCallback(async () => {
+    try {
+      const res = await apiRequest('/moments');
+      const latest = (res?.moments || [])[0];
+      const cutoff = Date.now() - NUDGE_AFTER_DAYS * 24 * 60 * 60 * 1000;
+      setStale(!latest || new Date(latest.createdAt).getTime() < cutoff);
+    } catch {
+      setStale(false);
+    }
+  }, [apiRequest]);
+
+  useEffect(() => {
+    checkFreshness();
+  }, [checkFreshness]);
 
   const roster = students.filter((s) => !selectedClassId || !s.classId || s.classId === selectedClassId);
 
@@ -116,6 +146,7 @@ export default function MomentComposer({
       // Collapse again: the job is done, and leaving an empty form open is a
       // small invitation to send a second one nobody asked for.
       setOpen(false);
+      setStale(false);
       onPosted?.();
     } catch (err: any) {
       notify.error(err?.message || 'Error');
@@ -125,7 +156,7 @@ export default function MomentComposer({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className={`bg-white rounded-xl border overflow-hidden ${stale && !open ? 'border-amber-300' : 'border-gray-200'}`}>
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-gray-50 transition"
@@ -136,7 +167,14 @@ export default function MomentComposer({
           </span>
           <span className="min-w-0">
             <span className="block font-medium text-gray-800">{text.title}</span>
-            <span className="block text-sm text-gray-500">{text.intro}</span>
+            {stale && !open ? (
+              <>
+                <span className="block text-sm text-amber-700">{text.nudge}</span>
+                <span className="block text-xs text-gray-500">{text.nudgeHint}</span>
+              </>
+            ) : (
+              <span className="block text-sm text-gray-500">{text.intro}</span>
+            )}
           </span>
         </span>
         {open ? (

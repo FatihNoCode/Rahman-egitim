@@ -359,15 +359,11 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       return;
     }
 
-    if (deadlinePassed) {
-      notify.error(
-        language === 'tr'
-          ? 'Bu ders için bildirim süresi geçmiştir. Lütfen öğretmeninizle iletişime geçin.'
-          : 'De meldingstermijn voor deze les is verstreken. Neem contact op met de leraar.'
-      );
-      return;
-    }
-
+    // A report after the deadline is still accepted. A school that refuses a
+    // late ziekmelding does not get a punctual one — it gets no ziekmelding at
+    // all, and a teacher marking a child absent with no idea why. The lateness
+    // is recorded (see `onTime` on the server) and the reminder below asks for
+    // next time.
     try {
       const result = await apiRequest('/absence-notification', {
         method: 'POST',
@@ -381,7 +377,13 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       if (result.onTime) {
         notify.success(t.absenceReported);
       } else {
-        notify.success(t.absenceReportedLate);
+        // The report landed and is safe — the reminder rides along with it so
+        // the next one comes in earlier, rather than being an error message.
+        notify.success(
+          language === 'tr'
+            ? `${t.absenceReportedLate}. Bir dahaki sefere ders günü saat ${notificationDeadlineTime} öncesinde bildirmenizi rica ederiz.`
+            : `${t.absenceReportedLate}. Meld het de volgende keer vóór ${notificationDeadlineTime} op de lesdag.`
+        );
       }
 
       setShowAbsenceModal(false);
@@ -878,7 +880,14 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
         {showAbsenceModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-xl p-4 sm:p-6 max-w-md w-full">
-              <h3 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-3 sm:mb-4">{t.reportAbsence}</h3>
+              <h3 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-1">{t.reportAbsence}</h3>
+              {/* The deadline is set per school, so state it rather than
+                  assuming everyone knows it is nine o'clock. */}
+              <p className="text-xs text-gray-500 mb-3 sm:mb-4">
+                {language === 'tr'
+                  ? `Ders günü saat ${notificationDeadlineTime} öncesinde bildiriniz.`
+                  : `Graag melden vóór ${notificationDeadlineTime} op de lesdag.`}
+              </p>
               <div className="space-y-3 sm:space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">{t.selectStudent}</label>
@@ -914,25 +923,24 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                   />
                 </div>
                 {deadlinePassed && absenceDate && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                    <p className="flex items-center gap-1.5 text-sm text-red-800 font-semibold">
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="flex items-center gap-1.5 text-sm text-amber-900 font-semibold">
                       <AlertTriangle className="h-4 w-4 shrink-0" />
                       {language === 'tr'
-                        ? `Bildirim süresi geçmiştir (${notificationDeadlineTime})`
-                        : `Meldingstermijn verstreken (${notificationDeadlineTime})`}
+                        ? `Bildirim saati geçti (${notificationDeadlineTime})`
+                        : `Na de meldingstijd (${notificationDeadlineTime})`}
                     </p>
-                    <p className="text-xs text-red-700 mt-1">
+                    <p className="text-xs text-amber-800 mt-1">
                       {language === 'tr'
-                        ? 'Ders günü saat ' + notificationDeadlineTime + ' öncesinde bildirim yapmalısınız.'
-                        : 'U moet vóór ' + notificationDeadlineTime + ' op de lesdag melden.'}
+                        ? `Bildiriminizi yine de gönderebilirsiniz; geç bildirim olarak kaydedilir. Bir dahaki sefere ders günü saat ${notificationDeadlineTime} öncesinde bildirmenizi rica ederiz.`
+                        : `U kunt de melding gewoon versturen; hij wordt als late melding genoteerd. Wilt u de volgende keer vóór ${notificationDeadlineTime} op de lesdag melden?`}
                     </p>
                   </div>
                 )}
                 <div className="flex gap-2 sm:gap-3">
                   <button
                     onClick={submitAbsenceNotification}
-                    disabled={deadlinePassed}
-                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"
                   >
                     {t.submitNotification}
                   </button>
@@ -950,12 +958,14 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
 
         {/* The good news, above the calendar. Scoped to the selected child so
-            a compliment reads as being about them rather than about a class. */}
+            a compliment reads as being about them rather than about a class.
+            Absent entirely when there is nothing yet — see hideWhenEmpty. */}
         <MomentsFeed
           language={language}
           apiRequest={apiRequest}
           filterStudentId={selectedChild.id}
           limit={5}
+          hideWhenEmpty
         />
 
         {/* Agenda: lesson days, vacations, events, lesson reports & homework */}

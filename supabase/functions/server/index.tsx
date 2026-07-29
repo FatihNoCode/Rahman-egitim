@@ -841,12 +841,12 @@ async function sendConferenceConfirmationEmail(to: string, session: any, slot: a
     `Bevestiging tijdslot oudergesprek | Veli Görüşmesi Onayı - Rahman Eğitim`,
     emailWrapper('Oudergesprek bevestigd', `
       <p style="color:#374151;line-height:1.6">Beste ouder,</p>
-      <p style="color:#374151;line-height:1.6">Het tijdslot voor <strong>${escapeHtml(studentName)}</strong> is bevestigd. Hieronder vindt u de details. De afspraak zit ook als bijlage (<strong>oudergesprek.ics</strong>) bij deze e-mail — open deze om de afspraak aan uw agenda toe te voegen.</p>
+      <p style="color:#374151;line-height:1.6">Het tijdslot voor <strong>${escapeHtml(studentName)}</strong> is bevestigd. Hieronder vindt u de details. De afspraak zit ook als bijlage (<strong>oudergesprek.ics</strong>) bij deze e-mail — open deze om de afspraak aan uw agenda toe te voegen. Tot dan, in shaa Allah.</p>
       ${card}
       <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
       <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
       <p style="color:#374151;line-height:1.6">Sayın veli,</p>
-      <p style="color:#374151;line-height:1.6"><strong>${escapeHtml(studentName)}</strong> için görüşme saati onaylanmıştır. Detaylar yukarıdaki kartta yer almaktadır. Randevu ayrıca ek olarak (<strong>oudergesprek.ics</strong>) eklenmiştir — takviminize eklemek için açın.</p>
+      <p style="color:#374151;line-height:1.6"><strong>${escapeHtml(studentName)}</strong> için görüşme saati onaylanmıştır. Detaylar yukarıdaki kartta yer almaktadır. Randevu ayrıca ek olarak (<strong>oudergesprek.ics</strong>) eklenmiştir — takviminize eklemek için açın. İnşaallah o zaman görüşmek üzere.</p>
     `),
     [{ filename: 'oudergesprek.ics', content: icsContent, contentType: 'text/calendar' }],
   );
@@ -1049,14 +1049,14 @@ app.post("/make-server-6679cacd/signup", async (c) => {
         <p style="color:#374151;line-height:1.6">Beste ${escapeHtml(name)},</p>
         <p style="color:#374151;line-height:1.6">Bedankt voor uw registratie bij het Rahman Eğitim leerlingvolgsysteem.</p>
         <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 16px;margin:16px 0">
-          <p style="color:#92400e;margin:0;line-height:1.6"><strong>Let op:</strong> uw registratie geeft u nog geen directe toegang tot het systeem. Een beheerder moet uw account eerst goedkeuren en de juiste rol toekennen. Zodra dit is gebeurd, ontvangt u een e-mail en kunt u inloggen.</p>
+          <p style="color:#92400e;margin:0;line-height:1.6"><strong>Let op:</strong> uw registratie geeft u nog geen directe toegang tot het systeem. Een beheerder moet uw account eerst goedkeuren en de juiste rol toekennen. Zodra dit is gebeurd, ontvangt u in shaa Allah een e-mail en kunt u inloggen.</p>
         </div>
         <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
         <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
         <p style="color:#374151;line-height:1.6">Sayın ${escapeHtml(name)},</p>
         <p style="color:#374151;line-height:1.6">Rahman Eğitim öğrenci takip sistemine kaydolduğunuz için teşekkür ederiz.</p>
         <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 16px;margin:16px 0">
-          <p style="color:#92400e;margin:0;line-height:1.6"><strong>Önemli:</strong> kaydınız size sisteme hemen erişim vermez. Bir yönetici önce hesabınızı onaylamalı ve size uygun rolü atamalıdır. Bu işlem tamamlandığında bir e-posta alacak ve giriş yapabileceksiniz.</p>
+          <p style="color:#92400e;margin:0;line-height:1.6"><strong>Önemli:</strong> kaydınız size sisteme hemen erişim vermez. Bir yönetici önce hesabınızı onaylamalı ve size uygun rolü atamalıdır. Bu işlem tamamlandığında inşaallah bir e-posta alacak ve giriş yapabileceksiniz.</p>
         </div>
       `)
     );
@@ -4072,7 +4072,7 @@ app.post("/make-server-6679cacd/attendance", async (c) => {
           <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
           <p style="color:#374151;line-height:1.6">Sayın veli,</p>
           <p style="color:#374151;line-height:1.6"><strong>${student.name || ''}</strong>, önceden bildirim yapılmadan <strong>${date}</strong> tarihindeki derste devamsız olarak işaretlendi.</p>
-          <p style="color:#374151;line-height:1.6">Lütfen bundan sonra devamsızlıkları önceden veli portalı üzerinden bildirin.</p>
+          <p style="color:#374151;line-height:1.6">Bundan sonra devamsızlıkları veli portalı üzerinden önceden bildirmenizi rica ederiz.</p>
         `)
       );
     }
@@ -6332,22 +6332,48 @@ app.get("/make-server-6679cacd/absence-notifications-week", async (c) => {
       }
     }
 
-    // Fetch all notifications for these students and filter by date range
+    // Fetch all notifications for these students and filter by date range.
+    //
+    // The same pass also totals the whole school year. Parents may report an
+    // absence after the deadline — the report is worth more than the
+    // punctuality — so "reported late" is a running number someone has to be
+    // able to see, and a single week says nothing about a pattern. It costs
+    // nothing extra here: the year's notifications are already in hand.
     const results: any[] = [];
+    const seasonByStudent = new Map<string, { studentId: string; studentName: string; total: number; late: number }>();
     await Promise.all(students.map(async (student: any) => {
       const studentYear = yearByStudent.get(student.schoolId);
       const notificationIds: string[] = await kv.get(`student_absence_notifications:${student.id}:${studentYear?.id}`) || [];
       if (!notificationIds.length) return;
       const notifications = await kv.mget(notificationIds.map((id: string) => `absence_notification:${id}`));
+      const tally = { studentId: student.id, studentName: student.name, total: 0, late: 0 };
       for (const n of notifications) {
-        if (n && n.lessonDate >= from && n.lessonDate <= to) {
+        if (!n) continue;
+        tally.total++;
+        if (!n.onTime) tally.late++;
+        if (n.lessonDate >= from && n.lessonDate <= to) {
           results.push({ ...n, studentName: student.name, studentId: student.id });
         }
       }
+      if (tally.total > 0) seasonByStudent.set(student.id, tally);
     }));
 
     results.sort((a, b) => a.lessonDate.localeCompare(b.lessonDate));
-    return c.json({ notifications: results });
+
+    const perStudent = [...seasonByStudent.values()];
+    const season = {
+      yearName: [...yearByStudent.values()].find((y: any) => y?.name)?.name || null,
+      total: perStudent.reduce((sum, s) => sum + s.total, 0),
+      late: perStudent.reduce((sum, s) => sum + s.late, 0),
+      // Who reports late repeatedly — the part worth a conversation. One late
+      // report is a bad morning; several is something to raise with a family.
+      repeatLate: perStudent
+        .filter((s) => s.late >= 2)
+        .sort((a, b) => b.late - a.late)
+        .slice(0, 10),
+    };
+
+    return c.json({ notifications: results, season });
   } catch (err) {
     console.log('Get week notifications error:', err);
     return c.json({ error: 'Failed to get notifications' }, 500);
@@ -7027,11 +7053,11 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
       'Inschrijving ontvangen | Kayıt Alındı - Rahman Eğitim',
       emailWrapper('Inschrijving ontvangen', `
         <p style="color:#374151;line-height:1.6">Beste ${contactNaam},</p>
-        <p style="color:#374151;line-height:1.6">Wij hebben de inschrijving van <strong>${escapeHtml(voornaam)} ${escapeHtml(achternaam)}</strong> in goede orde ontvangen. Wij nemen de aanvraag in behandeling en informeren u zodra hier een update in is.</p>
+        <p style="color:#374151;line-height:1.6">Wij hebben de inschrijving van <strong>${escapeHtml(voornaam)} ${escapeHtml(achternaam)}</strong> in goede orde ontvangen. Wij nemen de aanvraag in behandeling en informeren u, in shaa Allah, zodra hier een update in is.</p>
         <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
         <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
         <p style="color:#374151;line-height:1.6">Sayın ${contactNaam},</p>
-        <p style="color:#374151;line-height:1.6"><strong>${escapeHtml(voornaam)} ${escapeHtml(achternaam)}</strong> için yapılan kaydı aldık. Başvurunuzu inceliyoruz ve bir gelişme olduğunda sizi bilgilendireceğiz.</p>
+        <p style="color:#374151;line-height:1.6"><strong>${escapeHtml(voornaam)} ${escapeHtml(achternaam)}</strong> için yapılan kaydı aldık. Başvurunuzu inceliyoruz ve inşaallah bir gelişme olduğunda sizi bilgilendireceğiz.</p>
       `)
     );
 
@@ -7907,7 +7933,7 @@ app.post("/make-server-6679cacd/boekhouding/send-schoolgeld-reminders", async (c
           <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
           <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
           <p style="color:#374151;line-height:1.6">Sayın veli,</p>
-          <p style="color:#374151;line-height:1.6">Aşağıdaki öğrenciler için hala ödenmemiş okul ücreti bulunmaktadır:</p>
+          <p style="color:#374151;line-height:1.6">Aşağıdaki öğrenciler için hâlâ ödenmemiş okul ücreti bulunmaktadır:</p>
           <ul style="margin:8px 0 16px 20px;padding:0">${rowsTr}</ul>
           <p style="color:#374151;line-height:1.6">En kısa sürede ödemenizi rica ederiz. Teşekkür ederiz!</p>
         `)
@@ -9783,7 +9809,7 @@ app.post("/make-server-6679cacd/cron/tick", async (c) => {
             await createNotification(cls.teacherId, {
               type: 'attendance_reminder',
               titleNl: 'Aanwezigheid nog niet ingevuld',
-              titleTr: 'Devamsızlık henüz girilmedi',
+              titleTr: 'Yoklama henüz girilmedi',
               bodyNl: `Vergeet niet de aanwezigheid voor ${cls.name} van vandaag in te vullen.`,
               bodyTr: `${cls.name} sınıfının bugünkü devamsızlığını girmeyi unutmayın.`,
               link: '#entities',
@@ -9793,14 +9819,14 @@ app.post("/make-server-6679cacd/cron/tick", async (c) => {
             if (teacherData.email) {
               await sendEmail(
                 teacherData.email,
-                'Aanwezigheid nog niet ingevuld | Devamsızlık Henüz Girilmedi - Rahman Eğitim',
+                'Aanwezigheid nog niet ingevuld | Yoklama Henüz Girilmedi - Rahman Eğitim',
                 emailWrapper('Aanwezigheid', `
                   <p style="color:#374151;line-height:1.6">Beste leerkracht,</p>
                   <p style="color:#374151;line-height:1.6">De les van <strong>${cls.name}</strong> loopt bijna af (of is voorbij) en de aanwezigheid van vandaag is nog niet ingevuld. Wilt u dit zo spoedig mogelijk doen?</p>
                   <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
                   <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
                   <p style="color:#374151;line-height:1.6">Sayın öğretmen,</p>
-                  <p style="color:#374151;line-height:1.6"><strong>${cls.name}</strong> sınıfının dersi bitmek üzere (veya bitti) ve bugünkü devamsızlık henüz girilmedi. En kısa sürede girmenizi rica ederiz.</p>
+                  <p style="color:#374151;line-height:1.6"><strong>${cls.name}</strong> sınıfının dersi bitmek üzere (veya bitti) ve bugünkü yoklama henüz girilmedi. En kısa sürede girmenizi rica ederiz.</p>
                 `)
               );
             }

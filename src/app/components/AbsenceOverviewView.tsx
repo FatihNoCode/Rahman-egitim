@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+
+interface SeasonSummary {
+  yearName: string | null;
+  total: number;
+  late: number;
+  repeatLate: { studentId: string; studentName: string; total: number; late: number }[];
+}
 
 interface Props {
   language: 'nl' | 'tr';
@@ -41,6 +48,7 @@ function formatWeekLabel(from: string, to: string, language: 'nl' | 'tr') {
 export default function AbsenceOverviewView({ language, apiRequest, classId, classes }: Props) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [season, setSeason] = useState<SeasonSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState(classId || '');
 
@@ -58,6 +66,7 @@ export default function AbsenceOverviewView({ language, apiRequest, classId, cla
       if (selectedClassId) params.set('classId', selectedClassId);
       const data = await apiRequest(`/absence-notifications-week?${params}`);
       setNotifications(data.notifications || []);
+      setSeason(data.season || null);
     } catch (err) {
       console.error('Error loading week notifications:', err);
     } finally {
@@ -71,6 +80,7 @@ export default function AbsenceOverviewView({ language, apiRequest, classId, cla
     grouped[n.lessonDate].push(n);
   }
   const sortedDates = Object.keys(grouped).sort();
+  const nl = language === 'nl';
 
   return (
     <div>
@@ -116,6 +126,50 @@ export default function AbsenceOverviewView({ language, apiRequest, classId, cla
           <ChevronRight className="w-5 h-5 text-gray-600" />
         </button>
       </div>
+
+      {/* Running totals for the whole school year. A parent may report an
+          absence after the deadline — that is better than not reporting at
+          all — so the late count is a number to follow over time rather than
+          a door that closes. */}
+      {season && season.total > 0 && (
+        <div className="mb-5 rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Clock className="w-4 h-4 text-gray-400 shrink-0" />
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              {nl ? 'Dit schooljaar' : 'Bu eğitim yılı'}
+              {season.yearName ? ` · ${season.yearName}` : ''}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+            <span className="text-gray-700">
+              <strong>{season.total}</strong> {nl ? 'meldingen' : 'bildirim'}
+            </span>
+            <span className="text-emerald-700">
+              <strong>{season.total - season.late}</strong> {nl ? 'op tijd' : 'zamanında'}
+            </span>
+            <span className="text-orange-700">
+              <strong>{season.late}</strong> {nl ? 'te laat gemeld' : 'geç bildirildi'}
+            </span>
+          </div>
+          {season.repeatLate.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-gray-200">
+              <p className="text-xs text-gray-500 mb-1">
+                {nl ? 'Vaker te laat gemeld:' : 'Birden fazla kez geç bildirenler:'}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {season.repeatLate.map((s) => (
+                  <span
+                    key={s.studentId}
+                    className="text-xs bg-orange-50 text-orange-800 rounded-full px-2 py-0.5"
+                  >
+                    {s.studentName} · {s.late}×
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-10 text-gray-400 text-sm">

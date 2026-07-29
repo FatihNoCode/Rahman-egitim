@@ -47,6 +47,15 @@ interface MomentsFeedProps {
   refreshKey?: number;
   /** Cap the list. The parent home wants a glance, not an archive. */
   limit?: number;
+  /**
+   * Render nothing at all when there is nothing to show, heading included.
+   *
+   * For parents this is the honest behaviour. Not every teacher writes these,
+   * and a permanently empty "Güzel anlar" box on a family's home screen reads
+   * as either a broken feature or a verdict on their child. The nudge to write
+   * one belongs on the teacher's screen, not as a hole on the parent's.
+   */
+  hideWhenEmpty?: boolean;
 }
 
 export default function MomentsFeed({
@@ -56,6 +65,7 @@ export default function MomentsFeed({
   allowDelete = false,
   refreshKey = 0,
   limit = 8,
+  hideWhenEmpty = false,
 }: MomentsFeedProps) {
   const tr = language === 'tr';
   const text = tr
@@ -97,6 +107,7 @@ export default function MomentsFeed({
   // Before the first response there is nothing honest to show, and an empty
   // "no moments yet" that flickers into a full list reads as a glitch.
   if (!loaded) return null;
+  if (hideWhenEmpty && visible.length === 0) return null;
 
   return (
     <div className="mb-4 sm:mb-6">

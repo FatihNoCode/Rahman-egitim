@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Moon, ClipboardList, UsersRound, Award, Check, AlertTriangle, X, Frown, Meh, Smile, FileText } from 'lucide-react';
+import { useState, useEffect, type ReactNode } from 'react';
+import { Moon, ClipboardList, UsersRound, Award, Check, AlertTriangle, X, Frown, Meh, Smile, FileText, ChevronDown } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
@@ -45,6 +45,64 @@ interface Student {
 
 interface TeacherDashboardProps {
   onLogout: () => void;
+}
+
+/**
+ * One collapsible step of the lesson registration.
+ *
+ * The three steps stacked open ran to several screens on a phone, so the
+ * attendance list — the part a teacher actually scrolls through — started
+ * below the fold. Collapsed, each header still has to answer "am I done with
+ * this one?" without being opened, which is what `status` carries.
+ */
+function RegistrationStep({
+  number,
+  title,
+  required,
+  status,
+  done,
+  open,
+  onToggle,
+  children,
+}: {
+  number: number;
+  title: string;
+  required?: boolean;
+  status: string;
+  done: boolean;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mb-3 rounded-xl border border-gray-200 overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="w-full flex items-center gap-2 sm:gap-3 p-3 text-left hover:bg-gray-50 transition"
+      >
+        <span
+          className={`shrink-0 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold ${
+            done ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700'
+          }`}
+        >
+          {done ? <Check className="h-3.5 w-3.5" /> : number}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm sm:text-base font-semibold text-emerald-800">
+            {title}
+            {required && <span className="text-red-500"> *</span>}
+          </span>
+          <span className="block text-xs text-gray-500 truncate">{status}</span>
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && <div className="border-t border-gray-200 p-3 sm:p-4">{children}</div>}
+    </div>
+  );
 }
 
 export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
@@ -111,6 +169,14 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   // Save progress state
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState(0);
+
+  // Which of the three registration steps is unfolded. One at a time: the
+  // point of collapsing them was to get the whole form back onto one screen,
+  // and two open steps puts it right back where it started.
+  const [openStep, setOpenStep] = useState<1 | 2 | 3 | null>(1);
+  const toggleStep = (n: 1 | 2 | 3) => setOpenStep((cur) => (cur === n ? null : n));
+  // How far the roster has been worked through, for the collapsed step header.
+  const attendanceMarked = students.filter((s) => attendanceRecords[s.id] !== undefined).length;
 
   useEffect(() => {
     loadData();
@@ -298,13 +364,17 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       present,
     }));
 
+    // Each of these opens the step it is about: with the steps folded up, a
+    // toast pointing at a field nobody can see is a dead end.
     if (records.length === 0) {
-      notify.error(language === 'tr' ? 'Lütfen devamsızlık kayıtlarını doldurun!' : 'Vul alstublieft de aanwezigheidsgegevens in!');
+      setOpenStep(2);
+      notify.error(language === 'tr' ? 'Lütfen yoklamayı doldurun!' : 'Vul alstublieft de aanwezigheidsgegevens in!');
       return;
     }
 
     // Lesson summary is mandatory
     if (!lessonSummary.trim()) {
+      setOpenStep(1);
       notify.error(language === 'tr' ? 'Lütfen kısa bir ders özeti girin!' : 'Vul een korte lessamenvatting in!');
       return;
     }
@@ -312,25 +382,30 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     // Validate homework fields if homework is being added
     if (addHomework) {
       if (!homeworkDueDate) {
+        setOpenStep(3);
         notify.error(language === 'tr' ? 'Lütfen ödev bitiş tarihi seçin!' : 'Selecteer een einddatum voor het huiswerk!');
         return;
       }
       if (homeworkCategory === 'custom' && (!customHomeworkTr || !customHomeworkNl)) {
+        setOpenStep(3);
         notify.error(language === 'tr' ? 'Lütfen her iki dilde de ödev açıklaması girin!' : 'Voer de huiswerkomschrijving in beide talen in!');
         return;
       }
       if (homeworkCategory === 'quran' && !isWholeSurah) {
         const chapter = quranChapters.find((c) => c.number === selectedSurah);
         if (chapter && (ayatFrom > ayatTo || ayatFrom < 1 || ayatTo > chapter.ayatCount)) {
+          setOpenStep(3);
           notify.error(language === 'tr' ? 'Geçersiz ayet aralığı!' : 'Ongeldig ayat-bereik!');
           return;
         }
       }
       if (homeworkCategory === 'temel' && !temelPageFrom) {
+        setOpenStep(3);
         notify.error(language === 'tr' ? 'Lütfen sayfa numarası girin!' : 'Voer een paginanummer in!');
         return;
       }
       if (homeworkType === 'individual' && selectedStudents.length === 0) {
+        setOpenStep(3);
         notify.error(language === 'tr' ? 'Lütfen en az bir öğrenci seçin!' : 'Selecteer minimaal één leerling!');
         return;
       }
@@ -341,6 +416,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       (id) => behaviorRecords[id] === 'sad' && (behaviorNotes[id] || '').trim().length < 5
     );
     if (missingSadNote) {
+      setOpenStep(2);
       notify.error(language === 'tr'
         ? 'Üzgün surat verilen her öğrenci için en az 5 karakterlik bir açıklama girin!'
         : 'Voer een toelichting van minimaal 5 tekens in voor elke leerling met een verdrietige smiley!');
@@ -425,8 +501,8 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       setSaveProgress(0);
 
       const successMsg = addHomework
-        ? (language === 'tr' ? 'Devamsızlık, davranış ve ödev kaydedildi!' : 'Aanwezigheid, gedrag en huiswerk opgeslagen!')
-        : (language === 'tr' ? 'Devamsızlık ve davranış kaydedildi!' : 'Aanwezigheid en gedrag opgeslagen!');
+        ? (language === 'tr' ? 'Yoklama, davranış ve ödev kaydedildi!' : 'Aanwezigheid, gedrag en huiswerk opgeslagen!')
+        : (language === 'tr' ? 'Yoklama ve davranış kaydedildi!' : 'Aanwezigheid en gedrag opgeslagen!');
       notify.success(successMsg);
 
       // Reset all fields
@@ -473,7 +549,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     // Start / Ana Sayfa, the same first tab every role lands on — see
     // SHARED_NAV in navPrefs. What it shows here is the teacher's day.
     sharedNavItem('home', language, 'signals'),
-    { id: 'attendance', label: language === 'tr' ? 'Les Kaydı' : 'Les Registratie', shortLabel: language === 'tr' ? 'Ders' : 'Les', icon: ClipboardList },
+    { id: 'attendance', label: language === 'tr' ? 'Ders Kaydı' : 'Lesregistratie', shortLabel: language === 'tr' ? 'Ders' : 'Les', icon: ClipboardList },
     sharedNavItem('agenda', language),
     sharedNavItem('meldingen', language),
     sharedNavItem('oudergesprekken', language),
@@ -624,12 +700,21 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                 </div>
 
                 {/* ── Step 1: Lesson summary (mandatory, visible to parents) ── */}
-                <div className="mb-6">
-                  <h3 className="text-sm sm:text-base font-semibold text-emerald-800 mb-2 flex items-center gap-2">
-                    <span className="bg-emerald-100 text-emerald-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">1</span>
-                    {language === 'tr' ? 'Ders Özeti' : 'Lessamenvatting'}
-                    <span className="text-red-500">*</span>
-                  </h3>
+                <RegistrationStep
+                  number={1}
+                  title={language === 'tr' ? 'Ders Özeti' : 'Lessamenvatting'}
+                  required
+                  done={lessonSummary.trim().length > 0}
+                  status={
+                    lessonSummary.trim()
+                      ? lessonSummary.trim()
+                      : language === 'tr'
+                        ? 'Velilere gösterilir'
+                        : 'Zichtbaar voor ouders'
+                  }
+                  open={openStep === 1}
+                  onToggle={() => toggleStep(1)}
+                >
                   <p className="text-xs text-gray-500 mb-2">
                     {language === 'tr'
                       ? 'Bu dersin kısa bir özeti — velilere gösterilir.'
@@ -642,15 +727,21 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                     placeholder={language === 'tr' ? 'Bugün ne işlendi?' : 'Wat is er vandaag behandeld?'}
                     className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
                   />
-                </div>
+                </RegistrationStep>
 
                 {/* ── Step 2: Attendance & Behavior ── */}
-                <div className="mb-6">
-                  <h3 className="text-sm sm:text-base font-semibold text-emerald-800 mb-3 flex items-center gap-2">
-                    <span className="bg-emerald-100 text-emerald-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">2</span>
-                    {language === 'tr' ? 'Devamsızlık & Davranış' : 'Aanwezigheid & Gedrag'}
-                  </h3>
-
+                <RegistrationStep
+                  number={2}
+                  title={language === 'tr' ? 'Yoklama ve Davranış' : 'Aanwezigheid & Gedrag'}
+                  done={students.length > 0 && attendanceMarked === students.length}
+                  status={
+                    students.length === 0
+                      ? (language === 'tr' ? 'Bu sınıfta öğrenci yok' : 'Deze klas heeft nog geen leerlingen')
+                      : `${attendanceMarked}/${students.length} ${language === 'tr' ? 'işaretlendi' : 'ingevuld'}`
+                  }
+                  open={openStep === 2}
+                  onToggle={() => toggleStep(2)}
+                >
                   <div className="space-y-2 sm:space-y-3">
                     {students.map((student) => {
                       const isPresent = attendanceRecords[student.id];
@@ -794,16 +885,23 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                       );
                     })}
                   </div>
-                </div>
+                </RegistrationStep>
 
-                {/* ── Step 2: Homework (optional) ── */}
-                <div className="mb-6">
-                  <div className="border-t border-gray-200 pt-5">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm sm:text-base font-semibold text-emerald-800 flex items-center gap-2">
-                        <span className="bg-emerald-100 text-emerald-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">3</span>
-                        {language === 'tr' ? 'Ödev (opsiyonel)' : 'Huiswerk (optioneel)'}
-                      </h3>
+                {/* ── Step 3: Homework (optional) ── */}
+                <RegistrationStep
+                  number={3}
+                  title={language === 'tr' ? 'Ödev (opsiyonel)' : 'Huiswerk (optioneel)'}
+                  done={addHomework}
+                  status={
+                    addHomework
+                      ? (language === 'tr' ? 'Ödev ekleniyor' : 'Huiswerk wordt toegevoegd')
+                      : (language === 'tr' ? 'Ödev yok' : 'Geen huiswerk')
+                  }
+                  open={openStep === 3}
+                  onToggle={() => toggleStep(3)}
+                >
+                  <div>
+                    <div className="flex items-center justify-end mb-3">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <span className="text-xs sm:text-sm text-gray-600">
                           {addHomework
@@ -907,7 +1005,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                             <p className="flex items-center gap-1.5 text-xs text-emerald-700">
                               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                               {language === 'tr'
-                                ? 'Ödevi hem Türkçe hem de Hollandaca girin'
+                                ? 'Ödevi hem Türkçe hem de Felemenkçe girin'
                                 : 'Voer het huiswerk in zowel Turks als Nederlands in'}
                             </p>
                             <div>
@@ -924,13 +1022,13 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                             </div>
                             <div>
                               <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-                                {language === 'tr' ? 'Ödev (Hollandaca)' : 'Huiswerk (Nederlands)'}
+                                {language === 'tr' ? 'Ödev (Felemenkçe)' : 'Huiswerk (Nederlands)'}
                               </label>
                               <textarea
                                 value={customHomeworkNl}
                                 onChange={(e) => setCustomHomeworkNl(e.target.value)}
                                 rows={2}
-                                placeholder={language === 'tr' ? 'Hollandaca...' : 'Nederlands...'}
+                                placeholder={language === 'tr' ? 'Felemenkçe...' : 'Nederlands...'}
                                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                               />
                             </div>
@@ -1059,7 +1157,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                       </div>
                     )}
                   </div>
-                </div>
+                </RegistrationStep>
 
                 {/* Progress bar */}
                 {isSaving && (
@@ -1090,7 +1188,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                   {isSaving
                     ? (language === 'tr' ? 'Kaydediliyor...' : 'Opslaan...')
                     : (addHomework
-                        ? (language === 'tr' ? 'Devamsızlık, Davranış & Ödev Kaydet' : 'Aanwezigheid, Gedrag & Huiswerk Opslaan')
+                        ? (language === 'tr' ? 'Yoklama, Davranış ve Ödev Kaydet' : 'Aanwezigheid, Gedrag & Huiswerk Opslaan')
                         : t.save)}
                 </button>
               </div>
@@ -1117,8 +1215,8 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                   title={language === 'tr' ? 'Sınıflar' : 'Klassen'}
                   reason={
                     language === 'tr'
-                      ? 'Sınıf beheer ekranı, her öğrenci için devamsızlık, davranış ve veli bilgilerini yan yana gösterir. Bu karşılaştırma telefon ekranında kayboluyor, bu yüzden bu ekran web sitesinde kalıyor.'
-                      : 'Klassen beheer zet per leerling de aanwezigheid, het gedrag en de oudergegevens naast elkaar. Juist die vergelijking gaat op een telefoonscherm verloren, dus dit scherm blijft op de website.'
+                      ? 'Sınıflar ekranı, her öğrenci için devamsızlık, davranış ve veli bilgilerini yan yana gösterir. Bu karşılaştırma telefon ekranında kayboluyor, bu yüzden bu ekran web sitesinde kalıyor.'
+                      : 'Het klassenoverzicht zet per leerling de aanwezigheid, het gedrag en de oudergegevens naast elkaar. Juist die vergelijking gaat op een telefoonscherm verloren, dus dit scherm blijft op de website.'
                   }
                   tab="beheer"
                 />

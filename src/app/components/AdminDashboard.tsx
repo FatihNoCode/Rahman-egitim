@@ -570,8 +570,8 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
                     </div>
                     <p className="text-xs text-gray-500">
                       {language === 'tr'
-                        ? 'Veliler ders günü bu saatten önce devamsızlık bildirimi yapmalıdır. Bu saatten sonra bildirim yapamayacaklar.'
-                        : 'Ouders moeten afwezigheid vóór dit tijdstip op de lesdag melden. Na dit tijdstip kunnen ze geen melding meer maken.'}
+                        ? 'Veliler ders günü bu saatten önce devamsızlık bildirmelidir. Bu saatten sonra da bildirim yapabilirler; bildirim “geç” olarak kaydedilir ve velilerden bir dahaki sefere daha erken bildirmeleri rica edilir. Geç bildirim sayılarını “Devamsızlık Bildirimleri” sekmesinde görebilirsiniz.'
+                        : 'Ouders melden een afwezigheid vóór dit tijdstip op de lesdag. Na dit tijdstip kunnen ze nog steeds melden; de melding wordt als “te laat” genoteerd en de ouder krijgt het verzoek de volgende keer eerder te melden. De aantallen ziet u bij Afwezigheidsmeldingen.'}
                     </p>
                   </div>
 

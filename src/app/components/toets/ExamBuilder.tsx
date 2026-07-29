@@ -59,7 +59,7 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
     ayah: tr ? 'Ayet no' : 'Vers nr.',
     loadVerse: tr ? 'Ayeti getir' : 'Vers ophalen',
     pickWord: tr ? 'Boşluk bırakılacak kelimeye tıklayın' : 'Klik op het woord dat weggelaten wordt',
-    verseError: tr ? 'Ayet yüklenemedi, tekrar deneyin' : 'Vers kon niet geladen worden, probeer opnieuw',
+    verseError: tr ? 'Ayet yüklenemedi, tekrar deneyin' : 'Vers kon niet worden geladen, probeer het opnieuw',
     needName: tr ? 'Sınav adı gerekli' : 'Naam van de toets is verplicht',
     needQuestions: tr ? 'En az bir soru ekleyin' : 'Voeg minimaal één vraag toe',
     undo: tr ? 'Geri al' : 'Ongedaan maken',

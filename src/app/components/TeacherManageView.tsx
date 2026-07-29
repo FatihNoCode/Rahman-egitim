@@ -61,7 +61,7 @@ export default function TeacherManageView({
       children: 'Çocuklar',
       noChildren: 'Çocuk bağlantısı yok',
       neverLoggedIn: 'Hiç giriş yapmadı',
-      attendance: 'Devamsızlık',
+      attendance: 'Yoklama',
       behavior: 'Davranış',
       homework: 'Ödev',
       present: 'Var',
@@ -167,7 +167,7 @@ export default function TeacherManageView({
       setStudentDetails(sortedData);
     } catch (error) {
       console.error('Error loading student details:', error);
-      notify.error(language === 'tr' ? 'Öğrenci bilgileri yüklenemedi!' : 'Kan leerling gegevens niet laden!');
+      notify.error(language === 'tr' ? 'Öğrenci bilgileri yüklenemedi!' : 'Kan de leerlinggegevens niet laden!');
     } finally {
       setLoadingDetails(false);
     }
@@ -181,7 +181,7 @@ export default function TeacherManageView({
       setParentDetails(response.parent);
     } catch (error) {
       console.error('Error loading parent details:', error);
-      notify.error(language === 'tr' ? 'Veli bilgileri yüklenemedi!' : 'Kan ouder gegevens niet laden!');
+      notify.error(language === 'tr' ? 'Veli bilgileri yüklenemedi!' : 'Kan de oudergegevens niet laden!');
     } finally {
       setLoadingDetails(false);
     }

@@ -71,6 +71,18 @@ interface User {
 // Roles an account with more than one assigned role can hop between.
 export type TestRole = 'superadmin' | 'regional_admin' | 'admin' | 'teacher' | 'parent';
 
+/**
+ * An account that exists to try the product rather than to use it: a Demo
+ * Portal tester, or any account carrying more than one role (which only ever
+ * happens for test accounts — see User.roles).
+ *
+ * Elif-Ba uses it to unlock every stage on the map, since a tester needs to
+ * inspect level 20 without playing nineteen levels to reach it.
+ */
+export function isTestAccount(user: { isDemoTester?: boolean; roles?: unknown[] } | null | undefined): boolean {
+  return !!user?.isDemoTester || (user?.roles?.length ?? 0) > 1;
+}
+
 interface AppContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
@@ -312,6 +324,23 @@ export default function App() {
     const id = setTimeout(() => setSplashHeld(false), 7000);
     return () => clearTimeout(id);
   }, []);
+
+  // The public /elif-ba page, opened while a parent happens to be signed in.
+  // Their children become the players there too, so a bookmark behaves like
+  // the entry inside the dashboard rather than falling back to "type a name".
+  const [elifBaPlayers, setElifBaPlayers] = useState<{ id: string; name: string }[] | undefined>();
+  useEffect(() => {
+    if (!isElifBaPage || user?.role !== 'parent') { setElifBaPlayers(undefined); return; }
+    let cancelled = false;
+    apiRequest('/students')
+      .then((res) => {
+        if (cancelled) return;
+        const kids = (res?.students || []).map((s: any) => ({ id: s.id, name: s.name }));
+        setElifBaPlayers(kids.length > 0 ? kids : undefined);
+      })
+      .catch(() => { if (!cancelled) setElifBaPlayers(undefined); });
+    return () => { cancelled = true; };
+  }, [isElifBaPage, user?.role, apiRequest]);
 
   useEffect(() => {
     // Check for password recovery in URL hash — must be first, before checkSession runs
@@ -642,7 +671,16 @@ export default function App() {
             ) : isRecovery ? (
               <ResetPasswordPage language={language} onDone={() => setIsRecovery(false)} />
             ) : isElifBaPage ? (
-              <ElifBaPage onBack={() => { window.location.href = '/'; }} />
+              // /elif-ba is a public page, so it usually has no account behind
+              // it and the child types their own name. When a parent happens to
+              // be signed in — a bookmark, a shared link — it behaves like the
+              // in-dashboard entry instead: their children are the players, and
+              // a test account sees the whole map.
+              <ElifBaPage
+                onBack={() => { window.location.href = '/'; }}
+                unlockAll={isTestAccount(user)}
+                players={elifBaPlayers}
+              />
             ) : isInschrijvingPage ? (
               <InschrijvingPage />
             ) : inviteToken ? (

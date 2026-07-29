@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
-import { useApp } from '../App';
+import { useApp, isTestAccount } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
 import { Euro, Moon, AlertTriangle, Check, Receipt, Sparkles, ArrowLeft } from 'lucide-react';
@@ -25,13 +25,16 @@ import {
   type MobileNavItem,
 } from './mobile/navPrefs';
 
-// The app carries the Elif-Ba game itself — it is built to work offline and is
-// the reason a child opens the app at all, so it renders in a full-bleed
-// destination below (the `app && activeTab === 'alifba'` branch). The website,
-// by contrast, has its own dedicated Elif-Ba page, so on the web the same nav
-// entry links there instead of embedding a second copy.
+// Elif-Ba renders in a full-bleed destination below (the `activeTab ===
+// 'alifba'` branch), on the website as well as in the app.
+//
+// The website used to hand off to the public /elif-ba page in a new tab. That
+// page knows nothing about who opened it: no enrolled child to name the player
+// after, and no account to read the test-account unlock from. Passing either
+// through a URL would put a child's name in a query string, so the page comes
+// to the account instead of the account going to the page. /elif-ba stays
+// exactly as it was for visitors who are not logged in.
 const ElifBaPage = lazy(() => import('./ElifBaPage'));
-const ELIF_BA_URL = 'https://rahmanegitim.com/elif-ba';
 
 interface Student {
   id: string;
@@ -473,16 +476,15 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const orderedIds = navOrder.filter((id) => byId[id]);
   const navItems = orderedIds.map((id) => byId[id]);
 
-  // On the website the Elif-Ba entry hands off to the site's own Elif-Ba page
-  // rather than becoming a tab; in the app it *is* a tab, rendered by the
-  // full-screen branch below, so there it selects normally.
-  const selectTab = (id: string) => {
-    if (id === 'alifba' && !app) {
-      window.open(ELIF_BA_URL, '_blank', 'noopener');
-      return;
-    }
-    setActiveTab(id);
-  };
+  const selectTab = (id: string) => setActiveTab(id);
+
+  // Who Elif-Ba may play as. The enrolled children of this account, and only
+  // those — the name lands on a leaderboard their classmates read, so it is
+  // not a field a child gets to type into.
+  const elifBaPlayers = useMemo(
+    () => students.map((s) => ({ id: s.id, name: s.name })),
+    [students],
+  );
 
   const mobileNav = (floating = true) => (
     <MobileNav
@@ -494,21 +496,21 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     />
   );
 
-  // App layout: Elif-Ba is a full-bleed destination with its own dark theme,
-  // rendered edge-to-edge above the bottom tab bar rather than inside the
-  // padded gray dashboard shell.
+  // Elif-Ba is a full-bleed destination with its own dark theme, rendered
+  // edge-to-edge rather than inside the padded gray dashboard shell.
   //
-  // Once the child presses Start, the tab bar goes away entirely: the games are
-  // played with a finger near the bottom of the screen, and a live tab bar
-  // there means every mis-swipe drops them out of a game. A back button in the
-  // top corner — out of the play area — returns them to the Elif-Ba start
-  // screen, where the bar comes back.
-  if (app && activeTab === 'alifba') {
+  // In the app, once the child presses Start the tab bar goes away entirely:
+  // the games are played with a finger near the bottom of the screen, and a
+  // live tab bar there means every mis-swipe drops them out of a game. A back
+  // button in the top corner — out of the play area — returns them to the
+  // Elif-Ba start screen, where the bar comes back. On the website there is no
+  // tab bar to hide, so the game's own "Terug" goes back to the dashboard.
+  if (activeTab === 'alifba') {
     return (
       // safe-top: `fixed inset-0` opts out of the safe-area padding #root
       // carries, so on iOS this view has to add the status-bar gap itself.
       <div className="safe-top fixed inset-0 flex flex-col bg-slate-700">
-        {!elifbaAtHome && (
+        {app && !elifbaAtHome && (
           <button
             type="button"
             onClick={() => setElifbaGoHome((n) => n + 1)}
@@ -528,15 +530,15 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             }
           >
             <ElifBaPage
+              onBack={app ? undefined : () => setActiveTab('overview')}
               goHomeSignal={elifbaGoHome}
               onAtHomeChange={setElifbaAtHome}
-              // Demo testers and multi-role (test) accounts get the whole map
-              // unlocked so they can inspect any level without playing through.
-              unlockAll={!!user?.isDemoTester || (user?.roles?.length ?? 0) > 1}
+              unlockAll={isTestAccount(user)}
+              players={elifBaPlayers}
             />
           </Suspense>
         </div>
-        {elifbaAtHome && mobileNav(false)}
+        {app && elifbaAtHome && mobileNav(false)}
       </div>
     );
   }
@@ -683,15 +685,13 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             >
               {language === 'tr' ? 'Ödemeler' : 'Facturatie'}
             </button>
-            <a
-              href={ELIF_BA_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => setActiveTab('alifba')}
               className="px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1.5"
             >
               <Sparkles className="h-3.5 w-3.5" />
               Elif-Ba
-            </a>
+            </button>
           </div>
         )}
 

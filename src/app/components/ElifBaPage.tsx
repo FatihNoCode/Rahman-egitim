@@ -44,6 +44,9 @@ const T = {
   namePrompt:      { nl: 'Hoe heet je?', tr: 'Adın ne?' },
   nameSub:         { nl: 'Zo kom je op de topperslijst! 🏆', tr: 'Böylece sıralamaya girersin! 🏆' },
   namePlaceholder: { nl: 'Jouw naam', tr: 'Adın' },
+  whoPlays:        { nl: 'Wie gaat er spelen?', tr: 'Kim oynayacak?' },
+  whoPlaysSub:     { nl: 'Kies een kind — de sterren worden apart bijgehouden.', tr: 'Bir çocuk seçin — yıldızlar ayrı ayrı tutulur.' },
+  switchChild:     { nl: 'Ander kind', tr: 'Başka çocuk' },
   letsGo:          { nl: "Let's go! 🚀", tr: 'Hadi başla! 🚀' },
   noScores:        { nl: 'Nog geen toppers. Wees de eerste! 🌟', tr: 'Henüz kimse yok. İlk sen ol! 🌟' },
   you:             { nl: 'jij', tr: 'sen' },
@@ -186,18 +189,35 @@ function pickNext<T extends { id: string }>(arr: T[], prev?: T | null): T {
 
 // ─── Hooks ───────────────────────────────────────────────────────────────────
 
-function useLocalProgress() {
-  const KEY = 'elifba_progress_v2';
-  const [progress, setProgressState] = useState<Record<string, any>>(() => {
+/**
+ * Stars per stage, in localStorage.
+ *
+ * `playerId` scopes the store. Two siblings on one parent's phone are two
+ * players: without the scope the younger one inherits the elder's map and both
+ * post the same star count to the leaderboard under different names. The
+ * unscoped key stays the anonymous/public player, so a child who has been
+ * playing from the public page keeps their stars.
+ */
+function useLocalProgress(playerId?: string) {
+  const KEY = playerId ? `elifba_progress_v2:${playerId}` : 'elifba_progress_v2';
+  const read = () => {
     try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; }
-  });
+  };
+  const [progress, setProgressState] = useState<Record<string, any>>(read);
+
+  // Switching child mid-session has to swap the whole map, not merge it.
+  useEffect(() => {
+    setProgressState(read());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [KEY]);
+
   const setProgress = useCallback((updater: (p: Record<string, any>) => Record<string, any>) => {
     setProgressState(prev => {
       const next = updater(prev);
       localStorage.setItem(KEY, JSON.stringify(next));
       return next;
     });
-  }, []);
+  }, [KEY]);
   return { progress, setProgress };
 }
 
@@ -3089,7 +3109,48 @@ function NameEntry({ lang, onSubmit }: { lang: Lang; onSubmit: (name: string) =>
   );
 }
 
+/**
+ * Who is playing, when Elif-Ba was opened from inside a parent's account.
+ *
+ * The free-text NameEntry exists for the public page, where nobody knows who
+ * the child is. Through an account we do know: the name is the enrolled
+ * student's, it goes on the leaderboard as such, and it is not something a
+ * child can type over — a made-up name there would be a stranger on a list
+ * their classmates read.
+ */
+function ChildPicker({ lang, players, onPick }: {
+  lang: Lang;
+  players: ElifBaPlayer[];
+  onPick: (p: ElifBaPlayer) => void;
+}) {
+  return (
+    <div className="min-h-full bg-gradient-to-b from-slate-600 via-slate-700 to-slate-600 flex flex-col items-center justify-center gap-6 p-6">
+      <div className="w-28 h-28 rounded-3xl bg-white/5 border border-white/10 backdrop-blur flex items-center justify-center shadow-2xl">
+        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 56, color: 'white' }}>أ ب</span>
+      </div>
+      <h1 className="text-3xl font-black text-white text-center">{tr('whoPlays', lang)}</h1>
+      <p className="text-white/70 text-center text-sm max-w-xs">{tr('whoPlaysSub', lang)}</p>
+      <div className="w-full max-w-xs flex flex-col gap-3">
+        {players.map(p => (
+          <button
+            key={p.id}
+            onClick={() => onPick(p)}
+            className="px-6 py-4 rounded-2xl bg-white text-slate-900 font-bold text-lg shadow-xl hover:scale-[1.02] active:scale-95 transition"
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ElifBa Page ─────────────────────────────────────────────────────────
+
+export interface ElifBaPlayer {
+  id: string;
+  name: string;
+}
 
 interface ElifBaPageProps {
   onBack?: () => void;
@@ -3101,9 +3162,12 @@ interface ElifBaPageProps {
   onAtHomeChange?: (atHome: boolean) => void;
   // Unlock every stage on the map (test/demo accounts — see ParentDashboard).
   unlockAll?: boolean;
+  // The children on the account this was opened from. Empty/absent on the
+  // public page, where the child types their own name instead.
+  players?: ElifBaPlayer[];
 }
 
-export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange, unlockAll }: ElifBaPageProps) {
+export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange, unlockAll, players }: ElifBaPageProps) {
   const [lang, setLang] = useState<Lang>(() => {
     try { return (localStorage.getItem('elifba_lang') as Lang) || 'nl'; } catch { return 'nl'; }
   });
@@ -3114,8 +3178,29 @@ export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange, unloc
   });
 
   const [view, setView] = useState<'home' | 'map' | 'leaderboard' | 'name' | { stageId: string }>('home');
-  const { progress, setProgress } = useLocalProgress();
-  const { name, setName } = usePlayerName();
+
+  // Account context wins over anything typed before. One child needs no
+  // question at all; several means asking once, which `pickedId` remembers for
+  // the rest of the session.
+  const roster = players || [];
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const picked = roster.find(p => p.id === pickedId) || null;
+  const linked = roster.length > 0;
+
+  // The roster arrives after mount (the host is still fetching students when
+  // this renders), so an only child has to be selected when it lands rather
+  // than at initial state — otherwise the picker asks a question with exactly
+  // one possible answer.
+  const onlyChildId = roster.length === 1 ? roster[0].id : null;
+  useEffect(() => {
+    if (onlyChildId) setPickedId(onlyChildId);
+  }, [onlyChildId]);
+
+  const { progress, setProgress } = useLocalProgress(picked?.id);
+  const { name: typedName, setName } = usePlayerName();
+  // Through an account the enrolled student's name is the player name, and it
+  // is read-only — see ChildPicker.
+  const name = linked ? (picked?.name || '') : typedName;
 
   const totalStars = ALL_STAGES.reduce((sum, s) => sum + (progress[s.id] || 0), 0);
 
@@ -3141,8 +3226,10 @@ export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange, unloc
     });
   };
 
-  // "Start" always makes sure we have a player name first (for the leaderboard).
+  // "Start" always makes sure we know who is playing first (for the
+  // leaderboard): pick a child on a linked account, type a name otherwise.
   const startPlaying = () => setView(name ? 'map' : 'name');
+  const needsPick = linked && !picked;
 
   if (typeof view === 'object') {
     return (
@@ -3163,6 +3250,18 @@ export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange, unloc
   }
 
   if (view === 'name') {
+    // No submitScore here, unlike NameEntry: the picked child's stars are
+    // whatever their own store already holds, and they get posted on the next
+    // completed stage rather than re-posted on every handover.
+    if (linked) {
+      return (
+        <ChildPicker
+          lang={lang}
+          players={roster}
+          onPick={p => { setPickedId(p.id); setView('map'); }}
+        />
+      );
+    }
     return <NameEntry lang={lang} onSubmit={n => { setName(n); submitScore(n, totalStars); setView('map'); }} />;
   }
 
@@ -3224,8 +3323,19 @@ export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange, unloc
 
         <button onClick={startPlaying}
           className="mt-2 px-12 py-4 rounded-2xl bg-white text-slate-900 font-bold text-lg shadow-xl hover:scale-[1.02] active:scale-95 transition-all duration-150">
-          {totalStars > 0 ? tr('continue', lang) : tr('start', lang)}
+          {needsPick ? tr('start', lang) : totalStars > 0 ? tr('continue', lang) : tr('start', lang)}
         </button>
+
+        {/* One parent, several children, one phone — the handover has to be
+            one tap, and each child keeps their own map. */}
+        {linked && roster.length > 1 && picked && (
+          <button
+            onClick={() => setView('name')}
+            className="text-white/50 hover:text-white/80 text-sm font-medium transition"
+          >
+            {tr('switchChild', lang)}
+          </button>
+        )}
       </div>
 
     </div>

@@ -3298,7 +3298,9 @@ export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange, unloc
       <div className="w-full flex items-center gap-3">
         {onBack ? (
           <button onClick={onBack} className="text-white/60 hover:text-white font-medium transition text-sm">
-            {tr('backToLogin', lang)}
+            {/* Opened from inside an account, "back" is the dashboard — the
+                only place this leads to a login is the public page. */}
+            {linked ? tr('back', lang) : tr('backToLogin', lang)}
           </button>
         ) : null}
         <button

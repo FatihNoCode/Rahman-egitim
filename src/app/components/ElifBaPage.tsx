@@ -153,6 +153,7 @@ const SECTIONS: Section[] = [
   { id: 3, title: 'Cezm, shadda & tanwin',   titleTr: 'Cezim, şedde & tenvin',  emoji: '⚪', bg: 'from-amber-400 to-orange-500' },
   { id: 4, title: 'De vormen',               titleTr: 'Şekiller',               emoji: '✍️', bg: 'from-violet-400 to-violet-600' },
   { id: 5, title: 'Alles door elkaar',       titleTr: 'Hepsi karışık',          emoji: '🎓', bg: 'from-fuchsia-500 to-pink-600' },
+  { id: 6, title: 'Woorden uit de Koran',    titleTr: "Kur'an'dan kelimeler",   emoji: '📖', bg: 'from-teal-400 to-cyan-600' },
 ];
 
 function audioPath(letterId: string, harakat?: string) {
@@ -2259,7 +2260,382 @@ function FormReadGame({ letters, onComplete, lang }: {
   );
 }
 
-type GameType = 'learn' | 'listen-pick' | 'name-match' | 'drag-sort' | 'memory' | 'harakat-learn' | 'harakat-quiz' | 'harakat-balloon-pop' | 'balloon-pop' | 'falling-letters' | 'whack-a-mole' | 'review' | 'sign-learn' | 'sign-read' | 'form-learn' | 'form-read';
+// ─── Quran words (word-by-word reading) ──────────────────────────────────────
+// After letters, harakat, signs and forms, children start reading real words
+// from the Quran — short and frequent ones first, longer ones later. Each word
+// carries a simple child-level meaning in both app languages and the exact
+// word-by-word recitation clip from Quran.com's public CDN (the same audio the
+// tap-a-word feature on quran.com plays). The `audio` paths come straight from
+// the api.quran.com verses endpoint (word_fields=audio_url), so they are the
+// canonical file names — do not hand-construct them, some positions skip
+// numbers around pause marks.
+
+export interface QWord {
+  id: string;
+  arabic: string;   // Uthmani script, as served by the API
+  translit: string; // simple child-friendly transliteration
+  nl: string;       // short, simple meaning (they are children)
+  tr: string;
+  audio: string;    // wbw/SSS_AAA_WWW.mp3 on the Quran.com CDN
+}
+
+const WBW_CDN = 'https://audio.qurancdn.com/';
+function wordAudio(w: QWord) { return `${WBW_CDN}${w.audio}`; }
+
+// Level 1 · tiny, very frequent words (2-3 letters).
+const WORDS_1: QWord[] = [
+  { id: 'huwa',  arabic: 'هُوَ',  translit: 'huwa', nl: 'hij',        tr: 'o',             audio: 'wbw/112_001_002.mp3' },
+  { id: 'maa',   arabic: 'مَا',   translit: 'maa',  nl: 'wat',        tr: 'ne',            audio: 'wbw/002_255_016.mp3' },
+  { id: 'laa',   arabic: 'لَا',   translit: 'laa',  nl: 'nee, niet',  tr: 'hayır, değil',  audio: 'wbw/002_002_003.mp3' },
+  { id: 'fii',   arabic: 'فِى',   translit: 'fie',  nl: 'in',         tr: 'içinde',        audio: 'wbw/002_029_006.mp3' },
+  { id: 'min',   arabic: 'مِن',   translit: 'min',  nl: 'van, uit',   tr: '-den, -dan',    audio: 'wbw/002_025_010.mp3' },
+  { id: 'qul',   arabic: 'قُلْ',  translit: 'qul',  nl: 'zeg!',       tr: 'söyle!',        audio: 'wbw/112_001_001.mp3' },
+];
+
+// Level 2 · frequent short nouns/verbs every child recognises.
+const WORDS_2: QWord[] = [
+  { id: 'allah',   arabic: 'ٱللَّهُ',  translit: 'Allahu',  nl: 'Allah',        tr: 'Allah',      audio: 'wbw/112_001_003.mp3' },
+  { id: 'rabbi',   arabic: 'رَبِّ',    translit: 'rabbi',   nl: 'Heer',         tr: 'Rab',        audio: 'wbw/001_002_003.mp3' },
+  { id: 'qaala',   arabic: 'قَالَ',    translit: 'qaala',   nl: 'hij zei',      tr: 'dedi',       audio: 'wbw/002_030_002.mp3' },
+  { id: 'khalaqa', arabic: 'خَلَقَ',   translit: 'galaqa',  nl: 'Hij schiep',   tr: 'yarattı',    audio: 'wbw/055_003_001.mp3' },
+  { id: 'yawmi',   arabic: 'يَوْمِ',   translit: 'yawmi',   nl: 'dag',          tr: 'gün',        audio: 'wbw/001_004_002.mp3' },
+  { id: 'nuuru',   arabic: 'نُورُ',    translit: 'noeroe',  nl: 'licht',        tr: 'ışık (nur)', audio: 'wbw/024_035_003.mp3' },
+];
+
+// Level 3 · longer but familiar words.
+const WORDS_3: QWord[] = [
+  { id: 'bismi',    arabic: 'بِسْمِ',      translit: 'bismi',      nl: 'in de naam van', tr: 'adıyla',        audio: 'wbw/001_001_001.mp3' },
+  { id: 'alhamdu',  arabic: 'ٱلْحَمْدُ',   translit: 'alhamdu',    nl: 'alle lof',       tr: 'hamd (övgü)',   audio: 'wbw/001_002_001.mp3' },
+  { id: 'alkitab',  arabic: 'ٱلْكِتَـٰبُ', translit: 'al-kitaab',  nl: 'het boek',       tr: 'kitap',         audio: 'wbw/002_002_002.mp3' },
+  { id: 'annaas',   arabic: 'ٱلنَّاسِ',    translit: 'an-naas',    nl: 'de mensen',      tr: 'insanlar',      audio: 'wbw/114_001_004.mp3' },
+  { id: 'alard',    arabic: 'ٱلْأَرْضِ',   translit: 'al-ard',     nl: 'de aarde',       tr: 'yeryüzü',       audio: 'wbw/002_029_007.mp3' },
+  { id: 'ahad',     arabic: 'أَحَدٌ',      translit: 'ahad',       nl: 'één, enig',      tr: 'bir, tek',      audio: 'wbw/112_001_004.mp3' },
+];
+
+// Level 4 · long words, the crown of the ladder.
+const WORDS_4: QWord[] = [
+  { id: 'arrahmaan', arabic: 'ٱلرَّحْمَـٰنِ', translit: 'ar-rahmaan',  nl: 'de Meest Barmhartige', tr: 'Rahman (çok merhametli)', audio: 'wbw/001_001_003.mp3' },
+  { id: 'arrahiim',  arabic: 'ٱلرَّحِيمِ',    translit: 'ar-rahiem',   nl: 'de Meest Genadevolle', tr: 'Rahim (çok şefkatli)',    audio: 'wbw/001_001_004.mp3' },
+  { id: 'aalamiin',  arabic: 'ٱلْعَـٰلَمِينَ', translit: 'al-aalamien', nl: 'de werelden',          tr: 'âlemler',                 audio: 'wbw/001_002_004.mp3' },
+  { id: 'alquran',   arabic: 'ٱلْقُرْءَانَ',  translit: 'al-qur-aan',  nl: 'de Koran',             tr: "Kur'an",                  audio: 'wbw/055_002_002.mp3' },
+  { id: 'assamaa',   arabic: 'ٱلسَّمَآءِ',    translit: 'as-samaa',    nl: 'de hemel',             tr: 'gökyüzü',                 audio: 'wbw/002_022_010.mp3' },
+  { id: 'nabudu',    arabic: 'نَعْبُدُ',      translit: 'na-budu',     nl: 'wij aanbidden',        tr: 'ibadet ederiz',           audio: 'wbw/001_005_002.mp3' },
+];
+
+const ALL_WORDS: QWord[] = [...WORDS_1, ...WORDS_2, ...WORDS_3, ...WORDS_4];
+
+// ─── Game: Word Learn (see, hear, understand) ────────────────────────────────
+
+function WordLearnGame({ words, onComplete, lang }: {
+  words: QWord[]; onComplete: (stars: number) => void; lang: Lang;
+}) {
+  const [idx, setIdx] = useState(0);
+  const [tapped, setTapped] = useState<Set<number>>(new Set());
+  const play = useAudio();
+  const w = words[idx];
+
+  useEffect(() => { play(wordAudio(w)); }, [idx]);
+
+  const tap = () => {
+    play(wordAudio(w));
+    setTapped(prev => new Set([...prev, idx]));
+  };
+
+  const next = () => {
+    if (idx < words.length - 1) setIdx(idx + 1);
+    else onComplete(3);
+  };
+  const prev = () => { if (idx > 0) setIdx(idx - 1); };
+
+  return (
+    <div className="flex flex-col items-center gap-6 p-4">
+      <div className="text-sm text-white/70 font-semibold">{idx + 1} / {words.length}</div>
+      <div className="w-full bg-white/20 rounded-full h-2">
+        <div className="bg-white rounded-full h-2 transition-all" style={{ width: `${((idx + 1) / words.length) * 100}%` }} />
+      </div>
+
+      <button
+        onClick={tap}
+        className="w-64 h-52 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center gap-2 pb-14 hover:scale-105 active:scale-95 transition-all duration-150 relative"
+      >
+        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 60, lineHeight: 1.6 }}>{w.arabic}</span>
+        <span className="text-gray-400 font-semibold text-sm">{w.translit}</span>
+        {tapped.has(idx) && <span className="absolute top-3 right-3 text-green-500 text-xl">✓</span>}
+        <span className={SPEAKER_BADGE}>🔊</span>
+      </button>
+
+      <div className="text-center">
+        <p className="text-3xl font-bold text-white">{lang === 'tr' ? w.tr : w.nl}</p>
+        <p className="text-white/60 text-sm mt-1">{lang === 'tr' ? w.nl : w.tr}</p>
+      </div>
+
+      <div className="flex gap-4 mt-2">
+        <button onClick={prev} disabled={idx === 0}
+          className="px-6 py-3 rounded-2xl bg-white/20 text-white font-bold text-lg disabled:opacity-30 hover:bg-white/30 transition">
+          {tr('back', lang)}
+        </button>
+        <button onClick={next}
+          className="px-8 py-3 rounded-2xl bg-white text-emerald-700 font-bold text-lg hover:bg-emerald-50 shadow transition">
+          {idx < words.length - 1 ? tr('next', lang) : tr('done', lang)}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Game: Word Listen & Pick ────────────────────────────────────────────────
+
+function WordListenGame({ words, allWords, onComplete, lang }: {
+  words: QWord[]; allWords: QWord[]; onComplete: (stars: number) => void; lang: Lang;
+}) {
+  const [queue] = useState(() => shuffle(words).slice(0, 10));
+  const [idx, setIdx] = useState(0);
+  const [choices, setChoices] = useState<QWord[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [correct, setCorrect] = useState(0);
+  const [lives, setLives] = useState(3);
+  const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
+  const play = useAudio();
+
+  const current = queue[idx];
+
+  useEffect(() => {
+    if (!current) return;
+    const distractors = pick(allWords.filter(x => x.id !== current.id), 3);
+    setChoices(shuffle([current, ...distractors]));
+    setSelected(null);
+    setFeedback(null);
+    play(wordAudio(current));
+  }, [idx, current]);
+
+  const choose = (w: QWord) => {
+    if (feedback) return;
+    setSelected(w.id);
+    if (w.id === current.id) {
+      setFeedback('correct');
+      setCorrect(c => c + 1);
+      setTimeout(() => {
+        if (idx < queue.length - 1) setIdx(i => i + 1);
+        else {
+          const pct = (correct + 1) / queue.length;
+          onComplete(pct >= 0.9 ? 3 : pct >= 0.6 ? 2 : 1);
+        }
+      }, 900);
+    } else {
+      setFeedback('wrong');
+      setLives(l => l - 1);
+      play(wordAudio(current)); // replay so the child can hear it again
+      setTimeout(() => {
+        if (lives <= 1) { onComplete(0); return; }
+        setFeedback(null);
+        setSelected(null);
+      }, 900);
+    }
+  };
+
+  if (!current) return null;
+
+  return (
+    <div className="flex flex-col items-center gap-5 p-4">
+      <div className="flex justify-between w-full items-center">
+        <Hearts lives={lives} />
+        <span className="text-white font-bold">{idx + 1}/{queue.length}</span>
+        <span className="text-white">✅ {correct}</span>
+      </div>
+
+      <div className="w-full bg-white/20 rounded-full h-2">
+        <div className="bg-white rounded-full h-2 transition-all" style={{ width: `${(idx / queue.length) * 100}%` }} />
+      </div>
+
+      <button onClick={() => play(wordAudio(current))}
+        className="w-32 h-32 rounded-3xl bg-white/20 border-4 border-white/40 flex items-center justify-center text-6xl hover:bg-white/30 active:scale-95 transition-all shadow-xl">
+        🔊
+      </button>
+      <p className="text-white/80 text-sm">{lang === 'tr' ? 'Hangi kelimeyi duyuyorsun?' : 'Welk woord hoor je?'}</p>
+
+      <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
+        {choices.map(ch => {
+          const isSelected = selected === ch.id;
+          const isAnswer = ch.id === current.id;
+          let bg = 'bg-white';
+          if (feedback && isSelected && isAnswer) bg = 'bg-green-400';
+          if (feedback && isSelected && !isAnswer) bg = 'bg-red-400';
+          return (
+            <button key={ch.id} onClick={() => choose(ch)}
+              className={`${bg} rounded-2xl p-4 flex flex-col items-center shadow-md hover:scale-105 active:scale-95 transition-all duration-150`}>
+              <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 40, lineHeight: 1.6 }}>{ch.arabic}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {feedback === 'correct' && <div className="text-3xl animate-bounce">🎉 {lang === 'tr' ? 'Aferin!' : 'Goed zo!'}</div>}
+      {feedback === 'wrong' && <div className="text-2xl animate-bounce">❌ {lang === 'tr' ? 'Bir daha dene!' : 'Probeer het nog eens!'}</div>}
+    </div>
+  );
+}
+
+// ─── Game: Word Meaning Quiz ─────────────────────────────────────────────────
+
+function WordMeaningGame({ words, allWords, onComplete, lang }: {
+  words: QWord[]; allWords: QWord[]; onComplete: (stars: number) => void; lang: Lang;
+}) {
+  const [queue] = useState(() => shuffle(words).slice(0, 10));
+  const [idx, setIdx] = useState(0);
+  const [choices, setChoices] = useState<QWord[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [correct, setCorrect] = useState(0);
+  const [lives, setLives] = useState(3);
+  const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
+  const play = useAudio();
+
+  const current = queue[idx];
+  const meaning = (w: QWord) => (lang === 'tr' ? w.tr : w.nl);
+
+  useEffect(() => {
+    if (!current) return;
+    const distractors = pick(allWords.filter(x => x.id !== current.id), 3);
+    setChoices(shuffle([current, ...distractors]));
+    setSelected(null);
+    setFeedback(null);
+    play(wordAudio(current));
+  }, [idx, current]);
+
+  const choose = (w: QWord) => {
+    if (feedback) return;
+    setSelected(w.id);
+    if (w.id === current.id) {
+      setFeedback('correct');
+      setCorrect(c => c + 1);
+      setTimeout(() => {
+        if (idx < queue.length - 1) setIdx(i => i + 1);
+        else {
+          const pct = (correct + 1) / queue.length;
+          onComplete(pct >= 0.9 ? 3 : pct >= 0.6 ? 2 : 1);
+        }
+      }, 900);
+    } else {
+      setFeedback('wrong');
+      setLives(l => l - 1);
+      setTimeout(() => {
+        if (lives <= 1) { onComplete(0); return; }
+        setFeedback(null);
+        setSelected(null);
+      }, 900);
+    }
+  };
+
+  if (!current) return null;
+
+  return (
+    <div className="flex flex-col items-center gap-5 p-4">
+      <div className="flex justify-between w-full items-center">
+        <Hearts lives={lives} />
+        <span className="text-white font-bold">{idx + 1}/{queue.length}</span>
+        <span className="text-white">✅ {correct}</span>
+      </div>
+
+      <div className="w-full bg-white/20 rounded-full h-2">
+        <div className="bg-white rounded-full h-2 transition-all" style={{ width: `${(idx / queue.length) * 100}%` }} />
+      </div>
+
+      <button onClick={() => play(wordAudio(current))}
+        className="w-64 h-40 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center gap-1 pb-12 hover:scale-105 active:scale-95 transition relative">
+        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 48, lineHeight: 1.6 }}>{current.arabic}</span>
+        <span className={SPEAKER_BADGE}>🔊</span>
+      </button>
+      <p className="text-white/80 text-sm">{lang === 'tr' ? 'Bu kelime ne demek?' : 'Wat betekent dit woord?'}</p>
+
+      <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
+        {choices.map(ch => {
+          const isSelected = selected === ch.id;
+          const isAnswer = ch.id === current.id;
+          let bg = 'bg-white text-gray-800';
+          if (feedback && isSelected && isAnswer) bg = 'bg-green-400 text-white';
+          if (feedback && isSelected && !isAnswer) bg = 'bg-red-400 text-white';
+          return (
+            <button key={ch.id} onClick={() => choose(ch)}
+              className={`${bg} rounded-2xl px-3 py-4 font-bold shadow-md hover:scale-105 active:scale-95 transition-all duration-150`}>
+              {meaning(ch)}
+            </button>
+          );
+        })}
+      </div>
+
+      {feedback === 'correct' && <div className="text-3xl animate-bounce">🎉 {lang === 'tr' ? 'Aferin!' : 'Goed zo!'}</div>}
+      {feedback === 'wrong' && <div className="text-2xl animate-bounce">❌ {lang === 'tr' ? 'Bir daha dene!' : 'Probeer het nog eens!'}</div>}
+    </div>
+  );
+}
+
+// ─── Game: Say the Word (speak aloud) ────────────────────────────────────────
+// No speech recognition — Arabic ASR for children's voices is unreliable and
+// needs mic permissions. Instead: hear the word, say it out loud, then honest
+// self-check. It's a practice stage like 'learn', so finishing earns 3 stars.
+
+function WordSpeakGame({ words, onComplete, lang }: {
+  words: QWord[]; onComplete: (stars: number) => void; lang: Lang;
+}) {
+  const [queue] = useState(() => shuffle(words));
+  const [idx, setIdx] = useState(0);
+  const [saidIt, setSaidIt] = useState(false);
+  const play = useAudio();
+  const w = queue[idx];
+
+  useEffect(() => { play(wordAudio(w)); setSaidIt(false); }, [idx]);
+
+  const next = () => {
+    if (idx < queue.length - 1) setIdx(i => i + 1);
+    else onComplete(3);
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-6 p-4">
+      <div className="text-sm text-white/70 font-semibold">{idx + 1} / {queue.length}</div>
+      <div className="w-full bg-white/20 rounded-full h-2">
+        <div className="bg-white rounded-full h-2 transition-all" style={{ width: `${((idx + 1) / queue.length) * 100}%` }} />
+      </div>
+
+      <button onClick={() => play(wordAudio(w))}
+        className="w-64 h-52 rounded-3xl bg-white shadow-2xl flex flex-col items-center justify-center gap-2 pb-14 hover:scale-105 active:scale-95 transition-all duration-150 relative">
+        <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 56, lineHeight: 1.6 }}>{w.arabic}</span>
+        <span className="text-gray-400 font-semibold text-sm">{w.translit}</span>
+        <span className={SPEAKER_BADGE}>🔊</span>
+      </button>
+
+      <p className="text-white/70 text-sm">{lang === 'tr' ? w.tr : w.nl}</p>
+
+      <div className="text-center max-w-xs">
+        <p className="text-white text-xl font-bold">
+          🎤 {lang === 'tr' ? 'Şimdi sen! Kelimeyi yüksek sesle söyle.' : 'Nu jij! Zeg het woord hardop.'}
+        </p>
+      </div>
+
+      {!saidIt ? (
+        <div className="flex gap-4">
+          <button onClick={() => play(wordAudio(w))}
+            className="px-6 py-4 rounded-2xl bg-white/20 text-white font-bold text-lg hover:bg-white/30 transition">
+            🔁 {lang === 'tr' ? 'Tekrar dinle' : 'Nog eens luisteren'}
+          </button>
+          <button onClick={() => setSaidIt(true)}
+            className="px-8 py-4 rounded-2xl bg-white text-emerald-700 font-bold text-lg shadow hover:bg-emerald-50 transition">
+            ✅ {lang === 'tr' ? 'Söyledim!' : 'Ik heb het gezegd!'}
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-3">
+          <div className="text-3xl animate-bounce">🌟 {lang === 'tr' ? 'Harika!' : 'Super!'}</div>
+          <button onClick={next}
+            className="px-10 py-4 rounded-2xl bg-white text-emerald-700 font-bold text-xl shadow-lg hover:bg-emerald-50 transition">
+            {idx < queue.length - 1 ? tr('next', lang) : tr('done', lang)}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type GameType = 'learn' | 'listen-pick' | 'name-match' | 'drag-sort' | 'memory' | 'harakat-learn' | 'harakat-quiz' | 'harakat-balloon-pop' | 'balloon-pop' | 'falling-letters' | 'whack-a-mole' | 'review' | 'sign-learn' | 'sign-read' | 'form-learn' | 'form-read' | 'word-learn' | 'word-listen' | 'word-meaning' | 'word-speak';
 
 interface Stage {
   id: string;
@@ -2270,6 +2646,7 @@ interface Stage {
   description: string; descriptionTr: string;
   letters: ArabicLetter[];
   signs?: Sign[];
+  words?: QWord[];
 }
 
 // Harakat rendered as generic Signs, so the sign-recognition game can mix them
@@ -2392,6 +2769,38 @@ function buildStages(): Stage[] {
   add({ id: 'mix-boss', sectionId: 5, letters: LETTERS, game: 'falling-letters', emoji: '🏆',
     title: 'Eindbaas', titleTr: 'Son sınav', description: 'Laat alles zien!', descriptionTr: 'Her şeyi göster!' });
 
+  // ── Section 6 · Real Quran words (word-by-word reading) ──
+  // Each bundle: learn → hear-and-pick → meaning quiz → say it aloud. Early
+  // bundles are tiny frequent words; later bundles grow longer and harder.
+  // Distractors are drawn from the whole word pool so quizzes stay honest.
+  const WBUNDLES: { key: string; words: QWord[]; title: string; titleTr: string }[] = [
+    { key: 'w1', words: WORDS_1, title: 'Kleine woorden',  titleTr: 'Küçük kelimeler' },
+    { key: 'w2', words: WORDS_2, title: 'Bekende woorden', titleTr: 'Tanıdık kelimeler' },
+    { key: 'w3', words: WORDS_3, title: 'Langere woorden', titleTr: 'Daha uzun kelimeler' },
+    { key: 'w4', words: WORDS_4, title: 'Grote woorden',   titleTr: 'Büyük kelimeler' },
+  ];
+  WBUNDLES.forEach(b => {
+    add({ id: `${b.key}-learn`, sectionId: 6, letters: [], words: b.words, game: 'word-learn', emoji: '📖',
+      title: b.title, titleTr: b.titleTr,
+      description: 'Zie, hoor en begrijp het woord', descriptionTr: 'Kelimeyi gör, duy ve anla' });
+    add({ id: `${b.key}-listen`, sectionId: 6, letters: [], words: b.words, game: 'word-listen', emoji: '👂',
+      title: `Luister · ${b.title}`, titleTr: `Dinle · ${b.titleTr}`,
+      description: 'Hoor het woord, kies het goede', descriptionTr: 'Kelimeyi duy, doğrusunu seç' });
+    add({ id: `${b.key}-meaning`, sectionId: 6, letters: [], words: b.words, game: 'word-meaning', emoji: '💡',
+      title: `Betekenis · ${b.title}`, titleTr: `Anlam · ${b.titleTr}`,
+      description: 'Wat betekent het woord?', descriptionTr: 'Kelime ne demek?' });
+    add({ id: `${b.key}-speak`, sectionId: 6, letters: [], words: b.words, game: 'word-speak', emoji: '🎤',
+      title: `Zeg het na · ${b.title}`, titleTr: `Tekrar et · ${b.titleTr}`,
+      description: 'Zeg het woord hardop na', descriptionTr: 'Kelimeyi yüksek sesle tekrar et' });
+  });
+  // Closing mixed quizzes over all 24 words.
+  add({ id: 'w-mix-listen', sectionId: 6, letters: [], words: ALL_WORDS, game: 'word-listen', emoji: '🏁',
+    title: 'Alle woorden · luister', titleTr: 'Tüm kelimeler · dinle',
+    description: 'Alles door elkaar', descriptionTr: 'Hepsi karışık' });
+  add({ id: 'w-mix-meaning', sectionId: 6, letters: [], words: ALL_WORDS, game: 'word-meaning', emoji: '🏆',
+    title: 'Alle woorden · betekenis', titleTr: 'Tüm kelimeler · anlam',
+    description: 'Ken jij ze allemaal?', descriptionTr: 'Hepsini biliyor musun?' });
+
   return stages;
 }
 
@@ -2399,10 +2808,13 @@ const ALL_STAGES = buildStages();
 
 // ─── World Map ────────────────────────────────────────────────────────────────
 
-function WorldMap({ progress, onSelectStage, lang }: {
+function WorldMap({ progress, onSelectStage, lang, unlockAll }: {
   progress: Record<string, any>;
   onSelectStage: (stageId: string) => void;
   lang: 'nl' | 'tr';
+  // Test/demo accounts get every stage unlocked so reviewers can jump straight
+  // to any level without grinding the ladder.
+  unlockAll?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-6 p-4 pb-10">
@@ -2423,7 +2835,7 @@ function WorldMap({ progress, onSelectStage, lang }: {
               {sectionStages.map(stage => {
                 const stars = progress[stage.id] || 0;
                 const globalIdx = ALL_STAGES.findIndex(s => s.id === stage.id);
-                const locked = globalIdx > unlockedUpto;
+                const locked = !unlockAll && globalIdx > unlockedUpto;
                 return (
                   <button key={stage.id}
                     disabled={locked}
@@ -2467,6 +2879,10 @@ const GAME_INTROS: Record<GameType, { nl: { title: string; body: string }; tr: {
   'sign-read':       { nl: { title: 'Teken herkennen',body: 'Welk teken zie je op de letter?' },                             tr: { title: 'İşareti tanı', body: 'Harfte hangi işareti görüyorsun?' } },
   'form-learn':      { nl: { title: 'De 4 vormen',    body: 'Zie hoe de letter er los, aan het begin, midden en eind uitziet.' }, tr: { title: '4 şekil', body: 'Harfin yalın, baş, orta ve son şekillerini gör.' } },
   'form-read':       { nl: { title: 'Welke positie?', body: 'Bekijk de vorm en kies of het begin, midden of eind is.' },     tr: { title: 'Hangi konum?', body: 'Şekle bak ve baş, orta ya da son olduğunu seç.' } },
+  'word-learn':      { nl: { title: 'Woorden leren',  body: 'Tik op het woord om het te horen. Lees mee en leer wat het betekent.' }, tr: { title: 'Kelime öğren', body: 'Duymak için kelimeye dokun. Birlikte oku ve anlamını öğren.' } },
+  'word-listen':     { nl: { title: 'Luister & kies', body: 'Je hoort een woord uit de Koran. Tik op het juiste woord.' },   tr: { title: 'Dinle & seç',  body: "Kur'an'dan bir kelime duyacaksın. Doğru kelimeye dokun." } },
+  'word-meaning':    { nl: { title: 'Wat betekent het?', body: 'Je ziet en hoort een woord. Kies de juiste betekenis.' },    tr: { title: 'Ne demek?',    body: 'Bir kelime görecek ve duyacaksın. Doğru anlamı seç.' } },
+  'word-speak':      { nl: { title: 'Zeg het na',     body: 'Luister goed naar het woord en zeg het hardop na. Net zo lang tot het lukt!' }, tr: { title: 'Tekrar et', body: 'Kelimeyi iyi dinle ve yüksek sesle tekrar et. Olana kadar dene!' } },
 };
 
 function GameIntro({ game, lang, onStart }: { game: GameType; lang: Lang; onStart: () => void }) {
@@ -2530,6 +2946,11 @@ function StageView({ stageId, progress, onComplete, onBack, onNext, lang }: {
     if (stage.game === 'sign-read') return <SignReadGame letters={letters} signs={signs} onComplete={handleComplete} lang={lang} />;
     if (stage.game === 'form-learn') return <FormLearnGame letters={letters} onComplete={handleComplete} lang={lang} />;
     if (stage.game === 'form-read') return <FormReadGame letters={letters} onComplete={handleComplete} lang={lang} />;
+    const words = stage.words || ALL_WORDS;
+    if (stage.game === 'word-learn') return <WordLearnGame words={words} onComplete={handleComplete} lang={lang} />;
+    if (stage.game === 'word-listen') return <WordListenGame words={words} allWords={ALL_WORDS} onComplete={handleComplete} lang={lang} />;
+    if (stage.game === 'word-meaning') return <WordMeaningGame words={words} allWords={ALL_WORDS} onComplete={handleComplete} lang={lang} />;
+    if (stage.game === 'word-speak') return <WordSpeakGame words={words} onComplete={handleComplete} lang={lang} />;
     return null;
   };
 
@@ -2678,9 +3099,11 @@ interface ElifBaPageProps {
   // us back to it. A counter rather than a boolean so repeated presses work.
   goHomeSignal?: number;
   onAtHomeChange?: (atHome: boolean) => void;
+  // Unlock every stage on the map (test/demo accounts — see ParentDashboard).
+  unlockAll?: boolean;
 }
 
-export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange }: ElifBaPageProps) {
+export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange, unlockAll }: ElifBaPageProps) {
   const [lang, setLang] = useState<Lang>(() => {
     try { return (localStorage.getItem('elifba_lang') as Lang) || 'nl'; } catch { return 'nl'; }
   });
@@ -2758,7 +3181,7 @@ export default function ElifBaPage({ onBack, goHomeSignal, onAtHomeChange }: Eli
           </button>
         </div>
         <div className="flex-1 overflow-y-auto">
-          <WorldMap progress={progress} onSelectStage={stageId => setView({ stageId })} lang={lang} />
+          <WorldMap progress={progress} onSelectStage={stageId => setView({ stageId })} lang={lang} unlockAll={unlockAll} />
         </div>
       </div>
     );

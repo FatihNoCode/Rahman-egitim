@@ -528,6 +528,9 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             <ElifBaPage
               goHomeSignal={elifbaGoHome}
               onAtHomeChange={setElifbaAtHome}
+              // Demo testers and multi-role (test) accounts get the whole map
+              // unlocked so they can inspect any level without playing through.
+              unlockAll={!!user?.isDemoTester || (user?.roles?.length ?? 0) > 1}
             />
           </Suspense>
         </div>

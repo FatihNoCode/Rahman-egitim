@@ -40,15 +40,21 @@ function normalise(text) {
   return (text || '').normalize('NFC').replace(MARKS, '').replace(/\s+/gu, '');
 }
 
-/** Pull the { id, arabic, ref } triples straight out of the component. */
+/** Pull the { id, arabic, ref, form } records straight out of the component. */
 function readWords() {
   const src = readFileSync(SOURCE, 'utf8');
   const entries = [];
-  const re = /\{\s*id:\s*'([^']+)',\s*arabic:\s*'([^']+)',[^}]*?ref:\s*'(\d+):(\d+):(\d+)'\s*\}/gu;
+  const re = /id:\s*'([^']+)',\s*arabic:\s*'([^']+)',[^}]*?ref:\s*'(\d+):(\d+):(\d+)',\s*form:\s*'(invariable|base|inflected)'/gu;
   for (const m of src.matchAll(re)) {
-    entries.push({ id: m[1], arabic: m[2], surah: +m[3], ayah: +m[4], position: +m[5] });
+    entries.push({ id: m[1], arabic: m[2], surah: +m[3], ayah: +m[4], position: +m[5], form: m[6] });
   }
   return entries;
+}
+
+/** The word without its final short vowel or tanwin — how it is said at a stop. */
+const TRAILING_VOWEL = /[\u064B-\u0652]+$/u;
+function pausalForm(text) {
+  return (text || '').normalize('NFC').replace(MARKS, '').trim().replace(TRAILING_VOWEL, '');
 }
 
 const verseCache = new Map();
@@ -82,14 +88,37 @@ for (const w of words) {
     if (!hit) {
       problems.push(`no word at position ${w.position} (verse has ${ws.length})`);
     } else {
-      if (normalise(hit.text_uthmani) !== normalise(w.arabic)) {
-        problems.push(`plays ${hit.text_uthmani.trim()}, shows ${w.arabic}`);
-      }
-      if (hit.position === ws[ws.length - 1].position) {
-        problems.push('verse-final: reciter stops, final vowel not pronounced');
-      }
-      if (MARKS.test(hit.text_uthmani || '')) {
-        problems.push('carries a pause mark');
+      const isFinal = hit.position === ws[ws.length - 1].position;
+      const hasPause = MARKS.test(hit.text_uthmani || '');
+
+      if (w.form === 'invariable') {
+        // No case ending to lose, so only the word itself has to match; a stop
+        // on it would sound the same.
+        if (normalise(hit.text_uthmani) !== normalise(w.arabic)) {
+          problems.push(`plays ${hit.text_uthmani.trim()}, shows ${w.arabic}`);
+        }
+        if (hasPause) problems.push('carries a pause mark');
+      } else if (w.form === 'base') {
+        // Shown bare, so it must be heard bare — which only happens where the
+        // reciter stops, i.e. at the end of a verse.
+        if (normalise(pausalForm(hit.text_uthmani)) !== normalise(w.arabic)) {
+          problems.push(`plays ${hit.text_uthmani.trim()}, shows ${w.arabic}`);
+        }
+        if (!isFinal && !hasPause) {
+          problems.push('base form needs a verse-final clip, this one is mid-verse');
+        }
+      } else {
+        // Shown with its ending, so the ending has to be pronounced — which it
+        // is not at a stop.
+        if (normalise(hit.text_uthmani) !== normalise(w.arabic)) {
+          problems.push(`plays ${hit.text_uthmani.trim()}, shows ${w.arabic}`);
+        }
+        if (isFinal) {
+          problems.push('inflected form on a verse end: the ending is not pronounced there');
+        }
+        if (hasPause) {
+          problems.push('carries a pause mark');
+        }
       }
     }
   } catch (err) {
@@ -97,10 +126,10 @@ for (const w of words) {
   }
 
   if (problems.length === 0) {
-    console.log(`  ok    ${w.id.padEnd(12)} ${file}`);
+    console.log(`  ok    ${w.form.padEnd(9)} ${w.id.padEnd(12)} ${file}`);
   } else {
     failures++;
-    console.error(`  FAIL  ${w.id.padEnd(12)} ${file}  ${problems.join('; ')}`);
+    console.error(`  FAIL  ${w.form.padEnd(9)} ${w.id.padEnd(12)} ${file}  ${problems.join('; ')}`);
   }
 }
 

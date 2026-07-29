@@ -2312,6 +2312,18 @@ export interface QWord {
   // "surah:ayah:position", 1-based — the audio filename is derived from it, so
   // the reference and the clip can never drift apart. See the two rules above.
   ref: string;
+  // Which reading the card teaches, and therefore which kind of clip it needs:
+  //   'invariable' — particles, imperatives, pronouns. They take no case
+  //                  ending at all, so stopping on them changes nothing and
+  //                  any clean mid-verse clip will do.
+  //   'base'       — a noun on its own, without its case ending. Taught first.
+  //                  The clip MUST be verse-final, because a stop is the only
+  //                  place the reciter says the bare word: ٱلنَّاسِ closing
+  //                  114:1 is heard as "an-naas".
+  //   'inflected'  — the same noun carrying its case ending. Taught after the
+  //                  base form. The clip MUST be mid-verse and free of pause
+  //                  marks, so the ending shown is the ending said.
+  form: 'invariable' | 'base' | 'inflected';
 }
 
 const WBW_CDN = 'https://audio.qurancdn.com/wbw/';
@@ -2321,57 +2333,101 @@ function wordAudio(w: QWord) {
   return `${WBW_CDN}${pad3(surah)}_${pad3(ayah)}_${pad3(pos)}.mp3`;
 }
 
-// Level 1 · tiny, very frequent words (2-3 letters).
+// Level 1 · particles and tiny words. Nothing to strip: these carry no case
+// ending, so what is written is already the whole word.
 const WORDS_1: QWord[] = [
-  { id: 'huwa',  arabic: 'هُوَ',  translit: 'huwa', nl: 'hij',        tr: 'o',             ref: '112:1:2' },
-  // 2:255 word 14. It was 16 — which is ٱلسَّمَـٰوَٰتِ, see rule 1 above.
-  { id: 'maa',   arabic: 'مَا',   translit: 'maa',  nl: 'wat',        tr: 'ne',            ref: '2:255:14' },
-  { id: 'laa',   arabic: 'لَا',   translit: 'laa',  nl: 'nee, niet',  tr: 'hayır, değil',  ref: '2:2:3' },
-  { id: 'fii',   arabic: 'فِى',   translit: 'fie',  nl: 'in',         tr: 'içinde',        ref: '2:29:6' },
-  { id: 'min',   arabic: 'مِن',   translit: 'min',  nl: 'van, uit',   tr: '-den, -dan',    ref: '2:25:10' },
-  { id: 'qul',   arabic: 'قُلْ',  translit: 'qul',  nl: 'zeg!',       tr: 'söyle!',        ref: '112:1:1' },
+  { id: 'huwa', arabic: 'هُوَ', translit: 'huwa', nl: 'hij',       tr: 'o',            ref: '112:1:2', form: 'invariable' },
+  { id: 'maa',  arabic: 'مَا',  translit: 'maa',  nl: 'wat',       tr: 'ne',           ref: '2:255:14', form: 'invariable' },
+  { id: 'laa',  arabic: 'لَا',  translit: 'laa',  nl: 'nee, niet', tr: 'hayır, değil', ref: '2:2:3',   form: 'invariable' },
+  { id: 'fii',  arabic: 'فِى',  translit: 'fie',  nl: 'in',        tr: 'içinde',       ref: '2:29:6',  form: 'invariable' },
+  { id: 'min',  arabic: 'مِن',  translit: 'min',  nl: 'van, uit',  tr: '-den, -dan',   ref: '2:25:10', form: 'invariable' },
+  { id: 'qul',  arabic: 'قُلْ', translit: 'qul',  nl: 'zeg!',      tr: 'söyle!',       ref: '112:1:1', form: 'invariable' },
 ];
 
-// Level 2 · frequent short nouns/verbs every child recognises.
+// Level 2 · short nouns, bare form. Every clip here sits at the end of its
+// verse, so the child hears "an-naas", not "an-naasi".
 const WORDS_2: QWord[] = [
-  { id: 'allah',   arabic: 'ٱللَّهُ',  translit: 'Allahu',  nl: 'Allah',        tr: 'Allah',      ref: '112:1:3' },
-  { id: 'rabbi',   arabic: 'رَبِّ',    translit: 'rabbi',   nl: 'Heer',         tr: 'Rab',        ref: '1:2:3' },
-  { id: 'qaala',   arabic: 'قَالَ',    translit: 'qaala',   nl: 'hij zei',      tr: 'dedi',       ref: '2:30:2' },
-  { id: 'khalaqa', arabic: 'خَلَقَ',   translit: 'galaqa',  nl: 'Hij schiep',   tr: 'yarattı',    ref: '55:3:1' },
-  { id: 'yawmi',   arabic: 'يَوْمِ',   translit: 'yawmi',   nl: 'dag',          tr: 'gün',        ref: '1:4:2' },
-  // 24:35 word 2. It was 3 — ٱلسَّمَـٰوَٰتِ again, same cause.
-  { id: 'nuuru',   arabic: 'نُورُ',    translit: 'noeroe',  nl: 'licht',        tr: 'ışık (nur)', ref: '24:35:2' },
+  { id: 'ahad',    arabic: 'أَحَد',        translit: 'ahad',     nl: 'één',        tr: 'bir',       ref: '112:1:4',  form: 'base' },
+  { id: 'annaas',  arabic: 'ٱلنَّاس',      translit: 'an-naas',  nl: 'de mensen',  tr: 'insanlar',  ref: '114:1:4',  form: 'base' },
+  { id: 'annaar',  arabic: 'ٱلنَّار',      translit: 'an-naar',  nl: 'het vuur',   tr: 'ateş',      ref: '2:167:23', form: 'base' },
+  { id: 'alkitab', arabic: 'ٱلْكِتَـٰب',   translit: 'al-kitaab', nl: 'het boek',  tr: 'kitap',     ref: '40:53:8',  form: 'base' },
+  { id: 'assamaa', arabic: 'ٱلسَّمَآء',    translit: 'as-samaa', nl: 'de hemel',   tr: 'gökyüzü',   ref: '14:24:15', form: 'base' },
+  { id: 'alaliim', arabic: 'ٱلْعَلِيم',    translit: 'al-aliem', nl: 'de Alwetende',  tr: 'bilen (Alîm)', ref: '2:127:14', form: 'base' },
 ];
 
-// Level 3 · longer but familiar words.
+// Level 3 · longer nouns, still bare form.
 const WORDS_3: QWord[] = [
-  { id: 'bismi',    arabic: 'بِسْمِ',      translit: 'bismi',      nl: 'in de naam van', tr: 'adıyla',        ref: '1:1:1' },
-  { id: 'alhamdu',  arabic: 'ٱلْحَمْدُ',   translit: 'alhamdu',    nl: 'alle lof',       tr: 'hamd (övgü)',   ref: '1:2:1' },
-  { id: 'alkitab',  arabic: 'ٱلْكِتَـٰبُ', translit: 'al-kitaab',  nl: 'het boek',       tr: 'kitap',         ref: '2:2:2' },
-  // Both moved off a verse end (rule 2): 114:1 and 112:1 closed on these, so
-  // the kasra and the tanwin shown were never heard.
-  { id: 'annaas',   arabic: 'ٱلنَّاسِ',    translit: 'an-naas',    nl: 'de mensen',      tr: 'insanlar',      ref: '40:57:7' },
-  { id: 'alard',    arabic: 'ٱلْأَرْضِ',   translit: 'al-ard',     nl: 'de aarde',       tr: 'yeryüzü',       ref: '2:29:7' },
-  { id: 'ahad',     arabic: 'أَحَدٌ',      translit: 'ahadun',     nl: 'één, enig',      tr: 'bir, tek',      ref: '11:81:17' },
+  { id: 'arrahmaan',  arabic: 'ٱلرَّحْمَـٰن',    translit: 'ar-rahmaan',  nl: 'de Barmhartige',  tr: 'çok merhametli', ref: '55:1:1',   form: 'base' },
+  { id: 'arrahiim',   arabic: 'ٱلرَّحِيم',       translit: 'ar-rahiem',   nl: 'de Genadevolle',  tr: 'çok şefkatli',    ref: '1:1:4',    form: 'base' },
+  { id: 'alquran',    arabic: 'ٱلْقُرْءَان',     translit: 'al-qur-aan',  nl: 'de Koran',             tr: "Kur'an",                  ref: '55:2:2',   form: 'base' },
+  { id: 'aalamiin',   arabic: 'ٱلْعَـٰلَمِين',   translit: 'al-aalamien', nl: 'de werelden',          tr: 'âlemler',                 ref: '1:2:4',    form: 'base' },
+  { id: 'alhakiim',   arabic: 'ٱلْحَكِيم',       translit: 'al-hakiem',   nl: 'de Alwijze',    tr: 'hikmetli',           ref: '2:32:12',  form: 'base' },
+  { id: 'almuminiin', arabic: 'ٱلْمُؤْمِنِين',   translit: 'al-moe-minien', nl: 'de gelovigen',       tr: 'müminler',                ref: '2:223:16', form: 'base' },
 ];
 
-// Level 4 · long words, the crown of the ladder.
-// ٱلرَّحِيمِ and ٱلْعَـٰلَمِينَ used to sit here, both pointed at the end of a
-// Fatiha verse. There is no way to fix them: checked against every occurrence
-// in the Quran (6 and 61), neither word ever falls mid-verse without a pause,
-// so no clip exists that says the vowel the mushaf shows. They are replaced
-// here by two words a child knows, with clean audio — the angels and the
-// garden. Both originals are still recited in full in al-Fatiha itself.
+// Level 4 · the same kind of words, now carrying their case ending — the
+// "extension". Each clip is mid-verse, where the reciter does pronounce it.
+// ٱللَّه and رَبّ can only appear here: neither ever ends a verse anywhere in
+// the Quran, so no clip of their bare form exists to teach earlier.
 const WORDS_4: QWord[] = [
-  { id: 'arrahmaan', arabic: 'ٱلرَّحْمَـٰنِ',   translit: 'ar-rahmaan',  nl: 'de Meest Barmhartige', tr: 'Rahman (çok merhametli)', ref: '1:1:3' },
-  { id: 'malaaika',  arabic: 'ٱلْمَلَـٰٓئِكَةُ', translit: 'al-malaa-ika', nl: 'de engelen',          tr: 'melekler',                ref: '25:25:6' },
-  { id: 'aljanna',   arabic: 'ٱلْجَنَّةَ',       translit: 'al-jannata',  nl: 'het paradijs',         tr: 'cennet',                  ref: '79:41:2' },
-  { id: 'alquran',   arabic: 'ٱلْقُرْءَانَ',    translit: 'al-qur-aana', nl: 'de Koran',             tr: "Kur'an",                  ref: '20:2:4' },
-  { id: 'assamaa',   arabic: 'ٱلسَّمَآءِ',      translit: 'as-samaa-i',  nl: 'de hemel',             tr: 'gökyüzü',                 ref: '2:22:10' },
-  { id: 'nabudu',    arabic: 'نَعْبُدُ',        translit: 'na-budu',     nl: 'wij aanbidden',        tr: 'ibadet ederiz',           ref: '1:5:2' },
+  { id: 'allahu',  arabic: 'ٱللَّهُ',    translit: 'Allaahu', nl: 'Allah',         tr: 'Allah',         ref: '112:1:3', form: 'inflected' },
+  { id: 'rabbi',   arabic: 'رَبِّ',      translit: 'rabbi',   nl: 'Heer (van)',    tr: 'Rabbi',         ref: '1:2:3',   form: 'inflected' },
+  { id: 'alardi',  arabic: 'ٱلْأَرْضِ',  translit: 'al-ardi', nl: 'de aarde',      tr: 'yeryüzü',       ref: '2:29:7',  form: 'inflected' },
+  { id: 'yawmi',   arabic: 'يَوْمِ',     translit: 'yawmi',   nl: 'dag (van)',     tr: 'günü',          ref: '1:4:2',   form: 'inflected' },
+  { id: 'nuuru',   arabic: 'نُورُ',      translit: 'noeroe',  nl: 'licht (van)',   tr: 'nuru',          ref: '24:35:2', form: 'inflected' },
+  { id: 'nabudu',  arabic: 'نَعْبُدُ',   translit: 'na-budu', nl: 'wij aanbidden', tr: 'ibadet ederiz', ref: '1:5:2',   form: 'inflected' },
+];
+
+/**
+ * The same word twice: bare, then with its ending.
+ *
+ * This is the point of the whole section. A child who has learned ٱلنَّاس
+ * meets ٱلنَّاسِ and thinks it is a new word, because the shape changed at the
+ * end and so did the sound. Putting the two side by side, each with its own
+ * recitation, shows that it is one word being read two ways.
+ */
+export interface QWordPair { id: string; base: QWord; inflected: QWord; }
+
+const WORD_PAIRS: QWordPair[] = [
+  { id: 'p-naas',  base: WORDS_2[1],
+    inflected: { id: 'annaasi', arabic: 'ٱلنَّاسِ', translit: 'an-naasi', nl: 'de mensen', tr: 'insanlar', ref: '40:57:7', form: 'inflected' } },
+  { id: 'p-ahad',  base: WORDS_2[0],
+    inflected: { id: 'ahadun', arabic: 'أَحَدٌ', translit: 'ahadun', nl: 'één', tr: 'bir', ref: '11:81:17', form: 'inflected' } },
+  { id: 'p-kitab', base: WORDS_2[3],
+    inflected: { id: 'alkitabu', arabic: 'ٱلْكِتَـٰبُ', translit: 'al-kitaabu', nl: 'het boek', tr: 'kitap', ref: '2:2:2', form: 'inflected' } },
+  { id: 'p-samaa', base: WORDS_2[4],
+    inflected: { id: 'assamaai', arabic: 'ٱلسَّمَآءِ', translit: 'as-samaa-i', nl: 'de hemel', tr: 'gökyüzü', ref: '2:22:10', form: 'inflected' } },
+  { id: 'p-quran', base: WORDS_3[2],
+    inflected: { id: 'alquraana', arabic: 'ٱلْقُرْءَانَ', translit: 'al-qur-aana', nl: 'de Koran', tr: "Kur'an", ref: '20:2:4', form: 'inflected' } },
+  { id: 'p-rahmaan', base: WORDS_3[0],
+    inflected: { id: 'arrahmaani', arabic: 'ٱلرَّحْمَـٰنِ', translit: 'ar-rahmaani', nl: 'de Barmhartige', tr: 'çok merhametli', ref: '1:1:3', form: 'inflected' } },
 ];
 
 const ALL_WORDS: QWord[] = [...WORDS_1, ...WORDS_2, ...WORDS_3, ...WORDS_4];
+
+// Harakat, tanwin, sukun, madda, the tatweel dash — everything that sits above
+// or below the line. Stripped when measuring a word, because what makes one
+// option look longer than another is the number of letters on the line.
+const ARABIC_DIACRITICS = /[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/gu;
+const arabicLength = (s: string) => s.replace(ARABIC_DIACRITICS, '').replace(/\s/gu, '').length;
+
+/**
+ * Three wrong options that don't hand over the answer.
+ *
+ * Drawing them at random put هُوَ next to ٱلْمُؤْمِنِين, and "Heer" next to "de
+ * Meest Barmhartige" — at which point a child can score full marks off the
+ * shape of the words without reading or hearing any of them. Candidates are
+ * ranked by how near they are in length to the right answer and three are
+ * drawn from the closest handful, so the four options stay comparable while
+ * still varying from round to round.
+ */
+function pickDistractors(pool: QWord[], answer: QWord, measure: (w: QWord) => number, n = 3): QWord[] {
+  const target = measure(answer);
+  const ranked = [...pool].sort((a, b) => Math.abs(measure(a) - target) - Math.abs(measure(b) - target));
+  // A window wider than n so the same three don't come back every time, but
+  // narrow enough that everything in it is still a plausible length.
+  return pick(ranked.slice(0, Math.min(ranked.length, n * 2 + 2)), n);
+}
 
 // ─── Game: Word Learn (see, hear, understand) ────────────────────────────────
 
@@ -2450,7 +2506,9 @@ function WordListenGame({ words, allWords, onComplete, lang }: {
 
   useEffect(() => {
     if (!current) return;
-    const distractors = pick(allWords.filter(x => x.id !== current.id), 3);
+    // Options are the written words, so length here is letters on the line.
+    const distractors = pickDistractors(
+      allWords.filter(x => x.id !== current.id), current, w => arabicLength(w.arabic));
     setChoices(shuffle([current, ...distractors]));
     setSelected(null);
     setFeedback(null);
@@ -2543,7 +2601,9 @@ function WordMeaningGame({ words, allWords, onComplete, lang }: {
 
   useEffect(() => {
     if (!current) return;
-    const distractors = pick(allWords.filter(x => x.id !== current.id), 3);
+    // Options are the meanings, in whichever language is on screen.
+    const distractors = pickDistractors(
+      allWords.filter(x => x.id !== current.id), current, w => meaning(w).length);
     setChoices(shuffle([current, ...distractors]));
     setSelected(null);
     setFeedback(null);
@@ -2617,6 +2677,69 @@ function WordMeaningGame({ words, allWords, onComplete, lang }: {
   );
 }
 
+// ─── Game: Same Word, Other Ending ───────────────────────────────────────────
+// Bare form on top, the same word with its case ending underneath, each with
+// its own recitation. A walkthrough rather than a quiz: the point is the
+// noticing, not the scoring, so finishing earns 3 stars like 'learn'.
+
+function WordPairGame({ pairs, onComplete, lang }: {
+  pairs: QWordPair[]; onComplete: (stars: number) => void; lang: Lang;
+}) {
+  const [idx, setIdx] = useState(0);
+  const play = useAudio();
+  const p = pairs[idx];
+
+  useEffect(() => { play(wordAudio(p.base)); }, [idx]);
+
+  const Card = ({ w, label, tone }: { w: QWord; label: string; tone: string }) => (
+    <button
+      onClick={() => play(wordAudio(w))}
+      className="w-full rounded-3xl bg-white shadow-xl px-4 py-4 flex flex-col items-center gap-1 hover:scale-[1.02] active:scale-95 transition relative"
+    >
+      <span className={`text-[11px] font-bold uppercase tracking-wide ${tone}`}>{label}</span>
+      <span lang="ar" dir="rtl" style={{ fontFamily: ARABIC_FONT, fontSize: 46, lineHeight: 1.5 }}>{w.arabic}</span>
+      <span className="text-gray-400 font-semibold text-sm">{w.translit}</span>
+      <span className="absolute top-2 right-3 text-lg">🔊</span>
+    </button>
+  );
+
+  return (
+    <div className="flex flex-col items-center gap-4 p-4">
+      <div className="text-sm text-white/70 font-semibold">{idx + 1} / {pairs.length}</div>
+      <div className="w-full bg-white/20 rounded-full h-2">
+        <div className="bg-white rounded-full h-2 transition-all" style={{ width: `${((idx + 1) / pairs.length) * 100}%` }} />
+      </div>
+
+      <p className="text-white/80 text-sm text-center max-w-xs">
+        {lang === 'tr'
+          ? 'Aynı kelime. Aşağıdakinin sonunda bir ek var — sonu farklı okunur.'
+          : 'Hetzelfde woord. Dat onderaan heeft een uitgang — het einde klinkt anders.'}
+      </p>
+
+      <div className="w-full max-w-xs flex flex-col gap-3">
+        <Card w={p.base} tone="text-emerald-600"
+          label={lang === 'tr' ? 'yalın' : 'zonder uitgang'} />
+        <div className="text-center text-white/50 text-2xl leading-none">↓</div>
+        <Card w={p.inflected} tone="text-sky-600"
+          label={lang === 'tr' ? 'ekli' : 'met uitgang'} />
+      </div>
+
+      <p className="text-2xl font-bold text-white mt-1">{lang === 'tr' ? p.base.tr : p.base.nl}</p>
+
+      <div className="flex gap-4 mt-1">
+        <button onClick={() => setIdx(i => i - 1)} disabled={idx === 0}
+          className="px-6 py-3 rounded-2xl bg-white/20 text-white font-bold text-lg disabled:opacity-30 hover:bg-white/30 transition">
+          {tr('back', lang)}
+        </button>
+        <button onClick={() => { if (idx < pairs.length - 1) setIdx(i => i + 1); else onComplete(3); }}
+          className="px-8 py-3 rounded-2xl bg-white text-emerald-700 font-bold text-lg hover:bg-emerald-50 shadow transition">
+          {idx < pairs.length - 1 ? tr('next', lang) : tr('done', lang)}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Game: Say the Word (speak aloud) ────────────────────────────────────────
 // No speech recognition — Arabic ASR for children's voices is unreliable and
 // needs mic permissions. Instead: hear the word, say it out loud, then honest
@@ -2684,7 +2807,7 @@ function WordSpeakGame({ words, onComplete, lang }: {
   );
 }
 
-type GameType = 'learn' | 'listen-pick' | 'name-match' | 'drag-sort' | 'memory' | 'harakat-learn' | 'harakat-quiz' | 'harakat-balloon-pop' | 'balloon-pop' | 'falling-letters' | 'whack-a-mole' | 'review' | 'sign-learn' | 'sign-read' | 'form-learn' | 'form-read' | 'word-learn' | 'word-listen' | 'word-meaning' | 'word-speak';
+type GameType = 'learn' | 'listen-pick' | 'name-match' | 'drag-sort' | 'memory' | 'harakat-learn' | 'harakat-quiz' | 'harakat-balloon-pop' | 'balloon-pop' | 'falling-letters' | 'whack-a-mole' | 'review' | 'sign-learn' | 'sign-read' | 'form-learn' | 'form-read' | 'word-learn' | 'word-listen' | 'word-meaning' | 'word-speak' | 'word-pairs';
 
 interface Stage {
   id: string;
@@ -2696,6 +2819,7 @@ interface Stage {
   letters: ArabicLetter[];
   signs?: Sign[];
   words?: QWord[];
+  pairs?: QWordPair[];
 }
 
 // Harakat rendered as generic Signs, so the sign-recognition game can mix them
@@ -2826,7 +2950,7 @@ function buildStages(): Stage[] {
     { key: 'w1', words: WORDS_1, title: 'Kleine woorden',  titleTr: 'Küçük kelimeler' },
     { key: 'w2', words: WORDS_2, title: 'Bekende woorden', titleTr: 'Tanıdık kelimeler' },
     { key: 'w3', words: WORDS_3, title: 'Langere woorden', titleTr: 'Daha uzun kelimeler' },
-    { key: 'w4', words: WORDS_4, title: 'Grote woorden',   titleTr: 'Büyük kelimeler' },
+    { key: 'w4', words: WORDS_4, title: 'Met uitgang',     titleTr: 'Eklerle' },
   ];
   WBUNDLES.forEach(b => {
     add({ id: `${b.key}-learn`, sectionId: 6, letters: [], words: b.words, game: 'word-learn', emoji: '📖',
@@ -2842,6 +2966,12 @@ function buildStages(): Stage[] {
       title: `Zeg het na · ${b.title}`, titleTr: `Tekrar et · ${b.titleTr}`,
       description: 'Zeg het woord hardop na', descriptionTr: 'Kelimeyi yüksek sesle tekrar et' });
   });
+  // The bridge between the bare form and the inflected one. It comes after
+  // both have been met on their own, and before the mixed quizzes.
+  add({ id: 'w-pairs', sectionId: 6, letters: [], pairs: WORD_PAIRS, game: 'word-pairs', emoji: '🔗',
+    title: 'Zelfde woord, andere uitgang', titleTr: 'Aynı kelime, farklı ek',
+    description: 'Het woord alleen en met uitgang', descriptionTr: 'Kelime yalın ve ekli hâliyle' });
+
   // Closing mixed quizzes over all 24 words.
   add({ id: 'w-mix-listen', sectionId: 6, letters: [], words: ALL_WORDS, game: 'word-listen', emoji: '🏁',
     title: 'Alle woorden · luister', titleTr: 'Tüm kelimeler · dinle',
@@ -2931,6 +3061,7 @@ const GAME_INTROS: Record<GameType, { nl: { title: string; body: string }; tr: {
   'word-learn':      { nl: { title: 'Woorden leren',  body: 'Tik op het woord om het te horen. Lees mee en leer wat het betekent.' }, tr: { title: 'Kelime öğren', body: 'Duymak için kelimeye dokun. Birlikte oku ve anlamını öğren.' } },
   'word-listen':     { nl: { title: 'Luister & kies', body: 'Je hoort een woord uit de Koran. Tik op het juiste woord.' },   tr: { title: 'Dinle & seç',  body: "Kur'an'dan bir kelime duyacaksın. Doğru kelimeye dokun." } },
   'word-meaning':    { nl: { title: 'Wat betekent het?', body: 'Je ziet en hoort een woord. Kies de juiste betekenis.' },    tr: { title: 'Ne demek?',    body: 'Bir kelime görecek ve duyacaksın. Doğru anlamı seç.' } },
+  'word-pairs':      { nl: { title: 'Zelfde woord', body: 'Bovenaan het woord alleen, eronder hetzelfde woord met een uitgang. Tik op allebei en hoor het verschil.' }, tr: { title: 'Aynı kelime', body: 'Üstte kelimenin yalın hâli, altta aynı kelime ekli hâliyle. İkisine de dokun ve farkı duy.' } },
   'word-speak':      { nl: { title: 'Zeg het na',     body: 'Luister goed naar het woord en zeg het hardop na. Net zo lang tot het lukt!' }, tr: { title: 'Tekrar et', body: 'Kelimeyi iyi dinle ve yüksek sesle tekrar et. Olana kadar dene!' } },
 };
 
@@ -3000,6 +3131,7 @@ function StageView({ stageId, progress, onComplete, onBack, onNext, lang }: {
     if (stage.game === 'word-listen') return <WordListenGame words={words} allWords={ALL_WORDS} onComplete={handleComplete} lang={lang} />;
     if (stage.game === 'word-meaning') return <WordMeaningGame words={words} allWords={ALL_WORDS} onComplete={handleComplete} lang={lang} />;
     if (stage.game === 'word-speak') return <WordSpeakGame words={words} onComplete={handleComplete} lang={lang} />;
+    if (stage.game === 'word-pairs') return <WordPairGame pairs={stage.pairs || WORD_PAIRS} onComplete={handleComplete} lang={lang} />;
     return null;
   };
 

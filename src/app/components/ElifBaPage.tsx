@@ -2285,10 +2285,23 @@ function FormReadGame({ letters, onComplete, lang }: {
 // from the Quran — short and frequent ones first, longer ones later. Each word
 // carries a simple child-level meaning in both app languages and the exact
 // word-by-word recitation clip from Quran.com's public CDN (the same audio the
-// tap-a-word feature on quran.com plays). The `audio` paths come straight from
-// the api.quran.com verses endpoint (word_fields=audio_url), so they are the
-// canonical file names — do not hand-construct them, some positions skip
-// numbers around pause marks.
+// tap-a-word feature on quran.com plays).
+//
+// TWO RULES, both learned the hard way. `scripts/check-quran-words.mjs` checks
+// both against the API — run it before changing this list.
+//
+// 1. The CDN file index is the word's POSITION in the verse, counting from 1.
+//    It is NOT the `audio_url` the api.quran.com verses endpoint returns for
+//    that word: in any verse containing a pause mark (ۖ ۚ …) the two drift
+//    apart, because audio_url counts the marks and the CDN does not. Trusting
+//    audio_url is what once had مَا ("not") play ٱلسَّمَـٰوَٰتِ ("the heavens")
+//    — two words further along in 2:255.
+//
+// 2. Never point at the last word of a verse, or a word carrying a pause mark.
+//    The reciter stops there, so the clip elongates and the final short vowel
+//    is not pronounced: ٱلنَّاسِ at the end of 114:1 is nearly twice as long as
+//    the same word mid-verse. A child matching what they see to what they hear
+//    would be learning a harakat that the audio does not say.
 
 export interface QWord {
   id: string;
@@ -2296,50 +2309,66 @@ export interface QWord {
   translit: string; // simple child-friendly transliteration
   nl: string;       // short, simple meaning (they are children)
   tr: string;
-  audio: string;    // wbw/SSS_AAA_WWW.mp3 on the Quran.com CDN
+  // "surah:ayah:position", 1-based — the audio filename is derived from it, so
+  // the reference and the clip can never drift apart. See the two rules above.
+  ref: string;
 }
 
-const WBW_CDN = 'https://audio.qurancdn.com/';
-function wordAudio(w: QWord) { return `${WBW_CDN}${w.audio}`; }
+const WBW_CDN = 'https://audio.qurancdn.com/wbw/';
+const pad3 = (n: number) => String(n).padStart(3, '0');
+function wordAudio(w: QWord) {
+  const [surah, ayah, pos] = w.ref.split(':').map(Number);
+  return `${WBW_CDN}${pad3(surah)}_${pad3(ayah)}_${pad3(pos)}.mp3`;
+}
 
 // Level 1 · tiny, very frequent words (2-3 letters).
 const WORDS_1: QWord[] = [
-  { id: 'huwa',  arabic: 'هُوَ',  translit: 'huwa', nl: 'hij',        tr: 'o',             audio: 'wbw/112_001_002.mp3' },
-  { id: 'maa',   arabic: 'مَا',   translit: 'maa',  nl: 'wat',        tr: 'ne',            audio: 'wbw/002_255_016.mp3' },
-  { id: 'laa',   arabic: 'لَا',   translit: 'laa',  nl: 'nee, niet',  tr: 'hayır, değil',  audio: 'wbw/002_002_003.mp3' },
-  { id: 'fii',   arabic: 'فِى',   translit: 'fie',  nl: 'in',         tr: 'içinde',        audio: 'wbw/002_029_006.mp3' },
-  { id: 'min',   arabic: 'مِن',   translit: 'min',  nl: 'van, uit',   tr: '-den, -dan',    audio: 'wbw/002_025_010.mp3' },
-  { id: 'qul',   arabic: 'قُلْ',  translit: 'qul',  nl: 'zeg!',       tr: 'söyle!',        audio: 'wbw/112_001_001.mp3' },
+  { id: 'huwa',  arabic: 'هُوَ',  translit: 'huwa', nl: 'hij',        tr: 'o',             ref: '112:1:2' },
+  // 2:255 word 14. It was 16 — which is ٱلسَّمَـٰوَٰتِ, see rule 1 above.
+  { id: 'maa',   arabic: 'مَا',   translit: 'maa',  nl: 'wat',        tr: 'ne',            ref: '2:255:14' },
+  { id: 'laa',   arabic: 'لَا',   translit: 'laa',  nl: 'nee, niet',  tr: 'hayır, değil',  ref: '2:2:3' },
+  { id: 'fii',   arabic: 'فِى',   translit: 'fie',  nl: 'in',         tr: 'içinde',        ref: '2:29:6' },
+  { id: 'min',   arabic: 'مِن',   translit: 'min',  nl: 'van, uit',   tr: '-den, -dan',    ref: '2:25:10' },
+  { id: 'qul',   arabic: 'قُلْ',  translit: 'qul',  nl: 'zeg!',       tr: 'söyle!',        ref: '112:1:1' },
 ];
 
 // Level 2 · frequent short nouns/verbs every child recognises.
 const WORDS_2: QWord[] = [
-  { id: 'allah',   arabic: 'ٱللَّهُ',  translit: 'Allahu',  nl: 'Allah',        tr: 'Allah',      audio: 'wbw/112_001_003.mp3' },
-  { id: 'rabbi',   arabic: 'رَبِّ',    translit: 'rabbi',   nl: 'Heer',         tr: 'Rab',        audio: 'wbw/001_002_003.mp3' },
-  { id: 'qaala',   arabic: 'قَالَ',    translit: 'qaala',   nl: 'hij zei',      tr: 'dedi',       audio: 'wbw/002_030_002.mp3' },
-  { id: 'khalaqa', arabic: 'خَلَقَ',   translit: 'galaqa',  nl: 'Hij schiep',   tr: 'yarattı',    audio: 'wbw/055_003_001.mp3' },
-  { id: 'yawmi',   arabic: 'يَوْمِ',   translit: 'yawmi',   nl: 'dag',          tr: 'gün',        audio: 'wbw/001_004_002.mp3' },
-  { id: 'nuuru',   arabic: 'نُورُ',    translit: 'noeroe',  nl: 'licht',        tr: 'ışık (nur)', audio: 'wbw/024_035_003.mp3' },
+  { id: 'allah',   arabic: 'ٱللَّهُ',  translit: 'Allahu',  nl: 'Allah',        tr: 'Allah',      ref: '112:1:3' },
+  { id: 'rabbi',   arabic: 'رَبِّ',    translit: 'rabbi',   nl: 'Heer',         tr: 'Rab',        ref: '1:2:3' },
+  { id: 'qaala',   arabic: 'قَالَ',    translit: 'qaala',   nl: 'hij zei',      tr: 'dedi',       ref: '2:30:2' },
+  { id: 'khalaqa', arabic: 'خَلَقَ',   translit: 'galaqa',  nl: 'Hij schiep',   tr: 'yarattı',    ref: '55:3:1' },
+  { id: 'yawmi',   arabic: 'يَوْمِ',   translit: 'yawmi',   nl: 'dag',          tr: 'gün',        ref: '1:4:2' },
+  // 24:35 word 2. It was 3 — ٱلسَّمَـٰوَٰتِ again, same cause.
+  { id: 'nuuru',   arabic: 'نُورُ',    translit: 'noeroe',  nl: 'licht',        tr: 'ışık (nur)', ref: '24:35:2' },
 ];
 
 // Level 3 · longer but familiar words.
 const WORDS_3: QWord[] = [
-  { id: 'bismi',    arabic: 'بِسْمِ',      translit: 'bismi',      nl: 'in de naam van', tr: 'adıyla',        audio: 'wbw/001_001_001.mp3' },
-  { id: 'alhamdu',  arabic: 'ٱلْحَمْدُ',   translit: 'alhamdu',    nl: 'alle lof',       tr: 'hamd (övgü)',   audio: 'wbw/001_002_001.mp3' },
-  { id: 'alkitab',  arabic: 'ٱلْكِتَـٰبُ', translit: 'al-kitaab',  nl: 'het boek',       tr: 'kitap',         audio: 'wbw/002_002_002.mp3' },
-  { id: 'annaas',   arabic: 'ٱلنَّاسِ',    translit: 'an-naas',    nl: 'de mensen',      tr: 'insanlar',      audio: 'wbw/114_001_004.mp3' },
-  { id: 'alard',    arabic: 'ٱلْأَرْضِ',   translit: 'al-ard',     nl: 'de aarde',       tr: 'yeryüzü',       audio: 'wbw/002_029_007.mp3' },
-  { id: 'ahad',     arabic: 'أَحَدٌ',      translit: 'ahad',       nl: 'één, enig',      tr: 'bir, tek',      audio: 'wbw/112_001_004.mp3' },
+  { id: 'bismi',    arabic: 'بِسْمِ',      translit: 'bismi',      nl: 'in de naam van', tr: 'adıyla',        ref: '1:1:1' },
+  { id: 'alhamdu',  arabic: 'ٱلْحَمْدُ',   translit: 'alhamdu',    nl: 'alle lof',       tr: 'hamd (övgü)',   ref: '1:2:1' },
+  { id: 'alkitab',  arabic: 'ٱلْكِتَـٰبُ', translit: 'al-kitaab',  nl: 'het boek',       tr: 'kitap',         ref: '2:2:2' },
+  // Both moved off a verse end (rule 2): 114:1 and 112:1 closed on these, so
+  // the kasra and the tanwin shown were never heard.
+  { id: 'annaas',   arabic: 'ٱلنَّاسِ',    translit: 'an-naas',    nl: 'de mensen',      tr: 'insanlar',      ref: '40:57:7' },
+  { id: 'alard',    arabic: 'ٱلْأَرْضِ',   translit: 'al-ard',     nl: 'de aarde',       tr: 'yeryüzü',       ref: '2:29:7' },
+  { id: 'ahad',     arabic: 'أَحَدٌ',      translit: 'ahadun',     nl: 'één, enig',      tr: 'bir, tek',      ref: '11:81:17' },
 ];
 
 // Level 4 · long words, the crown of the ladder.
+// ٱلرَّحِيمِ and ٱلْعَـٰلَمِينَ used to sit here, both pointed at the end of a
+// Fatiha verse. There is no way to fix them: checked against every occurrence
+// in the Quran (6 and 61), neither word ever falls mid-verse without a pause,
+// so no clip exists that says the vowel the mushaf shows. They are replaced
+// here by two words a child knows, with clean audio — the angels and the
+// garden. Both originals are still recited in full in al-Fatiha itself.
 const WORDS_4: QWord[] = [
-  { id: 'arrahmaan', arabic: 'ٱلرَّحْمَـٰنِ', translit: 'ar-rahmaan',  nl: 'de Meest Barmhartige', tr: 'Rahman (çok merhametli)', audio: 'wbw/001_001_003.mp3' },
-  { id: 'arrahiim',  arabic: 'ٱلرَّحِيمِ',    translit: 'ar-rahiem',   nl: 'de Meest Genadevolle', tr: 'Rahim (çok şefkatli)',    audio: 'wbw/001_001_004.mp3' },
-  { id: 'aalamiin',  arabic: 'ٱلْعَـٰلَمِينَ', translit: 'al-aalamien', nl: 'de werelden',          tr: 'âlemler',                 audio: 'wbw/001_002_004.mp3' },
-  { id: 'alquran',   arabic: 'ٱلْقُرْءَانَ',  translit: 'al-qur-aan',  nl: 'de Koran',             tr: "Kur'an",                  audio: 'wbw/055_002_002.mp3' },
-  { id: 'assamaa',   arabic: 'ٱلسَّمَآءِ',    translit: 'as-samaa',    nl: 'de hemel',             tr: 'gökyüzü',                 audio: 'wbw/002_022_010.mp3' },
-  { id: 'nabudu',    arabic: 'نَعْبُدُ',      translit: 'na-budu',     nl: 'wij aanbidden',        tr: 'ibadet ederiz',           audio: 'wbw/001_005_002.mp3' },
+  { id: 'arrahmaan', arabic: 'ٱلرَّحْمَـٰنِ',   translit: 'ar-rahmaan',  nl: 'de Meest Barmhartige', tr: 'Rahman (çok merhametli)', ref: '1:1:3' },
+  { id: 'malaaika',  arabic: 'ٱلْمَلَـٰٓئِكَةُ', translit: 'al-malaa-ika', nl: 'de engelen',          tr: 'melekler',                ref: '25:25:6' },
+  { id: 'aljanna',   arabic: 'ٱلْجَنَّةَ',       translit: 'al-jannata',  nl: 'het paradijs',         tr: 'cennet',                  ref: '79:41:2' },
+  { id: 'alquran',   arabic: 'ٱلْقُرْءَانَ',    translit: 'al-qur-aana', nl: 'de Koran',             tr: "Kur'an",                  ref: '20:2:4' },
+  { id: 'assamaa',   arabic: 'ٱلسَّمَآءِ',      translit: 'as-samaa-i',  nl: 'de hemel',             tr: 'gökyüzü',                 ref: '2:22:10' },
+  { id: 'nabudu',    arabic: 'نَعْبُدُ',        translit: 'na-budu',     nl: 'wij aanbidden',        tr: 'ibadet ederiz',           ref: '1:5:2' },
 ];
 
 const ALL_WORDS: QWord[] = [...WORDS_1, ...WORDS_2, ...WORDS_3, ...WORDS_4];

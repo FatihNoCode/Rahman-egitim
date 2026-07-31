@@ -402,6 +402,228 @@ export function computeStudentSignals(ctx: SignalContext): StudentSignals[] {
   return out.sort((a, b) => b.weight - a.weight || a.studentName.localeCompare(b.studentName));
 }
 
+// ── 1b. Per-class aggregate signals ─────────────────────────────────────────
+//
+// The per-student list above is a teacher's instrument: it names a child and
+// says what is going wrong for them. A beheerder does not teach and cannot act
+// on it — telling them "Yusuf scored 48% on his last two toetsen" is handing
+// them somebody else's job, and it buries the one thing that *is* theirs.
+//
+// What a beheerder owns is the class as a unit. A single struggling pupil is
+// the teacher's business; a class where a fifth of the lessons are missed, or
+// where half the homework never gets made, is a staffing or a scheduling
+// problem, and that is a beheerder's decision to make. So they get the same
+// engine, aggregated one level up, and never the names.
+
+export interface ClassSignals {
+  classId: string;
+  className: string;
+  studentCount: number;
+  level: Level;
+  weight: number;
+  signals: Signal[];
+}
+
+// Class-level thresholds are stricter than the per-student ones on purpose:
+// an individual at 80% attendance is unremarkable, a whole class averaging it
+// is not.
+export const CLASS_THRESHOLDS = {
+  attendance: { ratePoor: 0.85, rateWatch: 0.92, minLessons: 3 },
+  /** Share of student-lessons that were absences the parents did report. */
+  sickness: { sharePoor: 0.2, shareWatch: 0.12, minLessons: 3 },
+  homework: { completionPoor: 0.6, completionWatch: 0.8, minAssigned: 2 },
+  exams: { avgPoor: 0.55, avgWatch: 0.7, minAttempts: 5 },
+  behavior: { avgPoor: 2.8, avgWatch: 3.3, minRatings: 5 },
+} as const;
+
+export function computeClassSignals(ctx: SignalContext, studentSignals: StudentSignals[] = []): ClassSignals[] {
+  const out: ClassSignals[] = [];
+  const flaggedByClass = new Map<string, number>();
+  for (const s of studentSignals) {
+    if (!s.classId) continue;
+    flaggedByClass.set(s.classId, (flaggedByClass.get(s.classId) || 0) + 1);
+  }
+
+  for (const cls of ctx.classes) {
+    if (!cls?.id) continue;
+    const members = ctx.students.filter((s: any) => s?.id && s.classId === cls.id);
+    if (!members.length) continue;
+    const memberIds = new Set(members.map((s: any) => s.id));
+    const name = cls.name || '';
+    const signals: Signal[] = [];
+
+    // ── Attendance, and how much of it the parents explained ──
+    const lessons = ctx.attendance
+      .filter((a: any) => a?.classId === cls.id && a?.date)
+      .filter((a: any) => !ctx.since || a.date >= ctx.since);
+
+    if (lessons.length >= CLASS_THRESHOLDS.attendance.minLessons) {
+      let marks = 0;
+      let absences = 0;
+      let reportedAbsences = 0;
+      const notifications = Array.isArray(ctx.notifications) ? ctx.notifications : [];
+      for (const lesson of lessons) {
+        for (const rec of lesson.records || []) {
+          if (!memberIds.has(rec?.studentId)) continue;
+          marks++;
+          if (rec.present === false) {
+            absences++;
+            const reported = notifications.some(
+              (n: any) => n?.studentId === rec.studentId && String(n.lessonDate || '').slice(0, 10) === String(lesson.date).slice(0, 10),
+            );
+            if (reported) reportedAbsences++;
+          }
+        }
+      }
+
+      if (marks > 0) {
+        const rate = (marks - absences) / marks;
+        const level: Level | null =
+          rate < CLASS_THRESHOLDS.attendance.ratePoor ? 'high'
+          : rate < CLASS_THRESHOLDS.attendance.rateWatch ? 'medium'
+          : null;
+        if (level) {
+          signals.push({
+            key: 'attendance_class',
+            level,
+            titleNl: 'Veel gemiste lessen in deze klas',
+            titleTr: 'Bu sınıfta çok fazla ders kaçırılıyor',
+            detailNl: `De klas is gemiddeld ${pct(rate)} aanwezig — ${absences} van ${marks} lesmomenten werden gemist.`,
+            detailTr: `Sınıfın ortalama devamı %${Math.round(rate * 100)} — ${marks} ders katılımının ${absences} tanesi kaçırıldı.`,
+            value: rate,
+          });
+        }
+
+        // Reported sickness on its own: a class that is genuinely ill more
+        // often than the rest is a room, a season or a schedule problem, and
+        // the beheerder is the only one who can do anything about that.
+        const sickShare = reportedAbsences / marks;
+        const sickLevel: Level | null =
+          sickShare >= CLASS_THRESHOLDS.sickness.sharePoor ? 'high'
+          : sickShare >= CLASS_THRESHOLDS.sickness.shareWatch ? 'medium'
+          : null;
+        if (sickLevel) {
+          signals.push({
+            key: 'absence_sick_class',
+            level: sickLevel,
+            titleNl: 'Veel ziekmeldingen in deze klas',
+            titleTr: 'Bu sınıfta çok fazla hasta bildirimi',
+            detailNl: `${pct(sickShare)} van de lesmomenten werd ziekgemeld (${reportedAbsences} van ${marks}).`,
+            detailTr: `Ders katılımlarının %${Math.round(sickShare * 100)} kadarı hasta bildirildi (${marks} içinde ${reportedAbsences}).`,
+            value: sickShare,
+          });
+        }
+      }
+    }
+
+    // ── Homework the class as a whole does not make ──
+    const today = new Date().toISOString().slice(0, 10);
+    const assigned = ctx.homework.filter((h: any) => {
+      if (!h?.id) return false;
+      if (h.dueDate && h.dueDate > today) return false;
+      if (ctx.since && h.dueDate && h.dueDate < ctx.since) return false;
+      return Array.isArray(h.studentIds)
+        ? h.studentIds.some((id: string) => memberIds.has(id))
+        : h.classId === cls.id;
+    });
+    if (assigned.length >= CLASS_THRESHOLDS.homework.minAssigned) {
+      const expected = assigned.reduce(
+        (sum: number, h: any) =>
+          sum + (Array.isArray(h.studentIds) ? h.studentIds.filter((id: string) => memberIds.has(id)).length : members.length),
+        0,
+      );
+      const completed = ctx.completions.filter(
+        (comp: any) =>
+          comp?.studentId
+          && memberIds.has(comp.studentId)
+          && comp.completed !== false
+          && assigned.some((h: any) => h.id === comp.homeworkId),
+      ).length;
+      if (expected > 0) {
+        const rate = completed / expected;
+        const level: Level | null =
+          rate < CLASS_THRESHOLDS.homework.completionPoor ? 'high'
+          : rate < CLASS_THRESHOLDS.homework.completionWatch ? 'medium'
+          : null;
+        if (level) {
+          signals.push({
+            key: 'homework_class',
+            level,
+            titleNl: 'Huiswerk wordt in deze klas weinig gemaakt',
+            titleTr: 'Bu sınıfta ödevler az yapılıyor',
+            detailNl: `${pct(rate)} van het opgegeven huiswerk is afgerond (${completed} van ${expected}).`,
+            detailTr: `Verilen ödevlerin %${Math.round(rate * 100)} kadarı tamamlandı (${expected} içinde ${completed}).`,
+            value: rate,
+          });
+        }
+      }
+    }
+
+    // ── Results, averaged over the class rather than named per pupil ──
+    const scores = ctx.attempts
+      .filter((a: any) => a?.studentId && memberIds.has(a.studentId) && a.submittedAt)
+      .map((a: any) => attemptScore(a))
+      .filter((s): s is number => s !== null);
+    if (scores.length >= CLASS_THRESHOLDS.exams.minAttempts) {
+      const avg = mean(scores);
+      const level: Level | null =
+        avg < CLASS_THRESHOLDS.exams.avgPoor ? 'high'
+        : avg < CLASS_THRESHOLDS.exams.avgWatch ? 'medium'
+        : null;
+      if (level) {
+        signals.push({
+          key: 'exam_class',
+          level,
+          titleNl: 'Toetsresultaten van de klas blijven achter',
+          titleTr: 'Sınıfın sınav sonuçları geride kalıyor',
+          detailNl: `Klasgemiddelde ${pct(avg)} over ${scores.length} inzendingen.`,
+          detailTr: `${scores.length} gönderimde sınıf ortalaması %${Math.round(avg * 100)}.`,
+          value: avg,
+        });
+      }
+    }
+
+    // ── Behaviour, averaged the same way ──
+    const ratings = ctx.behavior
+      .filter((b: any) => b?.studentId && memberIds.has(b.studentId) && typeof b.rating === 'number')
+      .filter((b: any) => !ctx.since || !b.date || b.date >= ctx.since)
+      .map((b: any) => b.rating);
+    if (ratings.length >= CLASS_THRESHOLDS.behavior.minRatings) {
+      const avg = mean(ratings);
+      const level: Level | null =
+        avg <= CLASS_THRESHOLDS.behavior.avgPoor ? 'high'
+        : avg <= CLASS_THRESHOLDS.behavior.avgWatch ? 'medium'
+        : null;
+      if (level) {
+        signals.push({
+          key: 'behavior_class',
+          level,
+          titleNl: 'Gedrag in deze klas vraagt aandacht',
+          titleTr: 'Bu sınıfta davranış ilgi gerektiriyor',
+          detailNl: `Gemiddelde gedragsscore ${avg.toFixed(1)} van 5 over ${ratings.length} beoordelingen.`,
+          detailTr: `${ratings.length} değerlendirmede ortalama davranış puanı 5 üzerinden ${avg.toFixed(1)}.`,
+          value: avg,
+        });
+      }
+    }
+
+    if (!signals.length) continue;
+
+    const level = topLevel(signals)!;
+    const weight = signals.reduce((sum, s) => sum + LEVEL_WEIGHT[s.level], 0) + LEVEL_WEIGHT[level] * 10;
+    out.push({
+      classId: cls.id,
+      className: name,
+      studentCount: members.length,
+      level,
+      weight,
+      signals,
+    });
+  }
+
+  return out.sort((a, b) => b.weight - a.weight || a.className.localeCompare(b.className));
+}
+
 // ── 2. Exam item analysis ───────────────────────────────────────────────────
 
 export interface QuestionAnalysis {
@@ -580,8 +802,6 @@ export interface FeedInput {
   ungradedExams: Array<{ examId: string; title: string; pending: number }>;
   /** Cases assigned to / raised by this user that are still open. */
   openCases: any[];
-  /** Conference sessions with unbooked slots. */
-  unbookedConferences: Array<{ sessionId: string; title: string; unbooked: number; date: string }>;
   /** Output of computeStudentSignals, already scoped. */
   studentSignals: StudentSignals[];
   /** Students whose schoolgeld is still outstanding (admins only). */
@@ -655,19 +875,10 @@ export function buildTodayFeed(input: FeedInput): FeedItem[] {
     });
   }
 
-  for (const conf of list(input.unbookedConferences)) {
-    if (conf.unbooked <= 0) continue;
-    items.push({
-      key: `conference_unbooked:${conf.sessionId}`,
-      level: 'medium',
-      titleNl: 'Ouders hebben nog geen tijdslot gekozen',
-      titleTr: 'Veliler henüz saat seçmedi',
-      bodyNl: `${conf.unbooked} ouders zonder afspraak voor "${conf.title}" op ${conf.date}.`,
-      bodyTr: `"${conf.title}" (${conf.date}) için ${conf.unbooked} veli randevu almadı.`,
-      link: '#oudergesprekken',
-      count: conf.unbooked,
-    });
-  }
+  // Note: chasing the parents who have not booked an oudergesprek slot used to
+  // live here, on the teacher's list. It is a beheerder's job — they run the
+  // round, they hold the parent contact details, and a teacher cannot send the
+  // reminder anyway — so it moved to buildAdminFeed.
 
   const highRisk = list(input.studentSignals).filter((s) => s.level === 'high');
   if (highRisk.length) {
@@ -957,6 +1168,8 @@ export interface AdminFeedInput {
   today: string;
   /** Conference sessions dated today or later. */
   upcomingConferences: any[];
+  /** Conference sessions that still have slots nobody has booked. */
+  unbookedConferences?: Array<{ sessionId: string; title: string; unbooked: number; date: string }>;
   /** Cases still open, with `status` and `statusChangedAt` / `updatedAt`. */
   openCases: any[];
   /** Registrations still awaiting a decision. */
@@ -994,6 +1207,23 @@ export function buildAdminFeed(input: AdminFeedInput): FeedItem[] {
       bodyNl: `Er staat nog geen gespreksronde voor ${period.nl} gepland. Zet een datum vast, dan kunnen ouders zich inschrijven voor een tijdslot.`,
       bodyTr: `${period.tr} dönemi için henüz görüşme planlanmadı. Bir tarih belirleyin, böylece veliler saat seçebilir.`,
       link: '#oudergesprekken',
+    });
+  }
+
+  // 1b. Parents who have not picked a slot in a round that *is* planned.
+  //     The beheerder organises the round and can send the reminder from the
+  //     Oudergesprekken tab in one click; a teacher can do neither.
+  for (const conf of list(input.unbookedConferences)) {
+    if (conf.unbooked <= 0) continue;
+    items.push({
+      key: `conference_unbooked:${conf.sessionId}`,
+      level: 'medium',
+      titleNl: 'Ouders hebben nog geen tijdslot gekozen',
+      titleTr: 'Veliler henüz saat seçmedi',
+      bodyNl: `${conf.unbooked} ${conf.unbooked === 1 ? 'ouder heeft' : 'ouders hebben'} nog geen afspraak voor "${conf.title}" op ${conf.date}. Stuur ze een herinnering.`,
+      bodyTr: `"${conf.title}" (${conf.date}) için ${conf.unbooked} veli randevu almadı. Onlara hatırlatma gönderin.`,
+      link: '#oudergesprekken',
+      count: conf.unbooked,
     });
   }
 

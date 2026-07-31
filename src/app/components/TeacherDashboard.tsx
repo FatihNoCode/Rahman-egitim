@@ -173,7 +173,12 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   // Which of the three registration steps is unfolded. One at a time: the
   // point of collapsing them was to get the whole form back onto one screen,
   // and two open steps puts it right back where it started.
-  const [openStep, setOpenStep] = useState<1 | 2 | 3 | null>(1);
+  //
+  // The tab opens with all three folded, like every other collapsible in the
+  // app — you see the three headings and their status, and unfold the one you
+  // came for. Saving a step still opens the next one, so working straight
+  // through the lesson is one click per step and nothing more.
+  const [openStep, setOpenStep] = useState<1 | 2 | 3 | null>(null);
   const toggleStep = (n: 1 | 2 | 3) => setOpenStep((cur) => (cur === n ? null : n));
   // How far the roster has been worked through, for the collapsed step header.
   const attendanceMarked = students.filter((s) => attendanceRecords[s.id] !== undefined).length;

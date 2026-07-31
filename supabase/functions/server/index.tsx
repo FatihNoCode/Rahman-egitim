@@ -5,6 +5,7 @@ import * as kv from "./kv_store.tsx";
 import { createClient } from "npm:@supabase/supabase-js";
 import {
   computeStudentSignals,
+  computeClassSignals,
   computeExamAnalysis,
   buildTodayFeed,
   buildAdminFeed,
@@ -613,6 +614,12 @@ interface EmailAttachment {
   contentType?: string;
 }
 
+// Where the app actually lives. Every link we mail out is built from this, so
+// a move to another domain is one edit rather than a hunt through the file —
+// which is exactly how half the mails ended up still pointing at the old
+// ilimyolu.com address long after the app had moved.
+const APP_URL = 'https://rahmanegitim.com';
+
 // UTF-8 safe base64 (btoa alone breaks on Turkish characters like ü/ğ/ş).
 function toBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);
@@ -705,7 +712,7 @@ function buildIcsContent(dateStr: string, startTime: string, endTime: string, ti
     // "add to calendar".
     'METHOD:REQUEST',
     'BEGIN:VEVENT',
-    `UID:${uid}@ilimyolu.com`,
+    `UID:${uid}@rahmanegitim.com`,
     `DTSTAMP:${dtStart}`,
     `DTSTART:${dtStart}`,
     `DTEND:${dtEnd}`,
@@ -2191,7 +2198,7 @@ app.post("/make-server-6679cacd/regional-admins", async (c) => {
       createdAt: new Date().toISOString(),
     });
 
-    const inviteLink = `https://rahmanegitim.com/invite/${inviteToken}`;
+    const inviteLink = `${APP_URL}/invite/${inviteToken}`;
     const regionLabel = region === 'north' ? 'Noord-Nederland' : 'Zuid-Nederland';
     await sendEmail(
       email,
@@ -2566,7 +2573,7 @@ app.post("/make-server-6679cacd/local-admin-proposals/:id/approve", async (c) =>
       createdAt: new Date().toISOString(),
     });
 
-    const inviteLink = `https://rahmanegitim.com/invite/${inviteToken}`;
+    const inviteLink = `${APP_URL}/invite/${inviteToken}`;
     await sendEmail(
       proposal.email,
       'Uitnodiging Lokale Beheerder',
@@ -3759,12 +3766,12 @@ app.post("/make-server-6679cacd/users/:userId/approve", async (c) => {
         emailWrapper('Account goedgekeurd', `
           <p style="color:#374151;line-height:1.6">Beste ${target.name || ''},</p>
           <p style="color:#374151;line-height:1.6">Goed nieuws! Uw account voor het Rahman Eğitim leerlingvolgsysteem is goedgekeurd. U kunt nu inloggen met uw e-mailadres en wachtwoord.</p>
-          <p style="margin:24px 0"><a href="https://ilimyolu.com" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Inloggen</a></p>
+          <p style="margin:24px 0"><a href="${APP_URL}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Inloggen</a></p>
           <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
           <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
           <p style="color:#374151;line-height:1.6">Sayın ${target.name || ''},</p>
           <p style="color:#374151;line-height:1.6">Güzel haber! Rahman Eğitim öğrenci takip sistemi hesabınız onaylandı. Artık e-posta adresiniz ve şifrenizle giriş yapabilirsiniz.</p>
-          <p style="margin:24px 0"><a href="https://ilimyolu.com" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Giriş yap</a></p>
+          <p style="margin:24px 0"><a href="${APP_URL}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Giriş yap</a></p>
         `)
       );
     }
@@ -5570,42 +5577,42 @@ app.post("/make-server-6679cacd/teachers", async (c) => {
     await kv.set(`teacher_classes:${data.user.id}`, []);
 
     // Send invite email
-    const inviteLink = `https://ilimyolu.com/invite/${inviteToken}`;
+    const inviteLink = `${APP_URL}/invite/${inviteToken}`;
 
     // Email content
-    const emailSubjectTr = 'Öğretmen Daveti - Cami Öğrenci Takip Sistemi';
-    const emailSubjectNl = 'Leraar Uitnodiging - Moskee Leerling Volgsysteem';
+    const emailSubjectTr = 'Öğretmen Daveti - Rahman Eğitim';
+    const emailSubjectNl = 'Uitnodiging als leerkracht - Rahman Eğitim';
 
     const emailBodyTr = `
 Merhaba,
 
-Cami öğrenci takip sistemimize öğretmen olarak davet edildiniz.
+Rahman Eğitim öğrenci takip sistemine öğretmen olarak davet edildiniz.
 
 Hesabınızı aktif etmek ve şifrenizi oluşturmak için lütfen aşağıdaki bağlantıya tıklayın:
 ${inviteLink}
 
 Bu bağlantı 7 gün geçerlidir.
 
-Hesabınızı oluşturduktan sonra, ilimyolu.com adresinden giriş yapabilirsiniz.
+Hesabınızı oluşturduktan sonra, rahmanegitim.com adresinden giriş yapabilirsiniz.
 
 Saygılarımızla,
-Cami Yönetimi
+Rahman Eğitim
     `;
 
     const emailBodyNl = `
 Hallo ${email},
 
-U bent uitgenodigd als leraar voor ons moskee leerling volgsysteem.
+U bent uitgenodigd als leerkracht voor het Rahman Eğitim leerlingvolgsysteem.
 
 Klik op de onderstaande link om uw account te activeren en uw wachtwoord aan te maken:
 ${inviteLink}
 
 Deze link is 7 dagen geldig.
 
-Na het aanmaken van uw account kunt u inloggen op ilimyolu.com.
+Na het aanmaken van uw account kunt u inloggen op rahmanegitim.com.
 
 Met vriendelijke groet,
-Moskee Beheer
+Rahman Eğitim
     `;
 
     // Send email using Supabase Auth
@@ -8020,57 +8027,43 @@ app.post("/make-server-6679cacd/oudergesprekken", async (c) => {
     const existingIds: string[] = await kv.get('oudergesprek_ids') || [];
     await kv.set('oudergesprek_ids', [...existingIds, ...newIds]);
 
-    // Send emails to every parent whose child is in one of the classes
-    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+    // Send emails to every parent whose child is in one of the classes.
+    // Routed through sendEmail like every other mail, so the from-address, the
+    // bismillah header and the failure logging are the same everywhere.
     let emailsSent = 0;
-    if (RESEND_API_KEY && allStudents.length > 0) {
-      const parentEmailsSeen = new Set<string>();
+    const parentEmailsSeen = new Set<string>();
 
-      for (const student of allStudents) {
-        if (!student?.parentId) continue;
-        const cls = allClasses.find((cl: any) => cl.id === student.classId);
-        if (!cls) continue;
-        const session = createdSessions.find((s: any) => s.classId === cls.id);
-        if (!session) continue;
+    for (const student of allStudents) {
+      if (!student?.parentId) continue;
+      const cls = allClasses.find((cl: any) => cl.id === student.classId);
+      if (!cls) continue;
+      const session = createdSessions.find((s: any) => s.classId === cls.id);
+      if (!session) continue;
 
-        const parentData = await getUserData(student.parentId);
-        if (!parentData?.email || parentEmailsSeen.has(parentData.email)) continue;
-        parentEmailsSeen.add(parentData.email);
+      const parentData = await getUserData(student.parentId);
+      if (!parentData?.email || parentEmailsSeen.has(parentData.email)) continue;
+      parentEmailsSeen.add(parentData.email);
 
-        const lastSlotEnd = session.slots[session.slots.length - 1]?.end || endTime;
-        const bookingLink = `https://ilimyolu.com`;
-        try {
-          await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              from: 'Rahman Eğitim <info@rahmanegitim.com>',
-              to: [parentData.email],
-              subject: `Oudergesprek ${date} | Veli Görüşmesi`,
-              html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-                <h2 style="color:#065f46;margin-bottom:16px">Rahman Eğitim - Oudergesprek</h2>
-                <p style="color:#374151;line-height:1.6">Beste ouder,</p>
-                <p style="color:#374151;line-height:1.6">Er is een oudergesprek ingepland op <strong>${date}</strong> voor klas <strong>${cls.name}</strong>.</p>
-                <p style="color:#374151;line-height:1.6">Tijdsloten zijn beschikbaar van <strong>${startTime}</strong> tot <strong>${lastSlotEnd}</strong> (${minutesPerSlot} minuten per gesprek).</p>
-                <p style="color:#374151;line-height:1.6">Log in op het ouderportaal om uw tijdslot te kiezen. <strong>Wie het eerst komt, het eerst maalt!</strong></p>
-                <p style="margin:24px 0"><a href="${bookingLink}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Kies uw tijdslot</a></p>
-                <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-                <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-                <p style="color:#374151;line-height:1.6">Sayın veli,</p>
-                <p style="color:#374151;line-height:1.6"><strong>${date}</strong> tarihinde <strong>${cls.name}</strong> sınıfı için veli görüşmesi planlanmıştır.</p>
-                <p style="color:#374151;line-height:1.6">Görüşme saatleri <strong>${startTime}</strong> ile <strong>${lastSlotEnd}</strong> arasındadır (görüşme başına ${minutesPerSlot} dakika).</p>
-                <p style="color:#374151;line-height:1.6">Zaman dilimi seçmek için veli portalına giriş yapın. <strong>İlk gelen, ilk alır!</strong></p>
-                <p style="margin:24px 0"><a href="${bookingLink}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Zaman dilimi seçin</a></p>
-                <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-                <p style="color:#9ca3af;font-size:12px">Dit bericht is verstuurd via het Rahman Eğitim leerlingvolgsysteem.</p>
-              </div>`,
-            }),
-          });
-          emailsSent++;
-        } catch (emailErr) {
-          console.log(`Failed to send oudergesprek email to ${parentData.email}:`, emailErr);
-        }
-      }
+      const lastSlotEnd = session.slots[session.slots.length - 1]?.end || endTime;
+      const ok = await sendEmail(
+        parentData.email,
+        `Oudergesprek ${date} | Veli Görüşmesi - Rahman Eğitim`,
+        emailWrapper('Oudergesprek', `
+          <p style="color:#374151;line-height:1.6">Beste ouder,</p>
+          <p style="color:#374151;line-height:1.6">Er is een oudergesprek ingepland op <strong>${date}</strong> voor klas <strong>${escapeHtml(cls.name || '')}</strong>.</p>
+          <p style="color:#374151;line-height:1.6">Tijdsloten zijn beschikbaar van <strong>${startTime}</strong> tot <strong>${lastSlotEnd}</strong> (${minutesPerSlot} minuten per gesprek).</p>
+          <p style="color:#374151;line-height:1.6">Log in op het ouderportaal om uw tijdslot te kiezen. <strong>Wie het eerst komt, het eerst maalt!</strong></p>
+          <p style="margin:24px 0"><a href="${APP_URL}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Kies uw tijdslot</a></p>
+          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+          <p style="color:#374151;line-height:1.6">Sayın veli,</p>
+          <p style="color:#374151;line-height:1.6"><strong>${date}</strong> tarihinde <strong>${escapeHtml(cls.name || '')}</strong> sınıfı için veli görüşmesi planlanmıştır.</p>
+          <p style="color:#374151;line-height:1.6">Görüşme saatleri <strong>${startTime}</strong> ile <strong>${lastSlotEnd}</strong> arasındadır (görüşme başına ${minutesPerSlot} dakika).</p>
+          <p style="color:#374151;line-height:1.6">Zaman dilimi seçmek için veli portalına giriş yapın. <strong>İlk gelen, ilk alır!</strong></p>
+          <p style="margin:24px 0"><a href="${APP_URL}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Zaman dilimi seçin</a></p>
+        `),
+      );
+      if (ok) emailsSent++;
     }
 
     return c.json({ success: true, sessions: createdSessions, emailsSent });
@@ -8094,6 +8087,14 @@ app.get("/make-server-6679cacd/oudergesprekken", async (c) => {
 
     const allSessions = await kv.mget(ids.map((id: string) => `oudergesprek:${id}`));
     let sessions = allSessions.filter((s: any) => s && s.id && (!s.schoolId || mySchoolIds.has(s.schoolId)));
+
+    // Teachers only see the rounds for the classes they actually teach. A
+    // school-wide round creates one session per class, and another teacher's
+    // slot list is neither their business nor anything they can act on.
+    if (userData?.role === 'teacher') {
+      const myClassIds = new Set<string>(await kv.get(`teacher_classes:${user.id}`) || []);
+      sessions = sessions.filter((s: any) => s.classId && myClassIds.has(s.classId));
+    }
 
     // Parents only see the sessions for their children's classes
     if (userData?.role === 'parent') {
@@ -8364,10 +8365,12 @@ app.post("/make-server-6679cacd/oudergesprekken/:id/remind-unbooked", async (c) 
         emailWrapper('Herinnering oudergesprek', `
           <p style="color:#374151;line-height:1.6">Beste ouder,</p>
           <p style="color:#374151;line-height:1.6">U heeft nog geen tijdslot gekozen voor het oudergesprek van <strong>${session.className}</strong> op <strong>${session.date}</strong>. Log in op het ouderportaal om een tijdslot te kiezen.</p>
+          <p style="margin:24px 0"><a href="${APP_URL}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Kies uw tijdslot</a></p>
           <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
           <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
           <p style="color:#374151;line-height:1.6">Sayın veli,</p>
           <p style="color:#374151;line-height:1.6"><strong>${session.className}</strong> sınıfının <strong>${session.date}</strong> tarihindeki veli görüşmesi için henüz bir zaman dilimi seçmediniz. Zaman dilimi seçmek için veli portalına giriş yapın.</p>
+          <p style="margin:24px 0"><a href="${APP_URL}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Zaman dilimi seçin</a></p>
         `)
       );
       if (ok) sent++;
@@ -8750,7 +8753,22 @@ app.get("/make-server-6679cacd/signals/students", async (c) => {
 
     const { ctx } = await loadSignalScope(user.id, userData, c.req.header('X-School-Id') || undefined);
     const signals = computeStudentSignals(ctx);
-    return c.json({ students: signals, scanned: ctx.students.length });
+
+    // A beheerder is not a teacher. Naming the children whose toetsen slipped
+    // puts them in the middle of a job that belongs to the person standing in
+    // front of the class, so they get the same scan rolled up per class: a
+    // class where attendance, ziekmeldingen, huiswerk or results are off is a
+    // school-level problem and theirs to solve.
+    if (userData.role !== 'teacher') {
+      return c.json({
+        mode: 'classes',
+        classes: computeClassSignals(ctx, signals),
+        students: [],
+        scanned: ctx.students.length,
+      });
+    }
+
+    return c.json({ mode: 'students', students: signals, classes: [], scanned: ctx.students.length });
   } catch (err) {
     console.log('Signals students error:', err);
     return c.json({ error: 'Failed to compute signals' }, 500);
@@ -8915,6 +8933,22 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
         ? outreachTasks(await loadOutreachTracks(schoolId), 'admin')
         : [];
 
+      // Rounds where parents still have to pick a slot. The beheerder plans
+      // the round and sends the reminder, so this is their task, not a
+      // teacher's.
+      const unbookedConferences: Array<{ sessionId: string; title: string; unbooked: number; date: string }> = [];
+      for (const s of sessions) {
+        const unbooked = (s.slots || []).filter((slot: any) => !slot.bookedBy).length;
+        if (unbooked > 0) {
+          unbookedConferences.push({
+            sessionId: s.id,
+            title: s.title || s.className || 'Oudergesprek',
+            unbooked,
+            date: s.date,
+          });
+        }
+      }
+
       const LEVELS: Record<string, number> = { high: 3, medium: 2, low: 1 };
       feed = [
         ...escalated,
@@ -8922,6 +8956,7 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
         ...buildAdminFeed({
           today,
           upcomingConferences: sessions,
+          unbookedConferences,
           openCases,
           pendingRegistrations: pending.length,
           latestRegistrationAt,
@@ -8953,19 +8988,6 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
         if (pending > 0) ungradedExams.push({ examId: exam.id, title: exam.title || 'Toets', pending });
       }
 
-      const unbookedConferences: Array<{ sessionId: string; title: string; unbooked: number; date: string }> = [];
-      for (const s of sessions) {
-        const unbooked = (s.slots || []).filter((slot: any) => !slot.bookedBy).length;
-        if (unbooked > 0) {
-          unbookedConferences.push({
-            sessionId: s.id,
-            title: s.title || s.className || 'Oudergesprek',
-            unbooked,
-            date: s.date,
-          });
-        }
-      }
-
       // Families the ladder has asked *this* teacher to phone, narrowed to
       // their own classes — a teacher must not be handed another class's call.
       const myClassIds = new Set(classes.map((cl: any) => cl.id));
@@ -8982,7 +9004,6 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
           attendance: ctx.attendance,
           ungradedExams,
           openCases,
-          unbookedConferences,
           studentSignals,
         }),
       ];

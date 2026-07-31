@@ -14,6 +14,7 @@ import {
   ClipboardList,
   History,
   Smile,
+  Users,
 } from 'lucide-react';
 
 /**
@@ -25,8 +26,12 @@ import {
  *     for a beheerder it is the school's calendar of obligations (plan the
  *     oudergesprekken, send the payment round) plus the children the school has
  *     lost sight of;
- *   • the at-risk list: students whose attendance, behaviour, results or
- *     homework are trending the wrong way, ranked by severity.
+ *   • the at-risk list, at the altitude of the reader. A teacher sees students
+ *     whose attendance, behaviour, results or homework are trending the wrong
+ *     way; a beheerder sees the same scan rolled up per class and no names at
+ *     all, because a single struggling pupil is the teacher's job and a
+ *     struggling class is the school's. The server decides which of the two it
+ *     sends (`mode`), so the altitude is not something the client can leak.
  *
  * The list is deliberately empty when nothing is wrong. A worklist that always
  * has entries is one people stop reading.
@@ -58,6 +63,19 @@ interface StudentSignals {
   className: string | null;
   level: Level;
   weight: number;
+  signals: Signal[];
+}
+
+/**
+ * The beheerder's version of the risk list. Same scan, rolled up per class and
+ * without the names: a struggling pupil is the teacher's job, a struggling
+ * class is the school's. See computeClassSignals on the server.
+ */
+interface ClassSignals {
+  classId: string;
+  className: string;
+  studentCount: number;
+  level: Level;
   signals: Signal[];
 }
 
@@ -196,6 +214,9 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
         intro: 'Sistem, devam, davranış, sınav ve ödev verilerini tarar ve yalnızca ilgi gerektiren durumları gösterir.',
         todo: 'Yapılacaklar',
         atRisk: 'İlgi gerektiren öğrenciler',
+        atRiskClasses: 'İlgi gerektiren sınıflar',
+        allClearClasses: 'Hiçbir sınıf şu anda sinyal vermiyor.',
+        classSize: (n: number) => `${n} öğrenci`,
         allClear: 'Şu anda dikkat gerektiren bir durum yok.',
         allClearStudents: 'Hiçbir öğrenci şu anda risk sinyali vermiyor.',
         refresh: 'Yenile',
@@ -219,6 +240,9 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
         intro: 'Het systeem scant aanwezigheid, gedrag, toetsen en huiswerk en toont alleen wat opvolging nodig heeft.',
         todo: 'Openstaande acties',
         atRisk: 'Leerlingen die aandacht nodig hebben',
+        atRiskClasses: 'Klassen die aandacht nodig hebben',
+        allClearClasses: 'Geen enkele klas geeft op dit moment een signaal af.',
+        classSize: (n: number) => `${n} ${n === 1 ? 'leerling' : 'leerlingen'}`,
         allClear: 'Er staat op dit moment niets open.',
         allClearStudents: 'Geen enkele leerling geeft op dit moment een signaal af.',
         refresh: 'Vernieuwen',
@@ -239,13 +263,16 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
 
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [students, setStudents] = useState<StudentSignals[]>([]);
+  const [classSignals, setClassSignals] = useState<ClassSignals[]>([]);
+  const [mode, setMode] = useState<'students' | 'classes'>('students');
   const [scanned, setScanned] = useState(0);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
-  // Folded groups, keyed by family / risk-group id. Groups start open: the
-  // point is a shorter list, not a hidden one.
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // Folded groups, keyed by family / risk-group id. Everything starts folded:
+  // opening a tab should show a short list of headings you can scan in one
+  // look, and you open the one you came for.
+  const [open, setOpen] = useState<Record<string, boolean>>({});
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archive, setArchive] = useState<ArchivedTask[]>([]);
   const [archiveLoaded, setArchiveLoaded] = useState(false);
@@ -266,6 +293,8 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
       ]);
       setFeed(todayRes?.feed || []);
       setStudents(studentsRes?.students || []);
+      setClassSignals(studentsRes?.classes || []);
+      setMode(studentsRes?.mode === 'classes' ? 'classes' : 'students');
       setScanned(studentsRes?.scanned || 0);
     } catch {
       setFailed(true);
@@ -348,6 +377,8 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
   };
 
   const groups = groupFeed(feed);
+  // Which half the server sent: a teacher gets students, a beheerder classes.
+  const isClassMode = mode === 'classes';
 
   // One card per task: a checkbox on the left, the task itself acting as the
   // link to wherever it gets done.
@@ -422,14 +453,14 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
                   // row away costs a click and saves nothing.
                   if (group.items.length === 1) return taskCard(group.items[0]);
 
-                  const isOpen = !collapsed[group.family];
+                  const isOpen = !!open[group.family];
                   return (
                     <div
                       key={group.family}
                       className={`bg-white rounded-lg border border-gray-200 ${LEVEL_STYLES[group.level].border} overflow-hidden`}
                     >
                       <button
-                        onClick={() => setCollapsed((prev) => ({ ...prev, [group.family]: isOpen }))}
+                        onClick={() => setOpen((prev) => ({ ...prev, [group.family]: !isOpen }))}
                         className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-gray-50 transition"
                       >
                         <div className="min-w-0">
@@ -459,7 +490,87 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
             )}
           </section>
 
-          {/* ── Leerlingen die aandacht nodig hebben ── */}
+          {/* ── Klassen die aandacht nodig hebben (beheerder) ──
+              A beheerder never sees the per-student list: the server sends
+              class-level aggregates instead. */}
+          {isClassMode && (
+            <section>
+              <div className="flex items-baseline justify-between mb-3">
+                <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{text.atRiskClasses}</h4>
+                {scanned > 0 && (
+                  <span className="text-xs text-gray-400">
+                    {scanned} {text.scanned}
+                  </span>
+                )}
+              </div>
+
+              {classSignals.length === 0 ? (
+                <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                  <CheckCircle2 className="w-5 h-5 shrink-0" />
+                  {text.allClearClasses}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {classSignals.map((cls) => {
+                    const groupId = `class:${cls.classId}`;
+                    const isOpen = !!open[groupId];
+                    return (
+                      <div
+                        key={groupId}
+                        className={`bg-white rounded-lg border border-gray-200 ${LEVEL_STYLES[cls.level].border} overflow-hidden`}
+                      >
+                        <button
+                          onClick={() => setOpen((prev) => ({ ...prev, [groupId]: !isOpen }))}
+                          className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-gray-50 transition"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <Users className="w-4 h-4 text-gray-400 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="font-medium text-gray-800 truncate">{cls.className}</p>
+                              <p className="text-sm text-gray-500 truncate">
+                                {text.classSize(cls.studentCount)} · {cls.signals.map((s) => label(s)).join(' · ')}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${LEVEL_STYLES[cls.level].badge}`}>
+                              {text.levels[cls.level]}
+                            </span>
+                            {isOpen ? (
+                              <ChevronUp className="w-4 h-4 text-gray-400" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                            )}
+                          </div>
+                        </button>
+
+                        {isOpen && (
+                          <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 space-y-3">
+                            {cls.signals.map((signal) => {
+                              const SignalIcon = signalIcon(signal.key);
+                              return (
+                                <div key={signal.key} className="flex items-start gap-3">
+                                  <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${LEVEL_STYLES[signal.level].dot}`} />
+                                  <SignalIcon className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-gray-800">{label(signal)}</p>
+                                    <p className="text-sm text-gray-500">{body(signal)}</p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ── Leerlingen die aandacht nodig hebben (docent) ── */}
+          {!isClassMode && (
           <section>
             <div className="flex items-baseline justify-between mb-3">
               <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{text.atRisk}</h4>
@@ -481,7 +592,7 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
                   const members = students.filter((s) => riskGroupOf(s) === riskGroup.id);
                   if (!members.length) return null;
                   const groupId = `risk:${riskGroup.id}`;
-                  const isOpen = !collapsed[groupId];
+                  const isOpen = !!open[groupId];
                   const level = members.reduce<Level>(
                     (worst, s) => (LEVEL_RANK[s.level] > LEVEL_RANK[worst] ? s.level : worst),
                     'low',
@@ -494,7 +605,7 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
                       className={`bg-white rounded-lg border border-gray-200 ${LEVEL_STYLES[level].border} overflow-hidden`}
                     >
                       <button
-                        onClick={() => setCollapsed((prev) => ({ ...prev, [groupId]: isOpen }))}
+                        onClick={() => setOpen((prev) => ({ ...prev, [groupId]: !isOpen }))}
                         className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-gray-50 transition"
                       >
                         <div className="flex items-center gap-3 min-w-0">
@@ -603,6 +714,7 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
               </div>
             )}
           </section>
+          )}
 
           {/* ── Archief, onderaan ── */}
           <section className="pt-2">

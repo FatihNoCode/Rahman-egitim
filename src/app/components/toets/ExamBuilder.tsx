@@ -1,5 +1,5 @@
 import { useState, useRef, useLayoutEffect } from 'react';
-import { Undo2, Redo2, Plus, Trash2, GripVertical, BookOpen, Loader2 } from 'lucide-react';
+import { Undo2, Redo2, Plus, Trash2, GripVertical, BookOpen, Loader2, Copy, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
 import { useHistory } from './useHistory';
 import { ExamDraft, ExamQuestion, QuestionType } from './examTypes';
 import { notify } from '../ui/feedback';
@@ -39,7 +39,19 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
     addQuestion: tr ? 'Soru ekle' : 'Vraag toevoegen',
     prompt: tr ? 'Soru metni' : 'Vraagtekst',
     points: tr ? 'Puan' : 'Punten',
-    pointsForQuestion: tr ? 'Bu soru için puan' : 'Punten voor deze vraag',
+    pointsForQuestion: tr ? 'Bu soru kaç puan değerinde?' : 'Hoeveel punten is deze vraag waard?',
+    needPoints: tr
+      ? 'Her soru için puan girin — puanı boş kalan sorular kırmızı ile işaretlendi.'
+      : 'Vul bij elke vraag het aantal punten in — vragen zonder punten zijn rood gemarkeerd.',
+    duplicate: tr ? 'Soruyu çoğalt' : 'Vraag dupliceren',
+    moveUp: tr ? 'Yukarı taşı' : 'Naar boven',
+    moveDown: tr ? 'Aşağı taşı' : 'Naar beneden',
+    removeQuestion: tr ? 'Soruyu sil' : 'Vraag verwijderen',
+    summary: (n: number, pts: number) =>
+      tr ? `${n} soru · toplam ${pts} puan` : `${n} ${n === 1 ? 'vraag' : 'vragen'} · ${pts} ${pts === 1 ? 'punt' : 'punten'} totaal`,
+    noQuestions: tr
+      ? 'Henüz soru yok. Aşağıdan bir soru türü seçerek başlayın.'
+      : 'Nog geen vragen. Kies hieronder een vraagtype om te beginnen.',
     options: tr ? 'Seçenekler (doğru olanları işaretleyin)' : 'Opties (vink de juiste aan)',
     addOption: tr ? 'Seçenek ekle' : 'Optie toevoegen',
     yes: tr ? 'Evet / Doğru' : 'Ja / Waar',
@@ -83,7 +95,8 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
     setLive((d) => ({ ...d, questions: d.questions.map((q) => (q.id === id ? { ...q, ...patch } : q)) }));
 
   const addQuestion = (type: QuestionType) => {
-    const base: ExamQuestion = { id: uid(), type, prompt: '', points: 1 };
+    // points stays null: the teacher decides what the question is worth.
+    const base: ExamQuestion = { id: uid(), type, prompt: '', points: null };
     if (type === 'mc') { base.options = ['', '', '']; base.correct = []; }
     if (type === 'yesno') base.correct = true;
     if (type === 'gap') base.correct = '';
@@ -93,6 +106,36 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
 
   const removeQuestion = (id: string) =>
     set((d) => ({ ...d, questions: d.questions.filter((q) => q.id !== id) }));
+
+  // Most questions in a toets are near-copies of the one above (same type,
+  // same options, one word changed), so duplicating beats rebuilding.
+  const duplicateQuestion = (id: string) =>
+    set((d) => {
+      const i = d.questions.findIndex((q) => q.id === id);
+      if (i === -1) return d;
+      const copy: ExamQuestion = {
+        ...d.questions[i],
+        id: uid(),
+        options: d.questions[i].options ? [...d.questions[i].options!] : undefined,
+        correct: Array.isArray(d.questions[i].correct) ? [...(d.questions[i].correct as number[])] : d.questions[i].correct,
+      };
+      const next = [...d.questions];
+      next.splice(i + 1, 0, copy);
+      return { ...d, questions: next };
+    });
+
+  // Dragging is fine with a mouse and impossible on a phone, so the same move
+  // is also two buttons.
+  const moveQuestion = (id: string, delta: -1 | 1) =>
+    set((d) => {
+      const from = d.questions.findIndex((q) => q.id === id);
+      const to = from + delta;
+      if (from === -1 || to < 0 || to >= d.questions.length) return d;
+      const next = [...d.questions];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return { ...d, questions: next };
+    });
 
   // ---- Drag-and-drop reordering -----------------------------------------
   // Dragging previews the new order live (no history entries per hover);
@@ -203,10 +246,19 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
     updateQuestion(q.id, { prompt, options, correct: options.indexOf(answer) });
   };
 
+  // Questions still missing a points value. Kept as a set so the offending
+  // cards can be marked rather than the teacher being told "something is
+  // wrong" and left to find it.
+  const missingPoints = new Set(
+    draft.questions.filter((q) => !q.points || q.points < 1).map((q) => q.id),
+  );
+  const totalPoints = draft.questions.reduce((sum, q) => sum + (q.points || 0), 0);
+
   const save = async () => {
     commitLive();
     if (!draft.name.trim()) { notify.error(text.needName); return; }
     if (draft.questions.length === 0) { notify.error(text.needQuestions); return; }
+    if (missingPoints.size > 0) { notify.error(text.needPoints); return; }
     setSaving(true);
     try {
       await onSave(draft);
@@ -219,17 +271,22 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      {/* Toolbar. Sticks to the top: a long toets is a lot of scrolling, and
+          hunting back up for Opslaan (or for Ongedaan maken after a mistake)
+          is the single most repeated annoyance in building one. */}
+      <div className="sticky top-0 z-10 -mx-1 px-1 py-2 bg-gray-50/95 backdrop-blur flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-1.5">
-          <button onClick={undo} disabled={!canUndo} title={text.undo}
-            className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 transition">
+          <button onClick={undo} disabled={!canUndo} title={text.undo} aria-label={text.undo}
+            className="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 transition">
             <Undo2 className="h-4 w-4" />
           </button>
-          <button onClick={redo} disabled={!canRedo} title={text.redo}
-            className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 transition">
+          <button onClick={redo} disabled={!canRedo} title={text.redo} aria-label={text.redo}
+            className="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 transition">
             <Redo2 className="h-4 w-4" />
           </button>
+          {draft.questions.length > 0 && (
+            <span className="ml-1 text-xs text-gray-500">{text.summary(draft.questions.length, totalPoints)}</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={onCancel} className="px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition">{text.cancel}</button>
@@ -239,6 +296,15 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
           </button>
         </div>
       </div>
+
+      {/* Says what is still missing before Opslaan will do anything, rather
+          than only saying it once the button has been pressed. */}
+      {missingPoints.size > 0 && (
+        <p className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-px" />
+          {text.needPoints}
+        </p>
+      )}
 
       {/* Metadata */}
       <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -283,9 +349,9 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
           ref={(el) => { if (el) rowRefs.current.set(q.id, el); else rowRefs.current.delete(q.id); }}
           onDragOver={handleDragOver(q.id)}
           onDrop={finishDrag}
-          className={`bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-4 space-y-3 transition-shadow ${dragId === q.id ? 'opacity-40 shadow-lg' : ''} ${dragId && dragId !== q.id ? 'ring-emerald-200' : ''}`}
+          className={`bg-white rounded-xl shadow-sm ring-1 p-4 space-y-3 transition-shadow ${missingPoints.has(q.id) ? 'ring-amber-300' : 'ring-black/5'} ${dragId === q.id ? 'opacity-40 shadow-lg' : ''} ${dragId && dragId !== q.id ? 'ring-emerald-200' : ''}`}
         >
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
               <span
                 draggable
@@ -300,14 +366,36 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
                 {qi + 1}. {text.types[q.type]}
               </span>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <label className="flex items-center gap-1 text-[10px] text-gray-400 font-medium" title={text.pointsForQuestion}>
-                {text.points}
-                <input type="number" min={1} value={q.points}
-                  onChange={(e) => updateQuestion(q.id, { points: Math.max(1, Number(e.target.value) || 1) })}
-                  className="w-12 px-1.5 py-1 text-xs border border-gray-300 rounded-lg text-center text-gray-700 font-semibold" />
+            <div className="flex items-center gap-1 shrink-0">
+              {/* Points: a real, labelled field rather than a 10px afterthought,
+                  and empty until the teacher says what the question is worth. */}
+              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mr-1" title={text.pointsForQuestion}>
+                {text.points} *
+                <input
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  placeholder="—"
+                  value={q.points ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.trim();
+                    updateQuestion(q.id, { points: raw === '' ? null : Math.max(1, Number(raw) || 1) });
+                  }}
+                  className={`w-14 px-2 py-1.5 text-sm rounded-lg text-center font-semibold border ${
+                    missingPoints.has(q.id)
+                      ? 'border-amber-400 bg-amber-50 text-amber-900 placeholder:text-amber-400'
+                      : 'border-gray-300 text-gray-700'
+                  }`}
+                />
               </label>
-              <button onClick={() => removeQuestion(q.id)} className="p-1.5 text-red-400 hover:text-red-600 transition"><Trash2 className="h-4 w-4" /></button>
+              <button onClick={() => moveQuestion(q.id, -1)} disabled={qi === 0} title={text.moveUp} aria-label={text.moveUp}
+                className="p-1.5 text-gray-400 hover:text-gray-700 disabled:opacity-25 transition"><ChevronUp className="h-4 w-4" /></button>
+              <button onClick={() => moveQuestion(q.id, 1)} disabled={qi === questions.length - 1} title={text.moveDown} aria-label={text.moveDown}
+                className="p-1.5 text-gray-400 hover:text-gray-700 disabled:opacity-25 transition"><ChevronDown className="h-4 w-4" /></button>
+              <button onClick={() => duplicateQuestion(q.id)} title={text.duplicate} aria-label={text.duplicate}
+                className="p-1.5 text-gray-400 hover:text-emerald-700 transition"><Copy className="h-4 w-4" /></button>
+              <button onClick={() => removeQuestion(q.id)} title={text.removeQuestion} aria-label={text.removeQuestion}
+                className="p-1.5 text-red-400 hover:text-red-600 transition"><Trash2 className="h-4 w-4" /></button>
             </div>
           </div>
 
@@ -399,10 +487,14 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
               {(verseInputs[q.id]?.words || []).length > 0 && !q.prompt.includes('______') && (
                 <div>
                   <p className="text-xs font-medium text-gray-600 mb-1">{text.pickWord}</p>
-                  <div dir="rtl" className="flex flex-wrap gap-1.5 bg-gray-50 rounded-lg p-3 text-3xl leading-loose">
+                  {/* Vowelled Uthmani script at a small size is genuinely hard
+                      to read — the harakat blur together — and picking the
+                      wrong word here silently produces a wrong question. Set
+                      the same size the pupil sees it at, not smaller. */}
+                  <div dir="rtl" className="flex flex-wrap gap-2 bg-gray-50 rounded-lg p-4 text-4xl sm:text-5xl leading-[2]">
                     {(verseInputs[q.id]?.words || []).map((w, wi) => (
                       <button key={wi} onClick={() => blankWord(q, wi)}
-                        className="px-1.5 rounded hover:bg-emerald-100 hover:text-emerald-800 transition">
+                        className="px-2 rounded hover:bg-emerald-100 hover:text-emerald-800 transition">
                         {w}
                       </button>
                     ))}
@@ -411,12 +503,12 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
               )}
               {q.prompt.includes('______') && (
                 <>
-                  <p dir="rtl" className="bg-gray-50 rounded-lg p-3 text-3xl leading-loose">{q.prompt}</p>
+                  <p dir="rtl" className="bg-gray-50 rounded-lg p-4 text-4xl sm:text-5xl leading-[2]">{q.prompt}</p>
                   <div className="flex flex-wrap gap-2">
                     {(q.options || []).map((opt, oi) => (
                       <label key={oi} className="flex items-center gap-1.5 text-sm cursor-pointer bg-white border border-gray-200 rounded-lg px-2.5 py-1.5">
                         <input type="radio" checked={q.correct === oi} onChange={() => updateQuestion(q.id, { correct: oi })} className="accent-emerald-600" />
-                        <span dir="rtl" className="text-2xl leading-loose">{opt}</span>
+                        <span dir="rtl" className="text-3xl leading-loose">{opt}</span>
                       </label>
                     ))}
                   </div>
@@ -427,6 +519,10 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
           )}
         </div>
       ))}
+
+      {questions.length === 0 && (
+        <p className="text-sm text-gray-400 text-center py-6">{text.noQuestions}</p>
+      )}
 
       {/* Add question */}
       <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-4">

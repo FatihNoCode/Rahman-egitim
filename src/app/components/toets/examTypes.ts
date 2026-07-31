@@ -10,7 +10,13 @@ export interface ExamQuestion {
   options?: string[];
   correct?: number[] | boolean | string | number;
   verseRef?: string;
-  points: number;
+  /**
+   * Null while the teacher has not chosen a weight yet. There is no sensible
+   * default here: a pre-filled 1 gets left alone, and a toets where every
+   * question is worth one point is almost never what was meant. The builder
+   * refuses to save until each question has a number.
+   */
+  points: number | null;
 }
 
 export interface ExamDraft {

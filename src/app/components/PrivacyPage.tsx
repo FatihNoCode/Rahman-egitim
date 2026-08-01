@@ -73,7 +73,8 @@ const t = {
       {
         h: '6. Uw account verwijderen',
         b: [
-          `U kunt uw eigen account verwijderen in de app: open het menu rechtsboven (uw naam) en kies "Account verwijderen". Uw account en persoonlijke gegevens worden dan definitief verwijderd.`,
+          `U kunt uw eigen account zelf verwijderen: in de app via het tabblad Account, op de website via uw naam rechtsboven. Kies daar "Account verwijderen". Uw account en persoonlijke gegevens worden dan definitief verwijderd.`,
+          `Een volledig overzicht van de stappen, en van welke gegevens worden gewist en welke bij de school blijven, staat op rahmanegitim.com/account-verwijderen.`,
           `Wilt u dit liever schriftelijk doen, of de gegevens van uw kind laten verwijderen, mail dan ${CONTROLLER.email}. Wij reageren binnen een redelijke termijn.`,
         ],
       },
@@ -155,7 +156,8 @@ const t = {
       {
         h: '6. Hesabınızı silme',
         b: [
-          `Kendi hesabınızı uygulama içinde silebilirsiniz: sağ üstteki menüyü (adınız) açın ve "Hesabı sil" seçeneğini seçin. Hesabınız ve kişisel verileriniz kalıcı olarak silinir.`,
+          `Kendi hesabınızı kendiniz silebilirsiniz: uygulamada Hesap sekmesinden, web sitesinde sağ üstteki adınızdan. Orada "Hesabı sil" seçeneğini seçin. Hesabınız ve kişisel verileriniz kalıcı olarak silinir.`,
+          `Adımların tamamı ve hangi verilerin silinip hangilerinin okulda kaldığı rahmanegitim.com/account-verwijderen adresinde açıklanmıştır.`,
           `Bunu yazılı olarak yapmayı veya çocuğunuzun verilerinin silinmesini tercih ederseniz ${CONTROLLER.email} adresine e-posta gönderin. Makul bir süre içinde yanıt veririz.`,
         ],
       },

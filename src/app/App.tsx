@@ -34,6 +34,7 @@ const InschrijvingPage = lazy(() => import('./components/InschrijvingPage'));
 const ResetPasswordPage = lazy(() => import('./components/ResetPasswordPage'));
 const ElifBaPage = lazy(() => import('./components/ElifBaPage'));
 const PrivacyPage = lazy(() => import('./components/PrivacyPage'));
+const DeleteAccountPage = lazy(() => import('./components/DeleteAccountPage'));
 const CompleteProfilePage = lazy(() => import('./components/CompleteProfilePage'));
 const ToetsPage = lazy(() => import('./components/ToetsPage'));
 
@@ -250,6 +251,16 @@ export default function App() {
   const isPrivacyPage =
     pathSegments.includes('privacy') ||
     pageParam === 'privacy';
+
+  // Public account-deletion instructions. Google Play puts this URL on the
+  // store listing, so it has to open for someone who has already uninstalled
+  // the app and can no longer log in. The English path is supported alongside
+  // the Dutch one because the store form is easier to fill in with either.
+  const isDeleteAccountPage =
+    pathSegments.includes('account-verwijderen') ||
+    pathSegments.includes('delete-account') ||
+    pageParam === 'account-verwijderen' ||
+    pageParam === 'delete-account';
 
   // Public exam-taking page — students join with a code, no login needed.
   const isToetsPage =
@@ -666,6 +677,8 @@ export default function App() {
           >
             {isPrivacyPage ? (
               <PrivacyPage />
+            ) : isDeleteAccountPage ? (
+              <DeleteAccountPage />
             ) : isToetsPage ? (
               <ToetsPage />
             ) : isRecovery ? (

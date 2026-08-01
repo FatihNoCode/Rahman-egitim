@@ -726,6 +726,12 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
             {language === 'tr' ? 'Gizlilik Politikası' : 'Privacybeleid'}
           </a>
           <span className="text-gray-300">·</span>
+          {/* Someone who wants their account gone is, by definition, someone
+              who is not going to log in to find the button. */}
+          <a href="/account-verwijderen" className="text-gray-400 hover:text-gray-600 transition">
+            {language === 'tr' ? 'Hesabı sil' : 'Account verwijderen'}
+          </a>
+          <span className="text-gray-300">·</span>
           {/* Readable before anyone signs in, so "which build is on this
               phone?" can be answered without an account. */}
           <span className="selectable text-gray-300">v{APP_VERSION}</span>

@@ -81,6 +81,24 @@
   box-sizing: border-box;
 }
 
+/* …and that padding has to be the *page's* colour, not the document default.
+   The screens paint themselves gray-50 on an element inside #root, so the
+   safe-area strip behind the status bar stayed white — reading on-device as a
+   pale band across the top of every screen, exactly where the notch draws the
+   eye. Painting the shell itself means the inset matches whatever the page
+   below it is, in light and in dark. */
+.native-app,
+.native-app body,
+.native-app #root {
+  background-color: #f9fafb; /* gray-50 */
+}
+
+.dark.native-app,
+.dark.native-app body,
+.dark.native-app #root {
+  background-color: var(--d-bg);
+}
+
 /* Opt-in helpers for elements that sit outside the #root padding (fixed
    overlays, full-bleed views, bottom bars). */
 .safe-top {
@@ -257,6 +275,23 @@
     from {
       opacity: 0;
       filter: none;
+      transform: none;
+    }
+  }
+}
+
+/* Offline bar (OfflineNotice.tsx) dropping in from the top edge. */
+@keyframes offline-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes offline-drop {
+    from {
+      opacity: 0;
       transform: none;
     }
   }

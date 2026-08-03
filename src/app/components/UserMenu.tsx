@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, ShieldCheck, FlaskConical } from 'lucide-react';
+import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, ShieldCheck, FlaskConical, Sun, Moon, SunMoon } from 'lucide-react';
 import { useApp, supabase } from '../App';
+import { getThemePref, setThemePref, subscribeTheme, type ThemePref } from '../../lib/theme';
 import TestRoleSwitcher from './TestRoleSwitcher';
 import { startTotpEnroll, confirmTotpEnroll } from '../../lib/mfaEnroll';
 import { notify, confirmDialog } from './ui/feedback';
@@ -34,6 +35,10 @@ const t = {
   nl: {
     myInfo: 'Mijn gegevens',
     notifications: 'Meldingen',
+    appearance: 'Weergave',
+    appearanceSystem: 'Systeem',
+    appearanceLight: 'Licht',
+    appearanceDark: 'Donker',
     logout: 'Uitloggen',
     name: 'Naam',
     phone: 'Telefoonnummer',
@@ -74,6 +79,10 @@ const t = {
   tr: {
     myInfo: 'Bilgilerim',
     notifications: 'Bildirimler',
+    appearance: 'Görünüm',
+    appearanceSystem: 'Sistem',
+    appearanceLight: 'Açık',
+    appearanceDark: 'Koyu',
     logout: 'Çıkış Yap',
     name: 'Ad',
     phone: 'Telefon numarası',
@@ -145,6 +154,10 @@ export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuPr
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<'menu' | 'profile' | 'notifications' | 'delete' | 'security' | 'testrole'>('menu');
   const showTestRoles = (user?.roles?.length ?? 0) > 1;
+  // Appearance is applied to <html> before React boots, so the menu mirrors the
+  // stored preference rather than owning it.
+  const [theme, setTheme] = useState<ThemePref>(getThemePref);
+  useEffect(() => subscribeTheme(() => setTheme(getThemePref())), []);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -452,6 +465,34 @@ export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuPr
                   <span className="ml-auto text-[11px] font-medium text-gray-400 capitalize">{user?.role?.replace('_', ' ')}</span>
                 </button>
               )}
+              {/* Appearance. A segmented control rather than a sub-page: it is
+                  one setting with three values, and burying it behind another
+                  click would make it harder to find than it is to use. */}
+              <div className="border-t border-gray-100 mt-1 pt-2 px-3 pb-1">
+                <p className="text-xs font-medium text-gray-400 mb-1.5">{text.appearance}</p>
+                <div className="grid grid-cols-3 gap-1">
+                  {([
+                    ['system', text.appearanceSystem, SunMoon],
+                    ['light', text.appearanceLight, Sun],
+                    ['dark', text.appearanceDark, Moon],
+                  ] as const).map(([value, label, Icon]) => (
+                    <button
+                      key={value}
+                      onClick={() => setThemePref(value as ThemePref)}
+                      aria-pressed={theme === value}
+                      className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] font-semibold transition ${
+                        theme === value
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="border-t border-gray-100 mt-1 pt-1">
                 <button
                   onClick={onLogout}

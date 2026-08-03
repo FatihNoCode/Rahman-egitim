@@ -5,6 +5,7 @@ import { getSupabaseClient } from '../lib/supabase';
 import LoginPage from './components/LoginPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { FeedbackHost } from './components/ui/feedback';
+import OfflineNotice from './components/OfflineNotice';
 import { markSessionStart, clearSessionStart, isSessionExpired } from '../lib/session';
 import { isNative, isAppLayout, NATIVE_AUTH_REDIRECT } from '../lib/native';
 import { logAction, logError } from '../lib/deviceLog';
@@ -666,6 +667,10 @@ export default function App() {
   return (
     <AppContext.Provider value={contextValue}>
       <FeedbackHost />
+      {/* Outside the ErrorBoundary and above every route: losing the
+          connection is exactly the moment the rest of the screen stops being
+          able to explain itself. */}
+      <OfflineNotice language={language} />
       <div className="size-full bg-gray-50">
         <ErrorBoundary language={language}>
           <Suspense

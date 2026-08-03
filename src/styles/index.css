@@ -2,3 +2,5 @@
 @import './tailwind.css';
 @import './theme.css';
 @import './native.css';
+/* Last, so its overrides land after the utilities they re-point. */
+@import './dark.css';

@@ -41,6 +41,11 @@ export default function MobileNav({ items, active, onChange, language, floating 
   const [pressed, setPressed] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  // Which slot the finger went down on, and whether it ever left it. Needed
+  // because on Android the gesture frequently ends in `pointercancel` rather
+  // than `pointerup` — see onPointerCancel.
+  const downSlot = useRef(-1);
+  const moved = useRef(false);
 
   // With just one extra destination there's no point hiding it behind More —
   // show everything. Otherwise keep VISIBLE_SLOTS on the bar + a More button.
@@ -95,6 +100,8 @@ export default function MobileNav({ items, active, onChange, language, floating 
     dragging.current = true;
     e.currentTarget.setPointerCapture(e.pointerId);
     const i = slotAt(e.clientX);
+    downSlot.current = i;
+    moved.current = false;
     setPressed(i);
     selectionStart();
     selectAt(i);
@@ -103,6 +110,7 @@ export default function MobileNav({ items, active, onChange, language, floating 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging.current) return;
     const i = slotAt(e.clientX);
+    if (i !== downSlot.current) moved.current = true;
     setPressed(i);
     selectAt(i);
   };
@@ -116,9 +124,24 @@ export default function MobileNav({ items, active, onChange, language, floating 
     if (slots[i]?.kind === 'more') setMoreOpen(true);
   };
 
+  // Android's WebView routinely ends a plain tap on the bar with `pointercancel`
+  // instead of `pointerup` — the gesture gets claimed the moment the touch is
+  // recognised. That cost More its only working trigger: tapping a *tab* still
+  // worked, because tabs are selected on pointerdown, but More is deliberately
+  // left to activate on release (a sheet must not appear under a moving finger),
+  // and the button's own onClick never fires either, because setPointerCapture
+  // retargets the subsequent click to the captured track rather than the button.
+  // So More was dead to a tap and only reachable by dragging onto it — which is
+  // exactly the bug reported on Android.
+  //
+  // A cancel that never left the slot it started in was a tap, so finish it the
+  // way pointerup would have. A cancel mid-drag still does nothing.
   const onPointerCancel = () => {
+    if (!dragging.current) return;
     dragging.current = false;
     setPressed(null);
+    selectionEnd();
+    if (!moved.current && slots[downSlot.current]?.kind === 'more') setMoreOpen(true);
   };
 
   return (

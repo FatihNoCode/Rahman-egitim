@@ -2633,9 +2633,27 @@ app.post("/make-server-6679cacd/local-admin-proposals/:id/reject", async (c) => 
 app.get("/make-server-6679cacd/schools/public", async (c) => {
   try {
     const ids: string[] = await kv.get('school_ids') || [];
+    // Each lesson programme is taught at one mosque, and the sign-up form has
+    // to ask which mosque before it can ask which programme — the programme
+    // names ("Darul Furkan Erkek") say nothing about where the lessons are, so
+    // a parent in another city had no way to tell, and every registration
+    // ended up at whichever programme happened to be listed first.
+    const locations = await ensureLocationsSeeded();
+    const locationById = new Map(locations.map((l: any) => [l.id, l]));
     const schools = (await kv.mget(ids.map((id: string) => `school:${id}`)))
       .filter((s: any) => s && s.id && s.active)
-      .map((s: any) => ({ id: s.id, name: s.name }));
+      .map((s: any) => {
+        const loc: any = s.locationId ? locationById.get(s.locationId) : null;
+        return {
+          id: s.id,
+          name: s.name,
+          locationId: s.locationId || null,
+          locationName: loc?.name || null,
+          locationCity: loc?.city || null,
+        };
+      })
+      // A programme whose mosque was deactivated can't be signed up for.
+      .filter((s: any) => !s.locationId || locationById.get(s.locationId)?.active !== false);
     return c.json({ schools });
   } catch (err) {
     console.log('List public schools error:', err);
@@ -7009,6 +7027,11 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
     const record = {
       id,
       schoolId,
+      // Taken from the chosen programme rather than from the request body: the
+      // mosque the form asked about is only a way to narrow the programme list,
+      // and the programme is what actually decides where this registration
+      // lands. Trusting a client-sent locationId would let the two disagree.
+      locationId: school.locationId || null,
       geslacht,
       voornaam,
       achternaam,

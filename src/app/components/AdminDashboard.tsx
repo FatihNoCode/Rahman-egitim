@@ -70,22 +70,29 @@ interface AdminDashboardProps {
   onExitAdminMode?: () => void;
 }
 
+// Sections that only exist on the website. Each is a wide register — a row per
+// student, per account or per registration, with the columns being the whole
+// point — and none of them has a phone-shaped version. They used to appear in
+// the app as tabs that opened a card explaining where to go instead, which
+// meant four of the bar's destinations did no work. They are simply absent from
+// the app now; the beheerder's phone shows the sections a phone can do.
+const DESKTOP_ONLY_TABS = ['entities', 'users', 'import', 'inschrijvingen'];
+
 export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashboardProps) {
   const { language, setLanguage, apiRequest, user: currentUser } = useApp();
   const t = translations[language];
   const app = isAppLayout();
   const [activeTab, setActiveTab] = useHashTab<string>(
-    'entities',
+    // The website opens on the class register; the app doesn't have one, so it
+    // lands on Start like every other role.
+    app ? 'signals' : 'entities',
     ['signals', 'entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'oudergesprekken', 'agenda', 'communicatie', 'cases', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   const [navOrder, setNavOrder] = useNavOrder('admin', [
     'signals',
-    'entities',
-    'users',
-    'import',
+    ...(app ? [] : DESKTOP_ONLY_TABS),
     'meldingen',
     'boekhouding',
-    'inschrijvingen',
     'oudergesprekken',
     'agenda',
     'communicatie',
@@ -275,8 +282,13 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
 
   // App layout: the sidebar's destinations plus Preferences become the
   // bottom tab bar, in the user's saved order. With this many sections most of
-  // them live behind the "More" button.
-  const allMobileItems: MobileNavItem[] = [...navItems, ...mobileExtraNavItems(language)];
+  // them live behind the "More" button — minus the ones that stay on the
+  // website (DESKTOP_ONLY_TABS), which are dropped rather than shown as tabs
+  // that open a "do this on a computer" card.
+  const allMobileItems: MobileNavItem[] = [
+    ...navItems.filter((i) => !app || !DESKTOP_ONLY_TABS.includes(i.id)),
+    ...mobileExtraNavItems(language),
+  ];
   const mobileById = Object.fromEntries(allMobileItems.map((i) => [i.id, i]));
   const mobileItems = navOrder.map((id) => mobileById[id]).filter(Boolean) as MobileNavItem[];
   const mobileNav = <MobileNav items={mobileItems} active={activeTab} onChange={setActiveTab} language={language} />;

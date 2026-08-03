@@ -13,6 +13,10 @@ const T = {
     subtitle: 'Schrijf uw kind in voor onze lessen',
     lessonType: 'Soort les',
     lessonTypeInfo: 'Meer informatie over de soorten lessen',
+    mosque: 'Moskee',
+    mosqueHint: 'Bij welke moskee wilt u uw kind inschrijven?',
+    mosquePickFirst: 'Kies eerst een moskee',
+    noPrograms: 'Voor deze moskee zijn nog geen lessen beschikbaar.',
     sex: 'Geslacht kind',
     boy: 'Jongen',
     girl: 'Meisje',
@@ -54,6 +58,10 @@ const T = {
     subtitle: 'Çocuğunuzu derslerimize kayıt ettirin',
     lessonType: 'Ders Türü',
     lessonTypeInfo: 'Ders türleri hakkında daha fazla bilgi',
+    mosque: 'Cami',
+    mosqueHint: 'Çocuğunuzu hangi camiye kaydettirmek istiyorsunuz?',
+    mosquePickFirst: 'Önce bir cami seçin',
+    noPrograms: 'Bu cami için henüz ders bulunmuyor.',
     sex: 'Çocuğun cinsiyeti',
     boy: 'Erkek',
     girl: 'Kız',
@@ -188,11 +196,25 @@ function Field({ label, field, type = 'text', placeholder = '', optional = false
   );
 }
 
+// What /schools/public returns: a lesson programme plus the mosque it is
+// taught at.
+interface PublicSchool {
+  id: string;
+  name: string;
+  locationId: string | null;
+  locationName: string | null;
+  locationCity: string | null;
+}
+
 export default function InschrijvingPage() {
   const [language, setLanguage] = useState<Language>('nl');
   const t = T[language];
 
-  const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
+  const [schools, setSchools] = useState<PublicSchool[]>([]);
+  // Which mosque the parent picked. Not sent to the server — it only narrows
+  // the programme list below, and the programme is what carries the location
+  // (see the POST handler). Kept out of `form` for exactly that reason.
+  const [locationId, setLocationId] = useState('');
   const [form, setForm] = useState({
     schoolId: '',
     geslacht: '',
@@ -259,6 +281,41 @@ export default function InschrijvingPage() {
       .catch(err => console.error('Error loading schools:', err));
   }, []);
 
+  // The mosques that actually have a programme on offer, in alphabetical order.
+  // Derived from the schools list rather than fetched separately: a mosque with
+  // nothing to sign up for is not a choice, it's a dead end.
+  const mosques = useMemo(() => {
+    const byId = new Map<string, { id: string; label: string }>();
+    for (const s of schools) {
+      if (!s.locationId || byId.has(s.locationId)) continue;
+      const name = s.locationName || s.locationCity || '';
+      if (!name) continue;
+      const label = s.locationCity && !name.includes(s.locationCity) ? `${name} — ${s.locationCity}` : name;
+      byId.set(s.locationId, { id: s.locationId, label });
+    }
+    return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [schools]);
+
+  const programmes = useMemo(
+    () => (locationId ? schools.filter((s) => s.locationId === locationId) : []),
+    [schools, locationId],
+  );
+
+  // One mosque means there is nothing to choose — pick it silently rather than
+  // making every parent answer a question with a single possible answer.
+  useEffect(() => {
+    if (!locationId && mosques.length === 1) setLocationId(mosques[0].id);
+  }, [mosques, locationId]);
+
+  const pickMosque = (id: string) => {
+    setLocationId(id);
+    // The programme belonged to the previous mosque, so it can't survive the
+    // switch — leaving it selected is how a registration ends up at the wrong
+    // location without anyone noticing.
+    setForm((prev) => ({ ...prev, schoolId: '' }));
+    setErrors((prev) => ({ ...prev, schoolId: false, locationId: false }));
+  };
+
   const set = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: false }));
@@ -268,6 +325,10 @@ export default function InschrijvingPage() {
     const required = ['schoolId', 'geslacht', 'voornaam', 'achternaam', 'leeftijd', 'contactVoornaam', 'contactAchternaam', 'contactTelefoon', 'contactEmail'];
     const newErrors: Record<string, boolean> = {};
     let ok = true;
+    // The mosque isn't part of `form` (it never reaches the server), so it is
+    // checked separately — but flagged in the same pass, so a parent sees every
+    // missing field at once rather than one per attempt.
+    if (!locationId) { newErrors.locationId = true; ok = false; }
     for (const f of required) {
       if (!form[f as keyof typeof form].trim()) { newErrors[f] = true; ok = false; }
     }
@@ -384,6 +445,30 @@ export default function InschrijvingPage() {
                 </div>
 
                 <form onSubmit={handleSubmit} noValidate className="space-y-5">
+                  {/* Mosque. Asked first, because it is the question the parent
+                      can actually answer — they know which mosque their child
+                      goes to, and the programme names on their own say nothing
+                      about where the lessons are held. */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {t.mosque} <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={locationId}
+                      onChange={e => pickMosque(e.target.value)}
+                      className={`w-full px-4 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition bg-white ${
+                        errors.locationId ? 'border-red-400 bg-red-50' : 'border-gray-300'
+                      }`}
+                    >
+                      <option value="">{language === 'nl' ? 'Selecteer...' : 'Seçiniz...'}</option>
+                      {mosques.map(m => (
+                        <option key={m.id} value={m.id}>{m.label}</option>
+                      ))}
+                    </select>
+                    <p className="text-gray-400 text-xs mt-1">{t.mosqueHint}</p>
+                    {errors.locationId && <p className="text-red-500 text-xs mt-1">{t.required}</p>}
+                  </div>
+
                   {/* Lesson type / school */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -402,12 +487,19 @@ export default function InschrijvingPage() {
                     <select
                       value={form.schoolId}
                       onChange={e => set('schoolId', e.target.value)}
-                      className={`w-full px-4 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition bg-white ${
+                      disabled={!locationId}
+                      className={`w-full px-4 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition bg-white disabled:bg-gray-50 disabled:text-gray-400 ${
                         errors.schoolId ? 'border-red-400 bg-red-50' : 'border-gray-300'
                       }`}
                     >
-                      <option value="">{language === 'nl' ? 'Selecteer...' : 'Seçiniz...'}</option>
-                      {schools.map(school => (
+                      <option value="">
+                        {!locationId
+                          ? t.mosquePickFirst
+                          : programmes.length === 0
+                          ? t.noPrograms
+                          : language === 'nl' ? 'Selecteer...' : 'Seçiniz...'}
+                      </option>
+                      {programmes.map(school => (
                         <option key={school.id} value={school.id}>{school.name}</option>
                       ))}
                     </select>

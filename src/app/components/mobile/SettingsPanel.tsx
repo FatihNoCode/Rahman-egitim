@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Globe, PlayCircle, Shield, Info, ChevronRight, ChevronDown, GripVertical, LayoutGrid, Lock, LifeBuoy, Share2, Copy, Trash2 } from 'lucide-react';
+import { Globe, PlayCircle, Shield, Info, ChevronRight, ChevronDown, GripVertical, LayoutGrid, Lock, LifeBuoy, Share2, Copy, Trash2, Sun, Moon, SunMoon } from 'lucide-react';
 import { useApp } from '../../App';
+import { getThemePref, setThemePref, subscribeTheme, type ThemePref } from '../../../lib/theme';
 import TestRoleSwitcher from '../TestRoleSwitcher';
 import { type MobileNavItem, VISIBLE_SLOTS } from './navPrefs';
 import { selectionStart, selectionChanged, selectionEnd } from '../../../lib/haptics';
@@ -25,6 +26,11 @@ const T = {
     settings: 'Voorkeuren',
     language: 'Taal',
     languageHint: 'Kies de taal van de app',
+    theme: 'Weergave',
+    themeHint: 'Licht, donker, of net als je toestel',
+    themeSystem: 'Systeem',
+    themeLight: 'Licht',
+    themeDark: 'Donker',
     navTitle: 'Navigatiebalk',
     navHint: 'Zet je meest gebruikte tabbladen bovenaan. De eerste vier staan op de balk, de rest onder "Meer".',
     navHintSimple: 'Zet je meest gebruikte tabbladen bovenaan — dat is de volgorde op de balk.',
@@ -51,6 +57,11 @@ const T = {
     settings: 'Tercihler',
     language: 'Dil',
     languageHint: 'Uygulama dilini seçin',
+    theme: 'Görünüm',
+    themeHint: 'Açık, koyu veya cihazınıza göre',
+    themeSystem: 'Sistem',
+    themeLight: 'Açık',
+    themeDark: 'Koyu',
     navTitle: 'Gezinme çubuğu',
     navHint: 'En çok kullandığın sekmeleri yukarı taşı. İlk dördü çubukta, kalanı "Daha" altında görünür.',
     navHintSimple: 'En çok kullandığın sekmeleri yukarı taşı — çubuktaki sıra budur.',
@@ -174,6 +185,11 @@ export default function SettingsPanel({ onShowDemo, navItems, onReorder }: Setti
   const text = T[language];
   const showTestRoles = (user?.roles?.length ?? 0) > 1;
 
+  // The chosen appearance lives outside React (it has to be applied before the
+  // first render), so mirror it into state to keep the buttons in step.
+  const [theme, setTheme] = useState<ThemePref>(getThemePref);
+  useEffect(() => subscribeTheme(() => setTheme(getThemePref())), []);
+
   // Collapsed until asked for. Reordering the tab bar is a once-in-a-while
   // thing, and unfolded by default it dominated a screen whose main job is
   // language and general settings.
@@ -265,6 +281,38 @@ export default function SettingsPanel({ onShowDemo, navItems, onReorder }: Setti
               }`}
             >
               {lng === 'nl' ? '🇳🇱 Nederlands' : '🇹🇷 Türkçe'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Appearance */}
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+        <div className="mb-3 flex items-center gap-2">
+          <SunMoon className="h-4 w-4 text-emerald-600" />
+          <div>
+            <p className="text-sm font-semibold text-gray-700">{text.theme}</p>
+            <p className="text-xs text-gray-400">{text.themeHint}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            ['system', text.themeSystem, SunMoon],
+            ['light', text.themeLight, Sun],
+            ['dark', text.themeDark, Moon],
+          ] as const).map(([value, label, Icon]) => (
+            <button
+              key={value}
+              onClick={() => setThemePref(value as ThemePref)}
+              aria-pressed={theme === value}
+              className={`flex flex-col items-center gap-1.5 rounded-xl py-3 text-xs font-semibold transition ${
+                theme === value
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
             </button>
           ))}
         </div>

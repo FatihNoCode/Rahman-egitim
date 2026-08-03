@@ -47,6 +47,14 @@ interface TeacherDashboardProps {
   onLogout: () => void;
 }
 
+// Sections that only exist on the website: the class register puts attendance,
+// behaviour and the parent's details side by side, and a diploma is filled in
+// for a whole class at once and printed on A4. Both were app tabs that only
+// ever opened a card pointing at a computer, so the app doesn't carry them at
+// all any more. (The tab ids stay valid for a deep link — see the fallbacks
+// further down — they just aren't destinations on the bar.)
+const DESKTOP_ONLY_TABS = ['beheer', 'diploma'];
+
 /**
  * One collapsible step of the lesson registration.
  *
@@ -127,8 +135,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     'oudergesprekken',
     'cases',
     'toets',
-    ...(diplomaVisible ? ['diploma'] : []),
-    'beheer',
+    ...(app ? [] : [...(diplomaVisible ? ['diploma'] : []), 'beheer']),
     MOBILE_PREFS_ID,
   ]);
   const [conferSessions, setConferSessions] = useState<any[]>([]);
@@ -569,7 +576,11 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
 
   // App layout: the sidebar's destinations plus Preferences become the
   // bottom tab bar, in the user's saved order.
-  const allMobileItems: MobileNavItem[] = [...navItems, ...mobileExtraNavItems(language)];
+  const allMobileItems: MobileNavItem[] = [
+    // Minus the sections that stay on the website — see DESKTOP_ONLY_TABS.
+    ...navItems.filter((i) => !app || !DESKTOP_ONLY_TABS.includes(i.id)),
+    ...mobileExtraNavItems(language),
+  ];
   const mobileById = Object.fromEntries(allMobileItems.map((i) => [i.id, i]));
   const mobileItems = navOrder.map((id) => mobileById[id]).filter(Boolean) as MobileNavItem[];
   const mobileNav = <MobileNav items={mobileItems} active={activeTab} onChange={setActiveTab} language={language} />;

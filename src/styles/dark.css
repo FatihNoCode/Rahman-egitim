@@ -1,0 +1,228 @@
+/* Dark appearance for the whole product — app and website.
+   Switched on by the `.dark` class on <html> (see src/lib/theme.ts).
+
+   Why it is written as utility overrides rather than `dark:` variants on every
+   element: the screens in this app were built against a fixed light palette,
+   and there are several thousand colour utilities across forty components. A
+   `dark:` pass over all of them is a change that touches every file and gets
+   half-finished, leaving screens that are dark except for the one white card
+   nobody noticed. Re-pointing the palette itself covers every screen at once,
+   including the ones written after this file.
+
+   The rule for values below: neutrals become a near-black scale that keeps the
+   *same* contrast ordering as the light one (gray-400 is still quieter than
+   gray-700, just inverted), and the tinted status colours (emerald, amber, red)
+   keep their meaning by becoming low-alpha washes of the same hue instead of
+   pale pastels that glow on a dark screen. */
+
+.dark {
+  color-scheme: dark;
+
+  /* Surfaces, darkest (page) to lightest (raised). */
+  --d-bg: #0f1214;
+  --d-surface: #171b1f;
+  --d-surface-2: #1e2429;
+  --d-surface-3: #262d33;
+  --d-surface-4: #323a41;
+
+  /* Text, strongest to faintest — mirrors gray-800 → gray-300. */
+  --d-text: #e9edf0;
+  --d-text-2: #d5dade;
+  --d-text-3: #b4bbc2;
+  --d-text-4: #929aa2;
+  --d-text-5: #767e86;
+  --d-text-6: #5f666d;
+
+  --d-border: rgba(255, 255, 255, 0.09);
+  --d-border-2: rgba(255, 255, 255, 0.13);
+  --d-border-3: rgba(255, 255, 255, 0.18);
+}
+
+/* The shell itself. `theme.css` sets --background/--foreground for the shadcn
+   layer; these keep the plain html/body chrome in step. */
+.dark {
+  --background: #0f1214;
+  --foreground: #e9edf0;
+  --card: #171b1f;
+  --card-foreground: #e9edf0;
+  --popover: #171b1f;
+  --popover-foreground: #e9edf0;
+  --input-background: #1e2429;
+  --switch-background: #3a434b;
+  /* Bare `border` / `border-t` (no colour utility) resolve through this — see
+     the `* { @apply border-border }` base rule in theme.css. */
+  --border: rgba(255, 255, 255, 0.13);
+}
+
+.dark body,
+.dark #root {
+  background-color: var(--d-bg);
+  color: var(--d-text);
+}
+
+/* ─── Neutral backgrounds ─────────────────────────────────────────────── */
+.dark .bg-white { background-color: var(--d-surface); }
+.dark .bg-gray-50 { background-color: var(--d-bg); }
+.dark .bg-gray-100 { background-color: var(--d-surface-2); }
+.dark .bg-gray-200 { background-color: var(--d-surface-3); }
+.dark .bg-gray-300 { background-color: var(--d-surface-4); }
+.dark .bg-gray-400 { background-color: #4b545c; }
+.dark .bg-gray-700,
+.dark .bg-gray-800 { background-color: #111518; }
+.dark .bg-gray-50\/50 { background-color: rgba(15, 18, 20, 0.5); }
+.dark .bg-gray-50\/95 { background-color: rgba(15, 18, 20, 0.95); }
+
+/* Translucent whites are used as overlays on top of coloured headers; in dark
+   they have to lighten far less or the header washes out. */
+.dark .bg-white\/5 { background-color: rgba(255, 255, 255, 0.04); }
+.dark .bg-white\/10 { background-color: rgba(255, 255, 255, 0.06); }
+.dark .bg-white\/15 { background-color: rgba(255, 255, 255, 0.08); }
+.dark .bg-white\/20 { background-color: rgba(255, 255, 255, 0.10); }
+.dark .bg-white\/30 { background-color: rgba(255, 255, 255, 0.14); }
+
+/* Sheet grabbers and hairlines drawn in black — invisible on a dark surface. */
+.dark .bg-black\/15 { background-color: rgba(255, 255, 255, 0.22); }
+
+.dark .hover\:bg-gray-50:hover { background-color: var(--d-surface-2); }
+.dark .hover\:bg-gray-100:hover { background-color: var(--d-surface-3); }
+.dark .active\:bg-gray-50:active { background-color: var(--d-surface-2); }
+.dark .active\:bg-gray-100:active { background-color: var(--d-surface-3); }
+
+/* ─── Neutral text ────────────────────────────────────────────────────── */
+.dark .text-gray-900,
+.dark .text-gray-800 { color: var(--d-text); }
+.dark .text-gray-700 { color: var(--d-text-2); }
+.dark .text-gray-600 { color: var(--d-text-3); }
+.dark .text-gray-500 { color: var(--d-text-4); }
+.dark .text-gray-400 { color: var(--d-text-5); }
+.dark .text-gray-300,
+.dark .text-gray-350 { color: var(--d-text-6); }
+.dark .text-black { color: var(--d-text); }
+.dark .placeholder\:text-gray-400::placeholder { color: var(--d-text-6); }
+.dark .hover\:text-gray-600:hover { color: var(--d-text-3); }
+.dark .hover\:text-gray-800:hover { color: var(--d-text); }
+
+/* ─── Borders, rings, dividers ────────────────────────────────────────── */
+.dark .border-gray-50,
+.dark .border-gray-100 { border-color: var(--d-border); }
+.dark .border-gray-200 { border-color: var(--d-border-2); }
+.dark .border-gray-300,
+.dark .border-gray-400 { border-color: var(--d-border-3); }
+.dark .border-gray-800,
+.dark .border-black { border-color: var(--d-border-3); }
+.dark .divide-gray-100 > * + * { border-color: var(--d-border); }
+.dark .ring-black\/5 { --tw-ring-color: rgba(255, 255, 255, 0.08); }
+.dark .ring-gray-50,
+.dark .ring-gray-100 { --tw-ring-color: var(--d-border); }
+.dark .ring-gray-200 { --tw-ring-color: var(--d-border-2); }
+.dark .ring-gray-800 { --tw-ring-color: var(--d-border-3); }
+
+/* ─── Tinted surfaces ─────────────────────────────────────────────────────
+   The pale -50/-100 fills carry meaning (green = good, amber = attention,
+   red = problem). Kept as the same hue at low alpha so they still read as
+   coloured panels rather than as light leaking through. */
+.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.10); }
+.dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.16); }
+.dark .bg-emerald-50\/60 { background-color: rgba(16, 185, 129, 0.08); }
+.dark .bg-green-50 { background-color: rgba(34, 197, 94, 0.10); }
+.dark .bg-green-100 { background-color: rgba(34, 197, 94, 0.16); }
+.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.10); }
+.dark .bg-red-100 { background-color: rgba(239, 68, 68, 0.16); }
+.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.10); }
+.dark .bg-amber-100 { background-color: rgba(245, 158, 11, 0.16); }
+.dark .bg-yellow-50 { background-color: rgba(234, 179, 8, 0.10); }
+.dark .bg-yellow-100 { background-color: rgba(234, 179, 8, 0.16); }
+.dark .bg-orange-50 { background-color: rgba(249, 115, 22, 0.10); }
+.dark .bg-orange-100 { background-color: rgba(249, 115, 22, 0.16); }
+.dark .bg-blue-50 { background-color: rgba(59, 130, 246, 0.10); }
+.dark .bg-blue-100 { background-color: rgba(59, 130, 246, 0.16); }
+.dark .bg-sky-50 { background-color: rgba(14, 165, 233, 0.10); }
+.dark .bg-sky-100 { background-color: rgba(14, 165, 233, 0.16); }
+.dark .bg-purple-50 { background-color: rgba(168, 85, 247, 0.10); }
+.dark .bg-purple-100 { background-color: rgba(168, 85, 247, 0.16); }
+.dark .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.10); }
+.dark .bg-indigo-100 { background-color: rgba(99, 102, 241, 0.16); }
+.dark .bg-teal-50 { background-color: rgba(20, 184, 166, 0.10); }
+.dark .bg-teal-100 { background-color: rgba(20, 184, 166, 0.16); }
+.dark .bg-pink-50 { background-color: rgba(236, 72, 153, 0.10); }
+.dark .bg-pink-100 { background-color: rgba(236, 72, 153, 0.16); }
+.dark .hover\:bg-emerald-50:hover { background-color: rgba(16, 185, 129, 0.14); }
+.dark .hover\:bg-red-50:hover { background-color: rgba(239, 68, 68, 0.14); }
+
+/* Dark text on a pale tint has to invert too: the -700/-800 shades were picked
+   against a near-white fill and disappear against a 10%-alpha one. */
+.dark .text-emerald-700, .dark .text-emerald-800, .dark .text-emerald-900 { color: #6ee7b7; }
+.dark .text-green-700, .dark .text-green-800 { color: #86efac; }
+.dark .text-red-700, .dark .text-red-800, .dark .text-red-900 { color: #fca5a5; }
+.dark .text-amber-700, .dark .text-amber-800 { color: #fcd34d; }
+.dark .text-yellow-700, .dark .text-yellow-800 { color: #fde047; }
+.dark .text-orange-700, .dark .text-orange-800 { color: #fdba74; }
+.dark .text-blue-700, .dark .text-blue-800, .dark .text-blue-900 { color: #93c5fd; }
+.dark .text-sky-700, .dark .text-sky-800 { color: #7dd3fc; }
+.dark .text-purple-700, .dark .text-purple-800 { color: #d8b4fe; }
+.dark .text-indigo-700, .dark .text-indigo-800 { color: #a5b4fc; }
+.dark .text-teal-700, .dark .text-teal-800 { color: #5eead4; }
+.dark .text-pink-700, .dark .text-pink-800 { color: #f9a8d4; }
+
+.dark .border-emerald-100 { border-color: rgba(16, 185, 129, 0.22); }
+.dark .border-emerald-200 { border-color: rgba(16, 185, 129, 0.30); }
+.dark .border-amber-200 { border-color: rgba(245, 158, 11, 0.30); }
+.dark .border-red-200 { border-color: rgba(239, 68, 68, 0.30); }
+.dark .border-blue-200 { border-color: rgba(59, 130, 246, 0.30); }
+.dark .ring-emerald-100 { --tw-ring-color: rgba(16, 185, 129, 0.22); }
+
+/* Form controls. `--input: transparent` in the light theme means fields inherit
+   whatever card they sit on; the explicit fill here keeps them distinguishable
+   from the card in dark, which is the only cue that they are editable. */
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: var(--d-surface-2);
+  color: var(--d-text);
+  border-color: var(--d-border-2);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: var(--d-text-6);
+}
+
+/* Shadows are invisible on a dark background, so cards lose their edge. Deepen
+   them and let the ring/border carry the separation. */
+.dark .shadow-sm { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); }
+.dark .shadow,
+.dark .shadow-md { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55); }
+.dark .shadow-lg { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); }
+
+/* The glass tab bar and its sheet (see native.css) are built out of white
+   highlights, which on a dark page read as a lit strip. Rebuild the same
+   material in reverse: dark fill, dark rim, faint highlight. */
+.dark .ios-glass {
+  background-color: rgba(22, 26, 30, 0.62);
+  -webkit-backdrop-filter: blur(18px) saturate(180%) brightness(1.05);
+  backdrop-filter: blur(18px) saturate(180%) brightness(1.05);
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.55),
+    0 0 0 0.5px rgba(255, 255, 255, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dark .ios-glass::before {
+  background: linear-gradient(
+    140deg,
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.06) 32%,
+    rgba(255, 255, 255, 0.04) 62%,
+    rgba(255, 255, 255, 0.18) 100%
+  );
+}
+
+.dark .ios-glass-sheet {
+  background-color: rgba(23, 27, 31, 0.88);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .dark .ios-glass { background-color: rgba(22, 26, 30, 0.96); }
+  .dark .ios-glass-sheet { background-color: rgba(23, 27, 31, 0.97); }
+}

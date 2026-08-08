@@ -1409,6 +1409,57 @@ app.post("/make-server-6679cacd/demo-testers", async (c) => {
 
     const ROLE_LABELS_NL: Record<PortalRole, string> = { parent: 'Ouder', teacher: 'Leraar', admin: 'Lokale beheerder' };
     const roleLabelsNl = roles.map((r: PortalRole) => ROLE_LABELS_NL[r]).join(', ');
+
+    // Concrete assignments beat "kijk maar wat rond": an open invitation got us
+    // testers who opened the app, scrolled, and reported nothing. Each task is
+    // one thing a real user of that role does, with the one-line explanation
+    // needed to find it, and a check the tester can actually answer. Only the
+    // tasks for the roles this tester actually holds are sent.
+    const ROLE_TASKS_NL: Record<PortalRole, { title: string; tasks: string[] }> = {
+      parent: {
+        title: 'Als ouder',
+        tasks: [
+          '<strong>Bekijk uw kind.</strong> Open <em>Start</em>. Daar staat het kind dat aan uw testaccount hangt, met aanwezigheid en resultaten. Klopt wat u ziet en is het te begrijpen zonder uitleg?',
+          '<strong>Meld uw kind ziek.</strong> Ga naar <em>Ziekmeldingen</em> en dien een ziekmelding in voor een dag. Verschijnt de melding daarna meteen in het overzicht?',
+          '<strong>Plan een oudergesprek.</strong> Onder <em>Oudergesprekken</em> kiest u een vrij moment bij de leraar. Kunt u een tijdslot kiezen, en ziet u uw afspraak daarna terug?',
+          '<strong>Bekijk de facturatie.</strong> <em>Facturatie</em> toont de bijdrage en wat er openstaat. Zijn de bedragen en de status duidelijk?',
+          '<strong>Probeer Elif-Ba.</strong> Dit is de oefenmodule voor het Arabisch lezen. Doe een paar oefeningen: reageert alles vlot en wordt uw voortgang bewaard?',
+        ],
+      },
+      teacher: {
+        title: 'Als leraar',
+        tasks: [
+          '<strong>Registreer een les.</strong> Dit is de belangrijkste taak. Open <em>Lesregistratie</em>, zet de aanwezigheid van de leerlingen, vul de les in en sla op. Sluit daarna de app en kijk of alles er nog precies zo in staat.',
+          '<strong>Neem een toets af.</strong> Onder <em>Toets</em> maakt u een toets aan en voert u cijfers in. Worden de cijfers goed opgeslagen en ziet u ze terug bij de leerling?',
+          '<strong>Behandel een ziekmelding.</strong> Bij <em>Ziekmeldingen</em> staan de meldingen van ouders. Open er een en verwerk hem — is duidelijk wat er van u verwacht wordt?',
+          '<strong>Zet uw beschikbaarheid voor oudergesprekken.</strong> Onder <em>Oudergesprekken</em> geeft u aan wanneer u kunt. Kunnen ouders daarna op die momenten inschrijven?',
+          '<strong>Maak een case aan.</strong> Een <em>case</em> is een dossier over een leerling waar aandacht voor nodig is. Maak er een aan met een notitie en kijk of hij bewaard blijft.',
+          '<strong>Bekijk uw agenda.</strong> Staan uw lessen en afspraken op de juiste dag en tijd?',
+        ],
+      },
+      admin: {
+        title: 'Als lokale beheerder',
+        tasks: [
+          '<strong>Beheer een klas.</strong> Onder <em>Klassen beheer</em> maakt u een klas aan of past u er een aan, en koppelt u een leraar. Klopt de klas daarna in het overzicht?',
+          '<strong>Voeg een gebruiker toe.</strong> Bij <em>Gebruikers</em> nodigt u iemand uit of wijzigt u een rol. Gebruik hiervoor een e-mailadres van uzelf. Gaat dat goed en is de rol daarna juist?',
+          '<strong>Stuur een bericht.</strong> Via <em>Communicatie</em> stuurt u een bericht naar ouders of leraren. Kunt u de ontvangers kiezen en komt het bericht aan?',
+          '<strong>Bekijk de inschrijvingen.</strong> Onder <em>Inschrijvingen</em> staan aanmeldingen van nieuwe leerlingen. Kunt u er een openen en afhandelen?',
+          '<strong>Kijk in de boekhouding.</strong> <em>Boekhouding</em> toont bijdragen en betalingen. Zijn de bedragen en overzichten begrijpelijk?',
+        ],
+      },
+    };
+    const roleTaskBlocks = roles
+      .map((r: PortalRole) => ROLE_TASKS_NL[r])
+      .filter(Boolean)
+      .map(
+        (block) => `
+        <h4 style="color:#065f46;margin:20px 0 6px">${escapeHtml(block.title)}</h4>
+        <ol style="color:#374151;line-height:1.7;padding-left:20px;margin:0">
+          ${block.tasks.map((task) => `<li style="margin-bottom:8px">${task}</li>`).join('')}
+        </ol>`,
+      )
+      .join('');
+
     await sendEmail(
       email,
       'Uw testaccount - Rahman Eğitim',
@@ -1421,19 +1472,24 @@ app.post("/make-server-6679cacd/demo-testers", async (c) => {
           <p style="color:#374151;margin:0;line-height:1.6">Wachtwoord: <strong style="font-family:monospace;font-size:15px">${escapeHtml(password)}</strong></p>
         </div>
         <p style="color:#374151;line-height:1.6">U kunt direct inloggen met dit wachtwoord — u hoeft het niet te wijzigen, dit is een testomgeving.</p>
-        <p style="color:#374151;line-height:1.6">Inloggen kan op <a href="https://www.rahmanegitim.com" style="color:#065f46">www.rahmanegitim.com</a> — dezelfde app, in de browser.</p>
         <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-        <h3 style="color:#065f46;margin-bottom:8px">Wat kunt u testen?</h3>
-        <p style="color:#374151;line-height:1.6">Er is geen vast script — kijk vooral of alles doet wat u zou verwachten. Nuttige dingen om te proberen:</p>
-        <ul style="color:#374151;line-height:1.6;padding-left:20px">
-          <li>Inloggen en weer uitloggen, en of u na het sluiten van de app nog ingelogd blijft.</li>
-          <li>Door alle menu's en schermen van uw rol klikken. Ziet alles er goed uit op uw scherm?</li>
-          <li>Zelf iets aanmaken of wijzigen (bijvoorbeeld een cijfer, aanwezigheid, of een bericht) en controleren of het bewaard blijft.</li>
-          <li>De taal wisselen tussen Nederlands en Turks.</li>
-          <li>De app even offline gebruiken (vliegtuigmodus) — krijgt u een duidelijke melding?</li>
-          <li>Alles wat niet klopt, vastloopt, traag is, of onduidelijk staat beschreven.</li>
-        </ul>
-        <p style="color:#374151;line-height:1.6">Meld wat u tegenkomt met: <strong>wat u deed, wat u verwachtte, wat er gebeurde</strong> — en als het kan een schermafbeelding en het toestel dat u gebruikt.</p>
+        <h3 style="color:#065f46;margin-bottom:8px">Test op uw telefoon, in de app</h3>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:14px 16px;margin:12px 0">
+          <p style="color:#374151;margin:0;line-height:1.6"><strong>Belangrijk:</strong> voer de taken hieronder uit in de <strong>app op uw telefoon</strong>. Daar gaan onze gebruikers hem gebruiken, en dat is wat we nu getest moeten krijgen. Installeer de app met de link die u van ons ontvangt — op een iPhone via TestFlight, op Android via de Play Store.</p>
+        </div>
+        <p style="color:#374151;line-height:1.6">Daarnaast <em>mag</em> u ook de website testen op <a href="https://www.rahmanegitim.com" style="color:#065f46">www.rahmanegitim.com</a> — dat is dezelfde omgeving met hetzelfde wachtwoord. Dat is welkom, maar niet verplicht. Een paar onderdelen staan bewust alleen op de website, omdat ze op een klein scherm niet werken; ontbreekt er iets in de app, kijk dan even op de website voordat u het als fout meldt.</p>
+        <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+        <h3 style="color:#065f46;margin-bottom:8px">Uw testtaken</h3>
+        <p style="color:#374151;line-height:1.6">Loop deze taken één voor één door. Het gaat er niet om of u ze &quot;haalt&quot; — het gaat erom wat er onderweg misgaat, onduidelijk is, of traag voelt.</p>
+        ${roleTaskBlocks}
+        <h4 style="color:#065f46;margin:20px 0 6px">Voor iedereen</h4>
+        <ol style="color:#374151;line-height:1.7;padding-left:20px;margin:0">
+          <li style="margin-bottom:8px"><strong>Log uit en weer in.</strong> Sluit de app daarna helemaal af en open hem opnieuw — blijft u ingelogd?</li>
+          <li style="margin-bottom:8px"><strong>Wissel de taal</strong> tussen Nederlands en Turks. Is alles vertaald, of blijft er iets in de andere taal staan?</li>
+          <li style="margin-bottom:8px"><strong>Zet uw telefoon op vliegtuigmodus</strong> en gebruik de app. Krijgt u een duidelijke melding dat u offline bent, in plaats van een leeg of vastgelopen scherm?</li>
+          <li style="margin-bottom:8px"><strong>Draai uw telefoon en scroll door elk scherm.</strong> Valt er tekst weg, staat er iets over elkaar heen, of kunt u een knop niet bereiken?</li>
+        </ol>
+        <p style="color:#374151;line-height:1.6;margin-top:20px">Meld wat u tegenkomt met: <strong>welke taak u deed, wat u verwachtte, wat er gebeurde</strong> — en als het kan een schermafbeelding en welk toestel u gebruikt.</p>
         <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
         <h3 style="color:#065f46;margin-bottom:8px">Let op: u deelt deze testomgeving met anderen</h3>
         <p style="color:#374151;line-height:1.6">Alle testers werken in dezelfde omgeving met dezelfde verzonnen gegevens. U ziet dus namen, klassen, cijfers en berichten die andere testers hebben aangemaakt of aangepast, en zij zien die van u. Ook kan iets dat u zojuist heeft ingevoerd later gewijzigd of verwijderd zijn door een andere tester.</p>

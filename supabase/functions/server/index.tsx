@@ -4856,6 +4856,12 @@ app.post("/make-server-6679cacd/exams/:id/golive", async (c) => {
   }
 });
 
+// Closing a live exam moves it into the review workflow rather than just
+// ending it: 'reviewing' ("Na te kijken toets") -> 'reviewed' (open questions
+// looked at) -> 'published' (grades visible to parents). The frontend warns
+// the teacher first if a student is still mid-attempt, but the server itself
+// doesn't refuse — a teacher who confirms through that warning still needs
+// this to succeed.
 app.post("/make-server-6679cacd/exams/live/:code/close", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
@@ -4865,11 +4871,100 @@ app.post("/make-server-6679cacd/exams/live/:code/close", async (c) => {
     const userData = await getUserData(user.id);
     const schoolIds = await getUserSchoolIds(user.id, userData);
     if (!schoolIds.has(live.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
-    await kv.set(`exam_live:${live.code}`, { ...live, status: 'closed', closedAt: new Date().toISOString() });
-    return c.json({ success: true });
+    const updated = { ...live, status: 'reviewing', closedAt: new Date().toISOString() };
+    await kv.set(`exam_live:${live.code}`, updated);
+    return c.json({ success: true, live: updated });
   } catch (err) {
     console.log('Close exam error:', err);
     return c.json({ error: 'Failed to close exam' }, 500);
+  }
+});
+
+// Teacher confirms the open-ended questions (if any) have been looked at.
+app.post("/make-server-6679cacd/exams/live/:code/mark-reviewed", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const live = await kv.get(`exam_live:${c.req.param('code').toUpperCase()}`);
+    if (!live) return c.json({ error: 'Not found' }, 404);
+    const userData = await getUserData(user.id);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    if (!schoolIds.has(live.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+    if (live.status !== 'reviewing') return c.json({ error: 'Exam is not awaiting review' }, 409);
+    const updated = { ...live, status: 'reviewed', reviewedAt: new Date().toISOString() };
+    await kv.set(`exam_live:${live.code}`, updated);
+    return c.json({ success: true, live: updated });
+  } catch (err) {
+    console.log('Mark reviewed error:', err);
+    return c.json({ error: 'Failed to update exam' }, 500);
+  }
+});
+
+// Publishing makes grades visible on the parent Grades tab. Allowed straight
+// from 'reviewing' too — an exam with no open questions has nothing to
+// review, and forcing an extra click through 'reviewed' first would just be
+// busywork.
+app.post("/make-server-6679cacd/exams/live/:code/publish", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const live = await kv.get(`exam_live:${c.req.param('code').toUpperCase()}`);
+    if (!live) return c.json({ error: 'Not found' }, 404);
+    const userData = await getUserData(user.id);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    if (!schoolIds.has(live.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+    if (live.status !== 'reviewing' && live.status !== 'reviewed') {
+      return c.json({ error: 'Exam is not ready to publish' }, 409);
+    }
+    const updated = { ...live, status: 'published', publishedAt: new Date().toISOString() };
+    await kv.set(`exam_live:${live.code}`, updated);
+    return c.json({ success: true, live: updated });
+  } catch (err) {
+    console.log('Publish grades error:', err);
+    return c.json({ error: 'Failed to publish grades' }, 500);
+  }
+});
+
+// Teacher: every exam currently live across their schools, with per-student
+// progress — this backs the "active exams" bar so a live toets is impossible
+// to miss and the join code is visible without scanning the QR.
+app.get("/make-server-6679cacd/exams/live/active", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    const sessions = (await kv.getByPrefix('exam_live:')).filter((s: any) => s?.status === 'live' && schoolIds.has(s.schoolId));
+    const examIds = [...new Set(sessions.map((s: any) => s.examId))];
+    const exams = examIds.length > 0 ? await kv.mget(examIds.map((id: string) => `exam:${id}`)) : [];
+    const examById = new Map(exams.filter((e: any) => e).map((e: any) => [e.id, e]));
+    const active = [];
+    for (const session of sessions) {
+      const exam = examById.get(session.examId);
+      const attempts = (await kv.getByPrefix(`exam_attempt:${session.code}:`)).filter((a: any) => a?.studentId);
+      const totalQuestions = (exam?.questions || []).length;
+      active.push({
+        code: session.code,
+        examId: session.examId,
+        examName: exam?.name || '',
+        className: session.className,
+        startedAt: session.startedAt,
+        students: attempts.map((a: any) => ({
+          studentId: a.studentId,
+          studentName: a.studentName,
+          submitted: !!a.submittedAt,
+          answeredCount: a.submittedAt ? Object.keys(a.answers || {}).length : (a.answeredCount || 0),
+          totalQuestions,
+          autoScore: a.submittedAt ? a.autoScore : null,
+          autoMax: a.submittedAt ? a.autoMax : null,
+          endsAt: a.endsAt,
+        })),
+      });
+    }
+    return c.json({ active });
+  } catch (err) {
+    console.log('Active exams error:', err);
+    return c.json({ error: 'Failed to get active exams' }, 500);
   }
 });
 
@@ -5004,6 +5099,28 @@ app.post("/make-server-6679cacd/toets/:code/start", async (c) => {
     return c.json({ attempt: { startedAt: attempt.startedAt, endsAt } });
   } catch (err) {
     console.log('Toets start error:', err);
+    return c.json({ error: 'Failed' }, 500);
+  }
+});
+
+// Lightweight autosave so the teacher's "active exams" bar can show how far
+// each student has gotten. Deliberately doesn't store the answers themselves
+// (that's what /submit is for) — just a count, so nothing about a student's
+// in-progress answers is ever visible before they hand the exam in.
+app.post("/make-server-6679cacd/toets/:code/progress", async (c) => {
+  try {
+    if (await rateLimited('toets-progress', clientIp(c), 120, 60)) {
+      return c.json({ error: 'Too many attempts, slow down' }, 429);
+    }
+    const code = c.req.param('code').toUpperCase();
+    const { studentId, answeredCount } = await c.req.json();
+    const key = `exam_attempt:${code}:${studentId}`;
+    const attempt = await kv.get(key);
+    if (!attempt || attempt.submittedAt) return c.json({ success: true });
+    await kv.set(key, { ...attempt, answeredCount: Math.max(0, Number(answeredCount) || 0) });
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Toets progress error:', err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -9435,6 +9552,54 @@ app.get("/make-server-6679cacd/exams/:id/analysis", async (c) => {
   } catch (err) {
     console.log('Exam analysis error:', err);
     return c.json({ error: 'Failed to analyse exam' }, 500);
+  }
+});
+
+// Published grades for one student — the parent Grades tab, and also usable
+// by the teacher/admin to see the same thing a parent sees. Only attempts
+// belonging to a *published* live session are returned: grading (or even a
+// finished review) is not visible to parents until the teacher explicitly
+// publishes it, and a grade can still be corrected afterwards since this
+// always reads the current attempt, not a snapshot taken at publish time.
+app.get("/make-server-6679cacd/students/:studentId/grades", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const studentId = c.req.param('studentId');
+    const userData = await getUserData(user.id);
+    if (userData?.role === 'parent') {
+      const childrenIds = await kv.get(`parent_children:${user.id}`) || [];
+      if (!childrenIds.includes(studentId)) return c.json({ error: 'Unauthorized' }, 403);
+    } else if (!['teacher', 'admin', 'superadmin'].includes(userData?.role)) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const attempts = (await kv.getByPrefix('exam_attempt:'))
+      .filter((a: any) => a?.studentId === studentId && a.submittedAt);
+    const grades: any[] = [];
+    for (const a of attempts) {
+      const live = await kv.get(`exam_live:${a.code}`);
+      if (!live || live.status !== 'published') continue;
+      const exam = await kv.get(`exam:${a.examId}`);
+      if (!exam) continue;
+      const manualTotal = Object.values(a.manualScores || {}).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0);
+      grades.push({
+        examId: exam.id,
+        examName: exam.name,
+        level: exam.level,
+        code: a.code,
+        className: live.className,
+        submittedAt: a.submittedAt,
+        publishedAt: live.publishedAt || null,
+        score: (a.autoScore || 0) + manualTotal,
+        maxScore: (a.autoMax || 0) + (a.openMax || 0),
+      });
+    }
+    grades.sort((x, y) => (y.publishedAt || '').localeCompare(x.publishedAt || ''));
+    return c.json({ grades });
+  } catch (err) {
+    console.log('Student grades error:', err);
+    return c.json({ error: 'Failed to get grades' }, 500);
   }
 });
 

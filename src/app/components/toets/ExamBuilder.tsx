@@ -1,5 +1,5 @@
 import { useState, useRef, useLayoutEffect } from 'react';
-import { Undo2, Redo2, Plus, Trash2, GripVertical, BookOpen, Loader2, Copy, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Undo2, Redo2, Plus, Trash2, GripVertical, BookOpen, Loader2, Copy, ChevronUp, ChevronDown, AlertTriangle, Check } from 'lucide-react';
 import { useHistory } from './useHistory';
 import { ExamDraft, ExamQuestion, QuestionType } from './examTypes';
 import { notify } from '../ui/feedback';
@@ -74,6 +74,9 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
     verseError: tr ? 'Ayet yüklenemedi, tekrar deneyin' : 'Vers kon niet worden geladen, probeer het opnieuw',
     needName: tr ? 'Sınav adı gerekli' : 'Naam van de toets is verplicht',
     needQuestions: tr ? 'En az bir soru ekleyin' : 'Voeg minimaal één vraag toe',
+    needFields: tr
+      ? 'Her soruyu tamamlayın — soru metni, seçenekler ve doğru cevap eksikse sorular kırmızı ile işaretlendi.'
+      : 'Vul elke vraag volledig in — vragen zonder vraagtekst, opties of een juist antwoord zijn rood gemarkeerd.',
     undo: tr ? 'Geri al' : 'Ongedaan maken',
     redo: tr ? 'Yinele' : 'Opnieuw',
     dragHint: tr ? 'Sıralamayı değiştirmek için sürükleyin' : 'Sleep om te herordenen',
@@ -254,11 +257,33 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
   );
   const totalPoints = draft.questions.reduce((sum, q) => sum + (q.points || 0), 0);
 
+  // A question is incomplete when the teacher hasn't actually finished it:
+  // no question text, an mc question with fewer than two real options or no
+  // option marked correct, a gap without its answer, or a qurangap the
+  // teacher never picked a verse/word for. Saving with any of these silently
+  // produces a toets a student can't answer (mc) or that auto-grades wrong
+  // (an empty "correct" answer), so it's blocked the same way missing points
+  // is, rather than only being caught after a student takes it.
+  const missingRequired = new Set(
+    draft.questions.filter((q) => {
+      if (q.type !== 'qurangap' && !q.prompt.trim()) return true;
+      if (q.type === 'mc') {
+        const filled = (q.options || []).filter((o) => o.trim());
+        if (filled.length < 2) return true;
+        if (!Array.isArray(q.correct) || q.correct.length === 0) return true;
+      }
+      if (q.type === 'gap' && !(typeof q.correct === 'string' && q.correct.trim())) return true;
+      if (q.type === 'qurangap' && (typeof q.correct !== 'number' || !(q.options || []).length)) return true;
+      return false;
+    }).map((q) => q.id),
+  );
+
   const save = async () => {
     commitLive();
     if (!draft.name.trim()) { notify.error(text.needName); return; }
     if (draft.questions.length === 0) { notify.error(text.needQuestions); return; }
     if (missingPoints.size > 0) { notify.error(text.needPoints); return; }
+    if (missingRequired.size > 0) { notify.error(text.needFields); return; }
     setSaving(true);
     try {
       await onSave(draft);
@@ -305,6 +330,12 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
           {text.needPoints}
         </p>
       )}
+      {missingRequired.size > 0 && (
+        <p className="flex items-start gap-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-px" />
+          {text.needFields}
+        </p>
+      )}
 
       {/* Metadata */}
       <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -349,7 +380,7 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
           ref={(el) => { if (el) rowRefs.current.set(q.id, el); else rowRefs.current.delete(q.id); }}
           onDragOver={handleDragOver(q.id)}
           onDrop={finishDrag}
-          className={`bg-white rounded-xl shadow-sm ring-1 p-4 space-y-3 transition-shadow ${missingPoints.has(q.id) ? 'ring-amber-300' : 'ring-black/5'} ${dragId === q.id ? 'opacity-40 shadow-lg' : ''} ${dragId && dragId !== q.id ? 'ring-emerald-200' : ''}`}
+          className={`bg-white rounded-xl shadow-sm ring-1 p-4 space-y-3 transition-shadow ${missingRequired.has(q.id) ? 'ring-red-300' : missingPoints.has(q.id) ? 'ring-amber-300' : 'ring-black/5'} ${dragId === q.id ? 'opacity-40 shadow-lg' : ''} ${dragId && dragId !== q.id ? 'ring-emerald-200' : ''}`}
         >
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
@@ -504,12 +535,17 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
               {q.prompt.includes('______') && (
                 <>
                   <p dir="rtl" className="bg-gray-50 rounded-lg p-4 text-4xl sm:text-5xl leading-[2]">{q.prompt}</p>
+                  {/* The correct option is whichever word the teacher blanked
+                      out — the system already knows it, so this is shown as a
+                      fixed indicator, not a choice. Letting the teacher pick a
+                      different "correct" option here would silently grade the
+                      real answer as wrong. */}
                   <div className="flex flex-wrap gap-2">
                     {(q.options || []).map((opt, oi) => (
-                      <label key={oi} className="flex items-center gap-1.5 text-sm cursor-pointer bg-white border border-gray-200 rounded-lg px-2.5 py-1.5">
-                        <input type="radio" checked={q.correct === oi} onChange={() => updateQuestion(q.id, { correct: oi })} className="accent-emerald-600" />
+                      <span key={oi} className={`flex items-center gap-1.5 text-sm bg-white border rounded-lg px-2.5 py-1.5 ${q.correct === oi ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200'}`}>
+                        {q.correct === oi && <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />}
                         <span dir="rtl" className="text-3xl leading-loose">{opt}</span>
-                      </label>
+                      </span>
                     ))}
                   </div>
                   <p className="text-[11px] text-gray-400">{q.verseRef ? `Kur’an ${q.verseRef}` : ''} · {text.correctAnswer}: {typeof q.correct === 'number' ? (q.options || [])[q.correct] : ''}</p>

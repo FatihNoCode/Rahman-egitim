@@ -37,8 +37,15 @@ android {
             if (System.getenv("ANDROID_KEYSTORE_PATH")) {
                 signingConfig signingConfigs.release
             }
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Play flags an App Bundle that ships native code (Firebase/Play
+            // Services libraries pulled in by @capacitor/push-notifications)
+            // without debug symbols. This makes the AGP package them into the
+            // bundle so crashes/ANRs in that native code stay analysable.
+            ndk {
+                debugSymbolLevel 'SYMBOL_TABLE'
+            }
         }
     }
 }

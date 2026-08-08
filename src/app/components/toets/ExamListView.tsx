@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Copy, Pencil, Trash2, Play, Printer, BarChart2, X, StopCircle } from 'lucide-react';
+import { Plus, Copy, Pencil, Trash2, Play, Printer, BarChart2, X, StopCircle, Radio, CheckCircle2, Send } from 'lucide-react';
 import QRCode from 'qrcode';
 import ExamBuilder from './ExamBuilder';
 import ExamPrintView from './ExamPrintView';
@@ -56,6 +56,24 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
     session: tr ? 'Oturum' : 'Sessie',
     notSubmitted: tr ? 'Teslim edilmedi' : 'Niet ingeleverd',
     refresh: tr ? 'Yenile' : 'Vernieuwen',
+    activeExams: tr ? 'Aktif sınavlar' : 'Actieve toetsen',
+    joinCode: tr ? 'Kod' : 'Code',
+    of: tr ? '/' : 'van',
+    answered: tr ? 'cevaplandı' : 'beantwoord',
+    submitted: tr ? 'Teslim edildi' : 'Ingeleverd',
+    closeWithWarningTitle: tr
+      ? 'Bazı öğrenciler hâlâ sınavda'
+      : 'Sommige leerlingen zijn nog bezig',
+    closeWithWarning: tr
+      ? 'Süre henüz bitmedi ve en az bir öğrenci sınavı teslim etmedi. Yine de sınavı kapatmak istiyor musunuz?'
+      : 'De tijd is nog niet om en minstens één leerling heeft de toets nog niet ingeleverd. Toch sluiten?',
+    closeAnyway: tr ? 'Yine de kapat' : 'Toch sluiten',
+    statusLive: tr ? 'Canlı' : 'Live',
+    statusReviewing: tr ? 'Na te kijken toets' : 'Na te kijken toets',
+    statusReviewed: tr ? 'Kontrol edildi' : 'Gecontroleerd',
+    statusPublished: tr ? 'Notlar yayınlandı' : 'Cijfers gepubliceerd',
+    markReviewed: tr ? 'Nakijken tamam' : 'Nakijken voltooid',
+    publishGrades: tr ? 'Notları yayınla' : 'Cijfers publiceren',
   };
 
   const [exams, setExams] = useState<any[]>([]);
@@ -72,6 +90,7 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
   const [analysis, setAnalysis] = useState<any | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [gradeDrafts, setGradeDrafts] = useState<Record<string, Record<string, number>>>({});
+  const [activeExams, setActiveExams] = useState<any[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -85,6 +104,51 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
   }, [apiRequest]);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadActive = useCallback(async () => {
+    try {
+      const data = await apiRequest('/exams/live/active');
+      setActiveExams(data.active || []);
+    } catch (err) {
+      console.error('Load active exams error:', err);
+    }
+  }, [apiRequest]);
+
+  // Polled while the teacher is looking at the toets list — a live exam is
+  // exactly the kind of thing that should update itself without a manual
+  // refresh, since the teacher is watching it happen in real time.
+  useEffect(() => {
+    if (mode.view !== 'list') return;
+    loadActive();
+    const interval = setInterval(loadActive, 8000);
+    return () => clearInterval(interval);
+  }, [mode.view, loadActive]);
+
+  // Shared by the active-exams bar and the results view: a session with a
+  // student who hasn't submitted and isn't past their own time limit is still
+  // genuinely "in progress", so closing it needs a confirmation rather than
+  // silently cutting them off.
+  const confirmClose = async (attempts: { submittedAt?: string | null; endsAt?: string | null }[]) => {
+    const stillActive = attempts.some((a) => !a.submittedAt && (!a.endsAt || new Date(a.endsAt).getTime() > Date.now()));
+    if (!stillActive) return true;
+    return confirmDialog({
+      title: text.closeWithWarningTitle,
+      description: text.closeWithWarning,
+      confirmLabel: text.closeAnyway,
+      destructive: true,
+    });
+  };
+
+  const closeActiveSession = async (session: any) => {
+    if (!(await confirmClose(session.students))) return;
+    try {
+      await apiRequest(`/exams/live/${session.code}/close`, { method: 'POST' });
+      await loadActive();
+      notify.success(text.saved);
+    } catch (err: any) {
+      notify.error(err.message || 'Error');
+    }
+  };
 
   const saveExam = async (draft: ExamDraft) => {
     try {
@@ -130,6 +194,7 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
       const qr = await QRCode.toDataURL(url, { width: 280, margin: 1 });
       setGoLiveFor(null);
       setLiveInfo({ code, qr, className: res.live.className });
+      loadActive();
     } catch (err: any) {
       notify.error(err.message || 'Error');
     }
@@ -169,9 +234,31 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
     }
   };
 
-  const stopSession = async (code: string) => {
+  const stopSession = async (code: string, attempts: any[]) => {
+    if (!(await confirmClose(attempts))) return;
     try {
       await apiRequest(`/exams/live/${code}/close`, { method: 'POST' });
+      if (mode.view === 'results') await openResults(mode.examId);
+      loadActive();
+      notify.success(text.saved);
+    } catch (err: any) {
+      notify.error(err.message || 'Error');
+    }
+  };
+
+  const markReviewed = async (code: string) => {
+    try {
+      await apiRequest(`/exams/live/${code}/mark-reviewed`, { method: 'POST' });
+      if (mode.view === 'results') await openResults(mode.examId);
+      notify.success(text.saved);
+    } catch (err: any) {
+      notify.error(err.message || 'Error');
+    }
+  };
+
+  const publishGrades = async (code: string) => {
+    try {
+      await apiRequest(`/exams/live/${code}/publish`, { method: 'POST' });
       if (mode.view === 'results') await openResults(mode.examId);
       notify.success(text.saved);
     } catch (err: any) {
@@ -202,6 +289,21 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
     setTimeout(restore, 60000);
   };
 
+
+  const statusLabel = (status: string) => ({
+    live: text.statusLive,
+    reviewing: text.statusReviewing,
+    reviewed: text.statusReviewed,
+    published: text.statusPublished,
+    closed: text.statusReviewing, // sessions closed before this workflow existed
+  } as Record<string, string>)[status] || status;
+
+  const statusTone = (status: string) => ({
+    live: 'bg-emerald-100 text-emerald-700',
+    reviewing: 'bg-amber-100 text-amber-700',
+    reviewed: 'bg-blue-100 text-blue-700',
+    published: 'bg-emerald-100 text-emerald-700',
+  } as Record<string, string>)[status] || 'bg-gray-100 text-gray-500';
 
   if (loading) return <div className="text-center py-6 text-gray-500 text-sm">{tr ? 'Yükleniyor...' : 'Laden...'}</div>;
 
@@ -321,16 +423,30 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <h4 className="text-sm font-semibold text-gray-800">
                   {text.session} {r.session.code} · {r.session.className}
-                  <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${r.session.status === 'live' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {r.session.status}
+                  <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${statusTone(r.session.status)}`}>
+                    {statusLabel(r.session.status)}
                   </span>
                 </h4>
-                {r.session.status === 'live' && (
-                  <button onClick={() => stopSession(r.session.code)}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-800">
-                    <StopCircle className="h-4 w-4" />{text.stopExam}
-                  </button>
-                )}
+                <div className="flex items-center gap-3 flex-wrap">
+                  {r.session.status === 'live' && (
+                    <button onClick={() => stopSession(r.session.code, r.attempts || [])}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-800">
+                      <StopCircle className="h-4 w-4" />{text.stopExam}
+                    </button>
+                  )}
+                  {(r.session.status === 'reviewing' || r.session.status === 'closed') && (
+                    <button onClick={() => markReviewed(r.session.code)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800">
+                      <CheckCircle2 className="h-4 w-4" />{text.markReviewed}
+                    </button>
+                  )}
+                  {(r.session.status === 'reviewing' || r.session.status === 'reviewed' || r.session.status === 'closed') && (
+                    <button onClick={() => publishGrades(r.session.code)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900">
+                      <Send className="h-4 w-4" />{text.publishGrades}
+                    </button>
+                  )}
+                </div>
               </div>
               {(r.attempts || []).length === 0 ? (
                 <p className="text-xs text-gray-400">{text.noAttempts}</p>
@@ -405,17 +521,20 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
         </p>
       </div>
       <div className="flex items-center gap-1.5 flex-wrap">
+        {/* A sjabloon is a real, complete exam — it should be usable to
+            examine a class directly, not only via "use template" (duplicate
+            + un-template it first). Go live / results / print work on it
+            exactly like a regular exam; "use template" stays as a shortcut
+            for starting a new, editable variant. */}
+        <button onClick={() => setGoLiveFor(exam)} title={text.golive} className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50"><Play className="h-4 w-4" /></button>
+        <button onClick={() => openResults(exam.id)} title={text.results} className="p-2 rounded-lg text-blue-600 hover:bg-blue-50"><BarChart2 className="h-4 w-4" /></button>
+        <button onClick={() => triggerPrint(exam)} title={text.print} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"><Printer className="h-4 w-4" /></button>
         {isTemplate ? (
-          <button onClick={() => duplicate(exam)} className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-2 rounded-lg transition">
+          <button onClick={() => duplicate(exam)} title={text.useTemplate} className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-2 rounded-lg transition">
             <Copy className="h-3.5 w-3.5" />{text.useTemplate}
           </button>
         ) : (
-          <>
-            <button onClick={() => setGoLiveFor(exam)} title={text.golive} className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50"><Play className="h-4 w-4" /></button>
-            <button onClick={() => openResults(exam.id)} title={text.results} className="p-2 rounded-lg text-blue-600 hover:bg-blue-50"><BarChart2 className="h-4 w-4" /></button>
-            <button onClick={() => triggerPrint(exam)} title={text.print} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"><Printer className="h-4 w-4" /></button>
-            <button onClick={() => duplicate(exam)} title={text.duplicate} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"><Copy className="h-4 w-4" /></button>
-          </>
+          <button onClick={() => duplicate(exam)} title={text.duplicate} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"><Copy className="h-4 w-4" /></button>
         )}
         <button onClick={() => setMode({ view: 'edit', exam })} title={text.edit} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100"><Pencil className="h-4 w-4" /></button>
         <button onClick={() => deleteExam(exam)} title={text.delete} className="p-2 rounded-lg text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
@@ -435,6 +554,50 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
           <Plus className="h-4 w-4" />{text.newExam}
         </button>
       </div>
+
+      {/* A live toets is easy to lose track of once the go-live dialog is
+          dismissed — this keeps it on screen with the code (no QR scan
+          needed), live per-student progress, and a way to close it. */}
+      {activeExams.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
+            <Radio className="h-4 w-4 animate-pulse" />{text.activeExams}
+          </h3>
+          {activeExams.map((session: any) => {
+            const submittedCount = session.students.filter((s: any) => s.submitted).length;
+            return (
+              <div key={session.code} className="bg-emerald-50 rounded-xl ring-1 ring-emerald-200 p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-emerald-900">{session.examName} · {session.className}</p>
+                    <p className="text-xs text-emerald-700 mt-0.5">
+                      {text.joinCode}: <span className="font-mono font-bold tracking-widest">{session.code}</span>
+                      {' · '}{submittedCount} {text.of} {session.students.length} {text.submitted.toLowerCase()}
+                    </p>
+                  </div>
+                  <button onClick={() => closeActiveSession(session)}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-800 shrink-0">
+                    <StopCircle className="h-4 w-4" />{text.stopExam}
+                  </button>
+                </div>
+                {session.students.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {session.students.map((s: any) => (
+                      <span key={s.studentId}
+                        className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${s.submitted ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 ring-1 ring-emerald-200'}`}>
+                        {s.studentName}
+                        {s.submitted
+                          ? (s.autoMax ? ` · ${s.autoScore}/${s.autoMax}` : ` · ${text.submitted}`)
+                          : ` · ${s.answeredCount}/${s.totalQuestions}`}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {templates.length > 0 && (
         <div className="space-y-2">

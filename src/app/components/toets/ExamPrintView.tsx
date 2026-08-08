@@ -14,6 +14,14 @@ export default function ExamPrintView({ exam, copies }: { exam: ExamDraft; copie
   return (
     <div className="exam-print">
       <style>{`
+        /* Chrome/Edge draw their default print header (title) and footer
+           (URL + page number) inside the page's margin box. Zeroing it is
+           the standard way to suppress that — nothing on the printed sheet
+           should ever say rahmanegitim.com/#tab=toets. The page's own
+           whitespace comes from the .copy padding below instead. */
+        @page {
+          margin: 0;
+        }
         @media print {
           body * { visibility: hidden; }
           .exam-print, .exam-print * { visibility: visible; }

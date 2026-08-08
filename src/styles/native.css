@@ -93,10 +93,27 @@
   background-color: #f9fafb; /* gray-50 */
 }
 
+/* The area around the notch/dynamic island used to be flat gray-50 — the same
+   colour as the page, so it read as dead space rather than part of the
+   design. A soft brand-coloured glow anchored to the very top turns it into a
+   deliberate hero band instead: it sits right behind the status bar and fades
+   into the page by the time content starts, so nothing under the notch is
+   ever unreadable and no per-screen header needs to know about it. */
+.native-app #root {
+  background-image: radial-gradient(120% 100% at 50% 0%, rgba(16, 185, 129, 0.16) 0%, rgba(16, 185, 129, 0) 70%);
+  background-repeat: no-repeat;
+  background-size: 100% calc(var(--safe-top) + 96px);
+  background-position: top;
+}
+
 .dark.native-app,
 .dark.native-app body,
 .dark.native-app #root {
   background-color: var(--d-bg);
+}
+
+.dark.native-app #root {
+  background-image: radial-gradient(120% 100% at 50% 0%, rgba(16, 185, 129, 0.22) 0%, rgba(16, 185, 129, 0) 70%);
 }
 
 /* Opt-in helpers for elements that sit outside the #root padding (fixed

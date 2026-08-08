@@ -101,6 +101,22 @@ export default function ToetsPage() {
     }
   };
 
+  // Tells the teacher's "active exams" bar how far along this student is —
+  // just a count of answered questions, debounced so it doesn't fire on
+  // every keystroke of a gap/open answer. The answers themselves never leave
+  // this device until Inleveren.
+  useEffect(() => {
+    if (step !== 'exam' || !studentId) return;
+    const timer = setTimeout(() => {
+      api(`/toets/${code}/progress`, {
+        method: 'POST',
+        body: JSON.stringify({ studentId, answeredCount: Object.keys(answers).length }),
+      }).catch(() => {});
+    }, 1500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answers, step, studentId]);
+
   // Countdown against the server-side deadline; auto-submit at zero.
   useEffect(() => {
     if (step !== 'exam' || !endsAt) return;

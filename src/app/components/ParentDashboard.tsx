@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useApp, isTestAccount } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, AlertTriangle, Check, Receipt, Sparkles, ArrowLeft } from 'lucide-react';
+import { Euro, Moon, AlertTriangle, Check, Receipt, Sparkles, ArrowLeft, GraduationCap } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
@@ -118,13 +118,14 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   // though it no longer appears on the bar.
   const [activeTab, setActiveTab] = useHashTab<string>(
     'overview',
-    ['overview', 'billing', 'oudergesprekken', 'alifba', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['overview', 'billing', 'grades', 'oudergesprekken', 'alifba', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   // MOBILE_ACCOUNT_ID is deliberately absent: account is reached from the
   // avatar in the top-right corner, not from the tab bar.
   const [navOrder, setNavOrder] = useNavOrder('parent', [
     'overview',
     'billing',
+    'grades',
     'oudergesprekken',
     'alifba',
     MOBILE_PREFS_ID,
@@ -133,6 +134,11 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [billingRecord, setBillingRecord] = useState<any>(null);
   const [billingPayments, setBillingPayments] = useState<PaymentLogEntry[]>([]);
   const [loadingBilling, setLoadingBilling] = useState(false);
+  // Grades only appear here once a teacher publishes them — see the toets
+  // live-exam workflow. Kept separate from billing/lessons since it comes
+  // from a different part of the server and loads independently per child.
+  const [grades, setGrades] = useState<any[]>([]);
+  const [loadingGrades, setLoadingGrades] = useState(false);
   // Bumped whenever something happens that could resolve a worklist entry — a
   // ziekmelding filed, a slot booked. The list re-fetches instead of leaving a
   // task on screen that has already been done.
@@ -154,8 +160,22 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     if (selectedChildId && students.length > 0) {
       loadChildDetails(selectedChildId);
       loadBilling(selectedChildId);
+      loadGrades(selectedChildId);
     }
   }, [selectedChildId, students]);
+
+  const loadGrades = async (childId: string) => {
+    setLoadingGrades(true);
+    try {
+      const data = await apiRequest(`/students/${childId}/grades`);
+      setGrades(data.grades || []);
+    } catch (error) {
+      console.error('Error loading grades:', error);
+      setGrades([]);
+    } finally {
+      setLoadingGrades(false);
+    }
+  };
 
   const loadBilling = async (childId: string) => {
     setLoadingBilling(true);
@@ -481,6 +501,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     // Start / Ana Sayfa — the shared landing tab; here it's the children.
     sharedNavItem('home', language, 'overview'),
     { id: 'billing', label: language === 'tr' ? 'Ödemeler' : 'Facturatie', icon: Receipt },
+    { id: 'grades', label: language === 'tr' ? 'Notlar' : 'Cijfers', icon: GraduationCap },
     sharedNavItem('oudergesprekken', language),
     { id: 'alifba', label: 'Elif-Ba', icon: Sparkles },
     ...mobileExtraNavItems(language),
@@ -691,6 +712,14 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               {language === 'tr' ? 'Ödemeler' : 'Facturatie'}
             </button>
             <button
+              onClick={() => setActiveTab('grades')}
+              className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm ${
+                activeTab === 'grades' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {language === 'tr' ? 'Notlar' : 'Cijfers'}
+            </button>
+            <button
               onClick={() => setActiveTab('alifba')}
               className="px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1.5"
             >
@@ -833,6 +862,39 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                   </div>
                 );
               })()
+            )}
+          </div>
+        )}
+
+        {selectedChild && activeTab === 'grades' && (
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
+            {loadingGrades ? (
+              <p className="text-sm text-gray-400">{t.loading}</p>
+            ) : grades.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                {language === 'tr' ? 'Henüz yayınlanmış not yok.' : 'Nog geen gepubliceerde cijfers.'}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {grades.map((g: any) => {
+                  const pct = g.maxScore > 0 ? Math.round((g.score / g.maxScore) * 100) : null;
+                  const tone = pct === null ? 'bg-gray-100 text-gray-500' : pct < 50 ? 'bg-red-100 text-red-700' : pct < 70 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
+                  return (
+                    <div key={`${g.examId}:${g.code}`} className="flex items-center justify-between gap-3 border border-gray-100 rounded-lg p-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 truncate">{g.examName}</p>
+                        <p className="text-xs text-gray-400">
+                          {g.className}
+                          {g.submittedAt ? ` · ${new Date(g.submittedAt).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')}` : ''}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 text-sm font-bold px-3 py-1.5 rounded-full ${tone}`}>
+                        {g.score} / {g.maxScore || '—'}{pct !== null ? ` (${pct}%)` : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}

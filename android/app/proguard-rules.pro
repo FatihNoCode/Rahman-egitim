@@ -19,3 +19,12 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Capacitor loads plugins (and their exported methods) by reflection from
+# capacitor.plugins.json, so R8 can't see those call sites and would otherwise
+# strip or rename the classes/methods it never sees referenced directly.
+-keep class com.getcapacitor.** { *; }
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+-keepclassmembers class * extends com.getcapacitor.Plugin {
+    @com.getcapacitor.annotation.PluginMethod <methods>;
+}

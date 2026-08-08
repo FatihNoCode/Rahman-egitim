@@ -1408,12 +1408,10 @@ app.post("/make-server-6679cacd/demo-testers", async (c) => {
     if (roles.includes('parent')) await ensureTesterParentChild(userId);
 
     const ROLE_LABELS_NL: Record<PortalRole, string> = { parent: 'Ouder', teacher: 'Leraar', admin: 'Lokale beheerder' };
-    const ROLE_LABELS_TR: Record<PortalRole, string> = { parent: 'Veli', teacher: 'Öğretmen', admin: 'Yerel yönetici' };
     const roleLabelsNl = roles.map((r: PortalRole) => ROLE_LABELS_NL[r]).join(', ');
-    const roleLabelsTr = roles.map((r: PortalRole) => ROLE_LABELS_TR[r]).join(', ');
     await sendEmail(
       email,
-      'Uw testaccount | Test hesabınız - Rahman Eğitim',
+      'Uw testaccount - Rahman Eğitim',
       emailWrapper('Testaccount', `
         <p style="color:#374151;line-height:1.6">Hallo,</p>
         <p style="color:#374151;line-height:1.6">U bent uitgenodigd om de Rahman Eğitim-app te testen met de volgende rol(len): <strong>${escapeHtml(roleLabelsNl)}</strong>.</p>
@@ -1423,16 +1421,23 @@ app.post("/make-server-6679cacd/demo-testers", async (c) => {
           <p style="color:#374151;margin:0;line-height:1.6">Wachtwoord: <strong style="font-family:monospace;font-size:15px">${escapeHtml(password)}</strong></p>
         </div>
         <p style="color:#374151;line-height:1.6">U kunt direct inloggen met dit wachtwoord — u hoeft het niet te wijzigen, dit is een testomgeving.</p>
+        <p style="color:#374151;line-height:1.6">Inloggen kan op <a href="https://www.rahmanegitim.com" style="color:#065f46">www.rahmanegitim.com</a> — dezelfde app, in de browser.</p>
         <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-        <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-        <p style="color:#374151;line-height:1.6">Merhaba,</p>
-        <p style="color:#374151;line-height:1.6">Rahman Eğitim uygulamasını şu rol(ler)le test etmeye davet edildiniz: <strong>${escapeHtml(roleLabelsTr)}</strong>.</p>
-        <p style="color:#374151;line-height:1.6">Bu, uydurma verilerle çalışan izole bir test ortamıdır — gerçek okul veya öğrenci verilerine erişiminiz yoktur.</p>
-        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 16px;margin:16px 0">
-          <p style="color:#374151;margin:0 0 6px;line-height:1.6">E-posta: <strong>${escapeHtml(email)}</strong></p>
-          <p style="color:#374151;margin:0;line-height:1.6">Şifre: <strong style="font-family:monospace;font-size:15px">${escapeHtml(password)}</strong></p>
-        </div>
-        <p style="color:#374151;line-height:1.6">Bu şifreyle doğrudan giriş yapabilirsiniz — değiştirmenize gerek yok, bu bir test ortamıdır.</p>
+        <h3 style="color:#065f46;margin-bottom:8px">Wat kunt u testen?</h3>
+        <p style="color:#374151;line-height:1.6">Er is geen vast script — kijk vooral of alles doet wat u zou verwachten. Nuttige dingen om te proberen:</p>
+        <ul style="color:#374151;line-height:1.6;padding-left:20px">
+          <li>Inloggen en weer uitloggen, en of u na het sluiten van de app nog ingelogd blijft.</li>
+          <li>Door alle menu's en schermen van uw rol klikken. Ziet alles er goed uit op uw scherm?</li>
+          <li>Zelf iets aanmaken of wijzigen (bijvoorbeeld een cijfer, aanwezigheid, of een bericht) en controleren of het bewaard blijft.</li>
+          <li>De taal wisselen tussen Nederlands en Turks.</li>
+          <li>De app even offline gebruiken (vliegtuigmodus) — krijgt u een duidelijke melding?</li>
+          <li>Alles wat niet klopt, vastloopt, traag is, of onduidelijk staat beschreven.</li>
+        </ul>
+        <p style="color:#374151;line-height:1.6">Meld wat u tegenkomt met: <strong>wat u deed, wat u verwachtte, wat er gebeurde</strong> — en als het kan een schermafbeelding en het toestel dat u gebruikt.</p>
+        <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+        <h3 style="color:#065f46;margin-bottom:8px">Let op: u deelt deze testomgeving met anderen</h3>
+        <p style="color:#374151;line-height:1.6">Alle testers werken in dezelfde omgeving met dezelfde verzonnen gegevens. U ziet dus namen, klassen, cijfers en berichten die andere testers hebben aangemaakt of aangepast, en zij zien die van u. Ook kan iets dat u zojuist heeft ingevoerd later gewijzigd of verwijderd zijn door een andere tester.</p>
+        <p style="color:#374151;line-height:1.6">Dat is normaal en geen fout. Vreemde of onlogische gegevens zijn dus geen bug — het gaat om de <em>werking</em> van de app: wat u zelf aanmaakt of aanpast moet direct correct opslaan en tonen. Voel u vrij om te klikken en te proberen wat u wilt: u kunt niets kapotmaken en er zijn geen echte leerlingen of ouders bij betrokken.</p>
       `),
     );
 

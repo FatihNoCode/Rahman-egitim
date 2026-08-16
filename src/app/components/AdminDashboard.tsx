@@ -267,9 +267,9 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
     // Start / Ana Sayfa — the same landing tab as every other role, showing a
     // beheerder's signals rather than a parent's children.
     sharedNavItem('home', language, 'signals'),
-    { id: 'entities', label: language === 'tr' ? 'Sınıf Yönetimi' : 'Klassen beheer', shortLabel: language === 'tr' ? 'Sınıflar' : 'Klassen', icon: Layers },
+    { id: 'entities', label: language === 'tr' ? 'Sınıf yönetimi' : 'Klassen beheer', shortLabel: language === 'tr' ? 'Sınıflar' : 'Klassen', icon: Layers },
     { id: 'users', label: language === 'tr' ? 'Kullanıcılar' : 'Gebruikers', icon: Users },
-    { id: 'import', label: language === 'tr' ? 'İçe Aktar' : 'Importeren', icon: Upload },
+    { id: 'import', label: language === 'tr' ? 'İçe aktar' : 'Importeren', icon: Upload },
     sharedNavItem('meldingen', language),
     { id: 'boekhouding', label: language === 'tr' ? 'Muhasebe' : 'Boekhouding', icon: Wallet },
     { id: 'inschrijvingen', label: language === 'tr' ? 'Kayıtlar' : 'Inschrijvingen', icon: ClipboardList },
@@ -427,7 +427,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
             app ? (
               <DesktopOnly
                 language={language}
-                title={language === 'tr' ? 'Sınıf Yönetimi' : 'Klassen beheer'}
+                title={language === 'tr' ? 'Sınıf yönetimi' : 'Klassen beheer'}
                 reason={
                   language === 'tr'
                     ? 'Sınıf yönetimi, her öğrenci için veli e-postası, sınıf ve notların yan yana durduğu geniş bir tablodur. Telefon ekranında bu satırlar okunamıyor — web sitesinde çok daha rahat çalışırsınız.'
@@ -482,7 +482,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
             app ? (
               <DesktopOnly
                 language={language}
-                title={language === 'tr' ? 'İçe Aktar' : 'Importeren'}
+                title={language === 'tr' ? 'İçe aktar' : 'Importeren'}
                 reason={
                   language === 'tr'
                     ? 'Toplu içe aktarma, yüzlerce satırlık geniş bir tablo üzerinde çalışır ve genellikle bilgisayarınızdaki bir Excel dosyasından başlar. Bunu web sitesinde yapmak çok daha kolay.'
@@ -554,7 +554,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
                 <div className="bg-white rounded-xl shadow-lg p-6">
                   <h3 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-4">{t.schoolYear}</h3>
                   <div className="bg-emerald-50 p-4 rounded-lg mb-4">
-                    <p className="text-sm text-gray-600">{language === 'tr' ? 'Mevcut Eğitim Yılı' : 'Huidig Schooljaar'}</p>
+                    <p className="text-sm text-gray-600">{language === 'tr' ? 'Mevcut eğitim yılı' : 'Huidig Schooljaar'}</p>
                     <p className="text-2xl font-bold text-emerald-800">{currentYear.name}</p>
                     <p className="text-xs text-gray-500 mt-1">
                       {language === 'tr' ? 'Başlangıç' : 'Start'}: {new Date(currentYear.startDate).toLocaleDateString()}

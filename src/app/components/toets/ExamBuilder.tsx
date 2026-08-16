@@ -64,7 +64,7 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
       mc: tr ? 'Çoktan seçmeli' : 'Meerkeuze',
       yesno: tr ? 'Evet / Hayır' : 'Ja / Nee',
       gap: tr ? 'Boşluk doldurma' : 'Invullen (gatentekst)',
-      qurangap: tr ? 'Kur’an Ayeti Tamamlama' : 'Koran vers aanvullen',
+      qurangap: tr ? 'Kur’an ayeti tamamlama' : 'Koran vers aanvullen',
       open: tr ? 'Açık uçlu' : 'Open vraag',
     } as Record<QuestionType, string>,
     surah: tr ? 'Sure no' : 'Soera nr.',

@@ -64,13 +64,13 @@ export default function ResetPasswordPage({ language, onDone }: ResetPasswordPag
               onClick={onDone}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-2.5 rounded-lg transition text-sm"
             >
-              {language === 'tr' ? 'Giriş Yap' : 'Inloggen'}
+              {language === 'tr' ? 'Giriş yap' : 'Inloggen'}
             </button>
           </div>
         ) : (
           <>
             <h1 className="text-2xl font-bold text-emerald-800 mb-2">
-              {language === 'tr' ? 'Yeni Şifre Belirle' : 'Nieuw wachtwoord instellen'}
+              {language === 'tr' ? 'Yeni şifre belirle' : 'Nieuw wachtwoord instellen'}
             </h1>
             <p className="text-sm text-gray-500 mb-6">
               {language === 'tr' ? 'Lütfen yeni şifrenizi girin.' : 'Vul hieronder uw nieuwe wachtwoord in.'}
@@ -78,7 +78,7 @@ export default function ResetPasswordPage({ language, onDone }: ResetPasswordPag
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {language === 'tr' ? 'Yeni Şifre' : 'Nieuw wachtwoord'}
+                  {language === 'tr' ? 'Yeni şifre' : 'Nieuw wachtwoord'}
                 </label>
                 <div className="relative">
                   <input
@@ -101,7 +101,7 @@ export default function ResetPasswordPage({ language, onDone }: ResetPasswordPag
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {language === 'tr' ? 'Şifreyi Onayla' : 'Bevestig wachtwoord'}
+                  {language === 'tr' ? 'Şifreyi onayla' : 'Bevestig wachtwoord'}
                 </label>
                 <div className="relative">
                   <input
@@ -132,7 +132,7 @@ export default function ResetPasswordPage({ language, onDone }: ResetPasswordPag
               >
                 {loading
                   ? (language === 'tr' ? 'Kaydediliyor...' : 'Opslaan...')
-                  : (language === 'tr' ? 'Şifreyi Kaydet' : 'Wachtwoord opslaan')}
+                  : (language === 'tr' ? 'Şifreyi kaydet' : 'Wachtwoord opslaan')}
               </button>
             </form>
           </>

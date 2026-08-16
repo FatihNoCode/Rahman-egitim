@@ -343,7 +343,7 @@ export default function TeacherManageView({
 
                     <div className="bg-gray-50 p-3 rounded">
                       <p className="text-sm font-medium text-gray-600 mb-1">
-                        {language === 'tr' ? 'Ödev Detayı' : 'Huiswerk Details'}
+                        {language === 'tr' ? 'Ödev detayı' : 'Huiswerk Details'}
                       </p>
                       {dayData.homework.length > 0 ? (
                         <ul className="text-xs space-y-2">
@@ -528,7 +528,7 @@ export default function TeacherManageView({
       {/* Homework assigned to this class */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 mt-4">
         <h4 className="text-lg font-semibold text-gray-700 mb-4">
-          {language === 'tr' ? 'Verilen Ödevler' : 'Gegeven Huiswerk'}
+          {language === 'tr' ? 'Verilen ödevler' : 'Gegeven Huiswerk'}
         </h4>
         {loadingClassHomework ? (
           <p className="text-gray-500 text-sm">{text.loading}</p>

@@ -77,11 +77,11 @@ function getSchoolPrice(s: BoekhoudingSettings, isMember: boolean, hasSibling: b
 }
 
 const CATEGORY_LABELS: Record<string, { nl: string; tr: string }> = {
-  schoolgeld: { nl: 'Schoolgeld', tr: 'Okul Ücreti' },
+  schoolgeld: { nl: 'Schoolgeld', tr: 'Eğitim bedeli' },
   tas: { nl: 'Tas', tr: 'Çanta' },
   quran: { nl: 'Quran', tr: 'Kuran' },
   elifbe: { nl: 'Elif-be', tr: 'Elif-be' },
-  temel: { nl: 'Temel Bilgileri', tr: 'Temel Bilgileri' },
+  temel: { nl: 'Temel Bilgileri', tr: 'Temel bilgileri' },
 };
 
 interface PaymentLogEntry {
@@ -420,12 +420,12 @@ export default function BoekhoudingView({ classes, students, language, apiReques
         </td>
         <td className="border border-gray-200 px-2 py-2 text-center align-middle">
           <span className={`text-xs px-2 py-1 rounded-full font-medium ${rec.isMember ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'}`}>
-            {rec.isMember ? nl('Üye', 'Lid') : nl('Üye Değil', 'Geen lid')}
+            {rec.isMember ? nl('Üye', 'Lid') : nl('Üye değil', 'Geen lid')}
           </span>
         </td>
         <td className="border border-gray-200 px-2 py-2 text-center align-middle">
           <span className={`text-xs px-2 py-1 rounded-full font-medium ${rec.hasSibling ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-400'}`}>
-            {rec.hasSibling ? nl('Kardeş', 'Broer/Zus') : nl('Kardeş Yok', 'Geen B/Z')}
+            {rec.hasSibling ? nl('Kardeş', 'Broer/Zus') : nl('Kardeş yok', 'Geen B/Z')}
           </span>
         </td>
         <SchoolgeldCell student={student} />
@@ -483,7 +483,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
               className="flex items-center gap-2 px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Mail className="h-4 w-4" />
-              {nl('Hatırlatma Gönder', 'Herinnering sturen')}
+              {nl('Hatırlatma gönder', 'Herinnering sturen')}
             </button>
             <button
               onClick={() => { setEditSettings(settings); setShowSettings(true); }}
@@ -504,7 +504,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
             subTab === 'overzicht' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'
           }`}
         >
-          {nl('Genel Bakış', 'Overzicht')}
+          {nl('Genel bakış', 'Overzicht')}
         </button>
         <button
           onClick={() => setSubTab('log')}
@@ -512,7 +512,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
             subTab === 'log' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'
           }`}
         >
-          {nl('Ödeme Kaydı', 'Betalingslogboek')}
+          {nl('Ödeme kaydı', 'Betalingslogboek')}
         </button>
       </div>
 
@@ -520,7 +520,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
         <div>
           {/* New entry form */}
           <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">{nl('Yeni Ödeme Kaydı', 'Nieuwe betaling loggen')}</h4>
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">{nl('Yeni ödeme kaydı', 'Nieuwe betaling loggen')}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">{nl('Tarih', 'Datum')}</label>
@@ -558,7 +558,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
                         disabled={savingLabel === `${logForm.studentId}:isMember`}
                         className={`text-xs px-2 py-1 rounded-full font-medium transition ${rec.isMember ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'}`}
                       >
-                        {rec.isMember ? nl('Üye', 'Lid') : nl('Üye Değil', 'Geen lid')}
+                        {rec.isMember ? nl('Üye', 'Lid') : nl('Üye değil', 'Geen lid')}
                       </button>
                       <button
                         type="button"
@@ -566,7 +566,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
                         disabled={savingLabel === `${logForm.studentId}:hasSibling`}
                         className={`text-xs px-2 py-1 rounded-full font-medium transition ${rec.hasSibling ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-400'}`}
                       >
-                        {rec.hasSibling ? nl('Kardeş', 'Broer/Zus') : nl('Kardeş Yok', 'Geen B/Z')}
+                        {rec.hasSibling ? nl('Kardeş', 'Broer/Zus') : nl('Kardeş yok', 'Geen B/Z')}
                       </button>
                     </div>
                   );
@@ -737,7 +737,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
           </div>
           <div>
             <p className="text-xs text-emerald-200 font-medium uppercase tracking-wide">
-              {nl('Toplam Tahsilat', 'Totaal ontvangen')}
+              {nl('Toplam tahsilat', 'Totaal ontvangen')}
             </p>
             <p className="text-3xl font-bold">€{grandTotal.toFixed(2)}</p>
           </div>
@@ -839,7 +839,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
               <div className="bg-amber-100 rounded-full p-2">
                 <Mail className="h-5 w-5 text-amber-700" />
               </div>
-              <h4 className="text-lg font-bold text-gray-800">{nl('Hatırlatma Gönder', 'Herinnering versturen')}</h4>
+              <h4 className="text-lg font-bold text-gray-800">{nl('Hatırlatma gönder', 'Herinnering versturen')}</h4>
             </div>
             <p className="text-sm text-gray-600 mb-6">
               {nl(
@@ -873,7 +873,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h4 className="text-lg font-bold text-emerald-800">{nl('Fiyat Ayarları', 'Prijsinstellingen')}</h4>
+              <h4 className="text-lg font-bold text-emerald-800">{nl('Fiyat ayarları', 'Prijsinstellingen')}</h4>
               <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
             </div>
 
@@ -903,13 +903,13 @@ export default function BoekhoudingView({ classes, students, language, apiReques
             </div>
 
             <div className="mb-6">
-              <h5 className="text-sm font-semibold text-gray-700 mb-3">{nl('Diğer Ücretler', 'Overige prijzen')}</h5>
+              <h5 className="text-sm font-semibold text-gray-700 mb-3">{nl('Diğer ücretler', 'Overige prijzen')}</h5>
               <div className="space-y-2">
                 {([
                   { key: 'tas', labelNl: 'Tas', labelTr: 'Çanta' },
                   { key: 'quran', labelNl: 'Quran', labelTr: 'Kuran' },
                   { key: 'elifbe', labelNl: 'Elif-be', labelTr: 'Elif-be' },
-                  { key: 'temel', labelNl: 'Temel Bilgileri', labelTr: 'Temel Bilgileri' },
+                  { key: 'temel', labelNl: 'Temel Bilgileri', labelTr: 'Temel bilgileri' },
                 ] as const).map(({ key, labelNl, labelTr }) => (
                   <div key={key} className="flex items-center gap-3">
                     <label className="flex-1 text-sm text-gray-600">{language === 'tr' ? labelTr : labelNl}</label>

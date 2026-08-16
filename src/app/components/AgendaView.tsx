@@ -217,7 +217,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-emerald-800 flex items-center gap-2">
             <Calendar className="w-5 h-5" />
-            {language === 'tr' ? 'Ders Yapıları' : 'Lesstructuren'}
+            {language === 'tr' ? 'Ders yapıları' : 'Lesstructuren'}
           </h3>
           <button onClick={() => setShowLsForm(v => !v)}
             className="flex items-center gap-1 bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-emerald-700 transition">
@@ -236,28 +236,28 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {language === 'tr' ? 'Başlangıç Tarihi' : 'Startdatum'}
+                  {language === 'tr' ? 'Başlangıç tarihi' : 'Startdatum'}
                 </label>
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {language === 'tr' ? 'Bitiş Tarihi' : 'Einddatum'}
+                  {language === 'tr' ? 'Bitiş tarihi' : 'Einddatum'}
                 </label>
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {language === 'tr' ? 'Ders Başlangıç Saati' : 'Begintijd les'}
+                  {language === 'tr' ? 'Ders başlangıç saati' : 'Begintijd les'}
                 </label>
                 <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {language === 'tr' ? 'Ders Bitiş Saati' : 'Eindtijd les'}
+                  {language === 'tr' ? 'Ders bitiş saati' : 'Eindtijd les'}
                 </label>
                 <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm" />
@@ -266,7 +266,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {language === 'tr' ? 'Ders Günleri' : 'Lesdagen'}
+                {language === 'tr' ? 'Ders günleri' : 'Lesdagen'}
               </label>
               <div className="flex flex-wrap gap-2">
                 {DAY_ORDER.map((i) => (
@@ -321,7 +321,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-yellow-800 flex items-center gap-2">
             <Sun className="w-5 h-5" />
-            {language === 'tr' ? 'Tatil Günleri' : 'Vakantiedagen'}
+            {language === 'tr' ? 'Tatil günleri' : 'Vakantiedagen'}
           </h3>
           <button onClick={() => (showVacationForm ? cancelVacationForm() : setShowVacationForm(true))}
             className="flex items-center gap-1 bg-yellow-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition">
@@ -332,7 +332,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
 
         {showVacationForm && (
           <div className="bg-white rounded-lg p-4 mb-4 border border-yellow-200 space-y-3">
-            <input type="text" placeholder={language === 'tr' ? 'Tatil adı (ör. Kış Tatili)' : 'Naam (bijv. Kerstvakantie)'}
+            <input type="text" placeholder={language === 'tr' ? 'Tatil adı (ör. Kış tatili)' : 'Naam (bijv. Kerstvakantie)'}
               value={vacName} onChange={e => setVacName(e.target.value)}
               className="w-full border rounded-lg px-3 py-2 text-sm" />
             <div className="grid grid-cols-2 gap-3">

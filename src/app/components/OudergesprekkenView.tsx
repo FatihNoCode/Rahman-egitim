@@ -133,7 +133,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
       {/* Create new conference */}
       <div className="bg-gray-50 p-4 sm:p-6 rounded-lg mb-6">
         <h3 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-4">
-          {language === 'tr' ? 'Yeni Veli Görüşmesi Oluştur' : 'Nieuw Oudergesprek Aanmaken'}
+          {language === 'tr' ? 'Yeni veli görüşmesi oluştur' : 'Nieuw Oudergesprek Aanmaken'}
         </h3>
 
         <p className="text-sm text-gray-500 mb-4">
@@ -157,7 +157,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              {language === 'tr' ? 'Başlangıç Saati' : 'Starttijd'}
+              {language === 'tr' ? 'Başlangıç saati' : 'Starttijd'}
             </label>
             <input
               type="time"
@@ -169,7 +169,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              {language === 'tr' ? 'Bitiş Saati' : 'Eindtijd'}
+              {language === 'tr' ? 'Bitiş saati' : 'Eindtijd'}
             </label>
             <input
               type="time"
@@ -181,7 +181,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              {language === 'tr' ? 'Görüşme Süresi (dakika)' : 'Tijd per gesprek (minuten)'}
+              {language === 'tr' ? 'Görüşme süresi (dakika)' : 'Tijd per gesprek (minuten)'}
             </label>
             <input
               type="number"
@@ -218,7 +218,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
         >
           {creating
             ? (language === 'tr' ? 'Oluşturuluyor & E-posta gönderiliyor...' : 'Aanmaken & E-mails versturen...')
-            : (language === 'tr' ? 'Oluştur & Velilere Bildir' : 'Aanmaken & Ouders Informeren')}
+            : (language === 'tr' ? 'Oluştur & velilere bildir' : 'Aanmaken & Ouders Informeren')}
         </button>
       </div>
 
@@ -226,7 +226,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
       <div>
         <div className="flex items-center justify-between gap-3 mb-4">
           <h3 className="text-lg sm:text-xl font-semibold text-emerald-800">
-            {language === 'tr' ? 'Mevcut Veli Görüşmeleri' : 'Bestaande Oudergesprekken'}
+            {language === 'tr' ? 'Mevcut veli görüşmeleri' : 'Bestaande Oudergesprekken'}
           </h3>
           {sessions.length > 0 && (
             <button
@@ -236,7 +236,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
             >
               {deletingAll
                 ? (language === 'tr' ? 'Siliniyor...' : 'Verwijderen...')
-                : (language === 'tr' ? 'Tümünü Sil' : 'Alles Verwijderen')}
+                : (language === 'tr' ? 'Tümünü sil' : 'Alles Verwijderen')}
             </button>
           )}
         </div>
@@ -262,7 +262,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
                   >
                     <div>
                       <h4 className="font-semibold text-emerald-800">
-                        {session.className || (language === 'tr' ? 'Tüm Sınıflar' : 'Alle klassen')}
+                        {session.className || (language === 'tr' ? 'Tüm sınıflar' : 'Alle klassen')}
                       </h4>
                       <p className="text-sm text-gray-500">
                         {session.date} &middot; {session.startTime} - {session.slots[session.slots.length - 1]?.end || session.endTime}

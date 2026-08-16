@@ -24,7 +24,7 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
     intro: tr
       ? 'Sınav oluşturun, şablon kullanın, sınıfınız için canlı başlatın veya yazdırın.'
       : 'Maak toetsen, gebruik sjablonen, zet ze live voor een klas of druk ze af.',
-    newExam: tr ? 'Yeni Sınav' : 'Nieuwe toets',
+    newExam: tr ? 'Yeni sınav' : 'Nieuwe toets',
     templates: tr ? 'Şablonlar' : 'Sjablonen',
     myExams: tr ? 'Sınavlarım' : 'Mijn toetsen',
     empty: tr ? 'Henüz sınav yok.' : 'Nog geen toetsen.',

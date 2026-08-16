@@ -54,11 +54,11 @@ interface ParentDashboardProps {
 }
 
 const CATEGORY_LABELS: Record<string, { nl: string; tr: string }> = {
-  schoolgeld: { nl: 'Schoolgeld', tr: 'Okul Ücreti' },
+  schoolgeld: { nl: 'Schoolgeld', tr: 'Eğitim bedeli' },
   tas: { nl: 'Tas', tr: 'Çanta' },
   quran: { nl: 'Quran', tr: 'Kuran' },
   elifbe: { nl: 'Elif-be', tr: 'Elif-be' },
-  temel: { nl: 'Temel Bilgileri', tr: 'Temel Bilgileri' },
+  temel: { nl: 'Temel Bilgileri', tr: 'Temel bilgileri' },
 };
 
 interface BoekhoudingSettings {
@@ -620,7 +620,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 leading-tight">{t.parentDashboard}</h1>
               <p className="flex items-center gap-1 text-xs sm:text-sm text-emerald-700 font-medium">
                 <Moon className="h-3 w-3 sm:h-3.5 sm:w-3.5 fill-emerald-700" />
-                {language === 'tr' ? 'Selamün Aleyküm' : 'Assalamu alaikum'}{user?.name ? `, ${user.name}` : ''}
+                {language === 'tr' ? 'Selamün aleyküm' : 'Assalamu alaikum'}{user?.name ? `, ${user.name}` : ''}
               </p>
             </div>
           </div>
@@ -701,7 +701,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                 activeTab === 'overview' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {language === 'tr' ? 'Genel Bakış' : 'Overzicht'}
+              {language === 'tr' ? 'Genel bakış' : 'Overzicht'}
             </button>
             <button
               onClick={() => setActiveTab('billing')}
@@ -772,7 +772,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                       </div>
                       <div>
                         <p className="text-xs text-emerald-200 font-medium uppercase tracking-wide">
-                          {language === 'tr' ? 'Toplam Ödenen' : 'Totaal betaald'}
+                          {language === 'tr' ? 'Toplam ödenen' : 'Totaal betaald'}
                         </p>
                         <p className="text-2xl sm:text-3xl font-bold">€{totalPaid.toFixed(2)} <span className="text-base font-normal text-emerald-200">/ €{totalDue.toFixed(2)}</span></p>
                       </div>
@@ -780,7 +780,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
                     <div>
                       <h3 className="text-sm font-semibold text-gray-700 mb-2">
-                        {language === 'tr' ? 'Kalem Bazında Durum' : 'Overzicht per post'}
+                        {language === 'tr' ? 'Kalem bazında durum' : 'Overzicht per post'}
                       </h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {visibleCategories.map((cat) => {
@@ -818,7 +818,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
                     <div>
                       <h3 className="text-sm font-semibold text-gray-700 mb-2">
-                        {language === 'tr' ? 'Ödeme Geçmişi' : 'Betaalgeschiedenis'}
+                        {language === 'tr' ? 'Ödeme geçmişi' : 'Betaalgeschiedenis'}
                       </h3>
                       {billingPayments.length === 0 ? (
                         <p className="text-sm text-gray-400">
@@ -1081,7 +1081,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-2">
                         <div>
                           <h4 className="font-semibold text-emerald-800">
-                            {session.className || (language === 'tr' ? 'Tüm Sınıflar' : 'Alle klassen')}
+                            {session.className || (language === 'tr' ? 'Tüm sınıflar' : 'Alle klassen')}
                           </h4>
                           <p className="text-sm text-gray-500">
                             {session.date} &middot; {session.minutesPerSlot} min {language === 'tr' ? '/ görüşme' : '/ gesprek'}
@@ -1105,7 +1105,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                             onClick={() => setBookingSessionId(isExpanded ? null : session.id)}
                             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-semibold"
                           >
-                            {language === 'tr' ? 'Zaman Dilimi Seç' : 'Kies Tijdslot'}
+                            {language === 'tr' ? 'Zaman dilimi seç' : 'Kies Tijdslot'}
                           </button>
                         )}
                       </div>

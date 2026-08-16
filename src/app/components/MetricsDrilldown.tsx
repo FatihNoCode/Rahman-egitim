@@ -33,7 +33,7 @@ export default function MetricsDrilldown({ language, apiRequest, rootScope, root
     students: tr ? 'Öğrenciler' : 'Leerlingen',
     teachers: tr ? 'Öğretmenler' : 'Docenten',
     admins: tr ? 'Yönetim' : 'Beheer',
-    oudergesprekken: tr ? 'Veli Görüşmeleri' : 'Oudergesprekken',
+    oudergesprekken: tr ? 'Veli görüşmeleri' : 'Oudergesprekken',
     events: tr ? 'Etkinlikler' : 'Evenementen',
     attendanceRate: tr ? 'Devam oranı' : 'Aanwezigheid',
     absences30: tr ? 'Devamsızlık (30 gün)' : 'Afwezig (30 dgn)',

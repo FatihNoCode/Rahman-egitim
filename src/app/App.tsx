@@ -215,25 +215,6 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // The cold-start greeting is written out a character at a time, and session
-  // checks usually finish sooner. Hold the splash until the line has actually
-  // landed (GreetingSplash reports it), with a ceiling so a stalled animation
-  // can never strand the app on the splash. Only in the app layout; on the web
-  // a reload should stay instant.
-  const [splashHeld, setSplashHeld] = useState(() => isAppLayout());
-  // An aal1-only session belonging to an account that requires MFA — set
-  // whenever /session or an API call reports MFA_REQUIRED, regardless of
-  // whether that session came from the password flow, a Google OAuth
-  // redirect, or a page reload that caught a challenge mid-flight. LoginPage
-  // renders the TOTP screen off this single flag so all three paths land on
-  // the same non-destructive prompt instead of each having its own logic.
-  const [mfaChallenge, setMfaChallenge] = useState(false);
-  // Superadmins act on a specific school by selecting it; actingSchoolId is
-  // sent as X-School-Id on every request so the backend can scope data.
-  const [actingSchoolId, setActingSchoolId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'superadmin' | 'admin'>('superadmin');
-  const [inviteToken, setInviteToken] = useState<string | null>(null);
-  const [isRecovery, setIsRecovery] = useState(false);
   const pathSegments = window.location.pathname.split('/');
   const pageParam = new URLSearchParams(window.location.search).get('page');
   // Canonical route is /inschrijven; the older /inschrijving path (and page
@@ -267,6 +248,33 @@ export default function App() {
   const isToetsPage =
     pathSegments.includes('toets') ||
     pageParam === 'toets';
+
+  // Standalone content pages: no login, no dashboard — just a document or a
+  // single-purpose flow. The cold-start greeting is for entering the app
+  // itself, not for these, so they're excluded from it below.
+  const isStandalonePublicPage =
+    isInschrijvingPage || isElifBaPage || isPrivacyPage || isDeleteAccountPage || isToetsPage;
+
+  // The cold-start greeting is written out a character at a time, and session
+  // checks usually finish sooner. Hold the splash until the line has actually
+  // landed (GreetingSplash reports it), with a ceiling so a stalled animation
+  // can never strand the app on the splash. Only in the app layout, and only
+  // when actually entering the app — a reload on the web, or a standalone page
+  // like the privacy policy, should stay instant.
+  const [splashHeld, setSplashHeld] = useState(() => isAppLayout() && !isStandalonePublicPage);
+  // An aal1-only session belonging to an account that requires MFA — set
+  // whenever /session or an API call reports MFA_REQUIRED, regardless of
+  // whether that session came from the password flow, a Google OAuth
+  // redirect, or a page reload that caught a challenge mid-flight. LoginPage
+  // renders the TOTP screen off this single flag so all three paths land on
+  // the same non-destructive prompt instead of each having its own logic.
+  const [mfaChallenge, setMfaChallenge] = useState(false);
+  // Superadmins act on a specific school by selecting it; actingSchoolId is
+  // sent as X-School-Id on every request so the backend can scope data.
+  const [actingSchoolId, setActingSchoolId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'superadmin' | 'admin'>('superadmin');
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [isRecovery, setIsRecovery] = useState(false);
 
   // Stable across renders so it can be depended on from a child's effect
   // without re-firing that effect on every unrelated App state change.
@@ -646,7 +654,7 @@ export default function App() {
   // GreetingSplash; the name comes from the last session, since the current one
   // is exactly what's still loading.
   if (loading || splashHeld) {
-    if (isAppLayout()) {
+    if (isAppLayout() && !isStandalonePublicPage) {
       return (
         <GreetingSplash
           language={language}

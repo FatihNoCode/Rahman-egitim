@@ -420,7 +420,7 @@ export default function InschrijvingPage() {
               onClick={() => { window.location.href = '/'; }}
               className="px-3 py-1 rounded text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition"
             >
-              {language === 'tr' ? 'Giriş Yap' : 'Inloggen'}
+              {language === 'tr' ? 'Giriş yap' : 'Inloggen'}
             </button>
             <button
               onClick={() => setLanguage('nl')}

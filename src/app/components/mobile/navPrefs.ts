@@ -50,17 +50,17 @@ export function mobileExtraNavItems(language: 'nl' | 'tr'): MobileNavItem[] {
 // Roles keep owning their role-specific tabs (Elif-Ba, Boekhouding, Importeren)
 // — this table is only for the ones that overlap.
 const SHARED_NAV: Record<string, { nl: string; tr: string; shortNl?: string; shortTr?: string; icon: LucideIcon }> = {
-  home: { nl: 'Start', tr: 'Ana Sayfa', icon: Home },
+  home: { nl: 'Start', tr: 'Ana sayfa', icon: Home },
   meldingen: {
     nl: 'Ziekmeldingen',
-    tr: 'Hastalık Bildirimleri',
+    tr: 'Hastalık bildirimleri',
     shortNl: 'Meldingen',
     shortTr: 'Bildirim',
     icon: BellRing,
   },
   oudergesprekken: {
     nl: 'Oudergesprekken',
-    tr: 'Veli Görüşmeleri',
+    tr: 'Veli görüşmeleri',
     shortNl: 'Gesprekken',
     shortTr: 'Görüşme',
     icon: MessageSquare,

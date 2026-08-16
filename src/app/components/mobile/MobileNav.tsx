@@ -97,8 +97,14 @@ export default function MobileNav({ items, active, onChange, language, floating 
   const onPointerDown = (e: React.PointerEvent) => {
     // Mouse right/middle clicks shouldn't start a drag.
     if (e.button !== 0) return;
+    // Pointer capture is deliberately *not* taken here — only once the finger
+    // actually moves (see onPointerMove). Capturing immediately would retarget
+    // the tap's compatibility click event from the button to this track div,
+    // which is what left the More button unclickable as a plain tap: dragging
+    // needs capture to keep tracking the finger past the element's edge, but a
+    // plain tap never leaves the element, so it doesn't need it — and skipping
+    // it lets the button's own onClick fire normally for a tap.
     dragging.current = true;
-    e.currentTarget.setPointerCapture(e.pointerId);
     const i = slotAt(e.clientX);
     downSlot.current = i;
     moved.current = false;
@@ -110,7 +116,12 @@ export default function MobileNav({ items, active, onChange, language, floating 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging.current) return;
     const i = slotAt(e.clientX);
-    if (i !== downSlot.current) moved.current = true;
+    if (i !== downSlot.current) {
+      moved.current = true;
+      // First movement past the starting slot: this is now a drag, so start
+      // capturing to keep receiving events even if the finger leaves the bar.
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
     setPressed(i);
     selectAt(i);
   };

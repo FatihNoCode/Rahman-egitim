@@ -399,7 +399,7 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
             <BrandMark />
             <div className="flex items-center justify-between gap-3 mb-6">
               <h2 className="text-lg font-semibold text-gray-800">
-                {language === 'tr' ? 'Şifremi Unuttum' : 'Wachtwoord vergeten'}
+                {language === 'tr' ? 'Şifremi unuttum' : 'Wachtwoord vergeten'}
               </h2>
               <LanguageToggle />
             </div>
@@ -465,7 +465,7 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
                   disabled={loading}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-50 text-sm shadow-md shadow-emerald-900/10"
                 >
-                  {loading ? t.loading : language === 'tr' ? 'Bağlantı Gönder' : 'Link versturen'}
+                  {loading ? t.loading : language === 'tr' ? 'Bağlantı gönder' : 'Link versturen'}
                 </button>
                 <button type="button" onClick={() => { setIsForgot(false); setError(''); }} className="w-full text-gray-400 hover:text-gray-600 text-sm transition">
                   {language === 'tr' ? 'İptal' : 'Annuleren'}
@@ -708,7 +708,7 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
           className="w-full flex items-center justify-center gap-2 mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-sm transition text-sm sm:text-base"
         >
           <span lang="ar" dir="rtl" style={{ fontFamily: 'var(--font-arabic), serif', fontSize: 20 }}>أ ب</span>
-          {language === 'tr' ? 'Elif-Be Öğren' : 'Elif-Ba leren'}
+          {language === 'tr' ? 'Elif-Be öğren' : 'Elif-Ba leren'}
           <Sparkles className="h-4 w-4" />
         </button>
 
@@ -723,7 +723,7 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
 
         <div className="mt-4 flex items-center justify-center gap-2 text-xs">
           <a href="/privacy" className="text-gray-400 hover:text-gray-600 transition">
-            {language === 'tr' ? 'Gizlilik Politikası' : 'Privacybeleid'}
+            {language === 'tr' ? 'Gizlilik politikası' : 'Privacybeleid'}
           </a>
           <span className="text-gray-300">·</span>
           {/* Someone who wants their account gone is, by definition, someone

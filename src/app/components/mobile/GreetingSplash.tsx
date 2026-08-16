@@ -79,12 +79,22 @@ const STEP_MS = 85;
 const FADE_MS = 700;
 
 export default function GreetingSplash({ language, name, onDone }: GreetingSplashProps) {
-  const full = greetingFor(language, name ?? rememberedName());
+  const resolvedName = name ?? rememberedName();
+  const salaam = language === 'nl' ? 'Assalamu alaikum' : 'Selamun aleykum';
+  const full = greetingFor(language, resolvedName);
+
+  // The salaam always sits on its own row; the name — which can run long —
+  // gets its own row(s) below and wraps on its own word boundaries instead of
+  // fighting the salaam for space on one line. Each screen wraps it at
+  // whatever width it has, so this is checked per-screen for free.
+  const salaamChars = [...(resolvedName ? `${salaam},` : salaam)];
+  const nameChars = resolvedName ? [...resolvedName] : [];
 
   // Each character carries its own delayed fade rather than the text being
   // re-sliced on a timer. One render, no per-character state, and the easing
   // is the browser's job — which is what lets the strokes overlap softly.
-  const chars = [...full];
+  // The name's characters continue the same cadence right after the salaam.
+  const chars = [...salaamChars, ...nameChars];
   const totalMs = chars.length * STEP_MS + FADE_MS;
 
   // Through a ref so an inline callback from the parent can't restart the
@@ -104,15 +114,15 @@ export default function GreetingSplash({ language, name, onDone }: GreetingSplas
         className="h-24 w-24 object-contain"
         style={{ animation: 'greeting-rise 700ms cubic-bezier(0.32, 0.72, 0, 1) both' }}
       />
-      <p
-        className="min-h-[2.5rem] text-center text-3xl leading-snug text-emerald-800"
+      <div
+        className="flex min-h-[2.5rem] flex-col items-center gap-1 text-center text-3xl leading-snug text-emerald-800"
         style={{ fontFamily: SCRIPT_FONT }}
       >
         {/* Screen readers get the line in one piece; the split below is purely
             visual and would otherwise be announced letter by letter. */}
         <span className="sr-only">{full}</span>
-        <span aria-hidden>
-          {chars.map((ch, i) => (
+        <p aria-hidden className="whitespace-nowrap">
+          {salaamChars.map((ch, i) => (
             <span
               key={i}
               className="inline-block whitespace-pre"
@@ -124,8 +134,24 @@ export default function GreetingSplash({ language, name, onDone }: GreetingSplas
               {ch}
             </span>
           ))}
-        </span>
-      </p>
+        </p>
+        {nameChars.length > 0 && (
+          <p aria-hidden className="max-w-full">
+            {nameChars.map((ch, i) => (
+              <span
+                key={i}
+                className="inline-block whitespace-pre"
+                style={{
+                  animation: `greeting-char ${FADE_MS}ms cubic-bezier(0.32, 0.72, 0, 1) both`,
+                  animationDelay: `${(salaamChars.length + i) * STEP_MS}ms`,
+                }}
+              >
+                {ch}
+              </span>
+            ))}
+          </p>
+        )}
+      </div>
       <span className="sr-only">Yükleniyor... / Laden...</span>
     </div>
   );

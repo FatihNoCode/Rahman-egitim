@@ -561,7 +561,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     // Start / Ana Sayfa, the same first tab every role lands on — see
     // SHARED_NAV in navPrefs. What it shows here is the teacher's day.
     sharedNavItem('home', language, 'signals'),
-    { id: 'attendance', label: language === 'tr' ? 'Ders Kaydı' : 'Lesregistratie', shortLabel: language === 'tr' ? 'Ders' : 'Les', icon: ClipboardList },
+    { id: 'attendance', label: language === 'tr' ? 'Ders kaydı' : 'Lesregistratie', shortLabel: language === 'tr' ? 'Ders' : 'Les', icon: ClipboardList },
     sharedNavItem('agenda', language),
     sharedNavItem('meldingen', language),
     sharedNavItem('oudergesprekken', language),
@@ -633,7 +633,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 leading-tight">{t.teacherDashboard}</h1>
               <p className="flex items-center gap-1 text-xs sm:text-sm text-emerald-700 font-medium">
                 <Moon className="h-3 w-3 sm:h-3.5 sm:w-3.5 fill-emerald-700" />
-                {language === 'tr' ? 'Selamün Aleyküm' : 'Assalamu alaikum'}{user?.name ? `, ${user.name}` : ''}
+                {language === 'tr' ? 'Selamün aleyküm' : 'Assalamu alaikum'}{user?.name ? `, ${user.name}` : ''}
               </p>
             </div>
           </div>
@@ -718,7 +718,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                 {/* ── Step 1: Lesson summary (mandatory, visible to parents) ── */}
                 <RegistrationStep
                   number={1}
-                  title={language === 'tr' ? 'Ders Özeti' : 'Lessamenvatting'}
+                  title={language === 'tr' ? 'Ders özeti' : 'Lessamenvatting'}
                   required
                   done={lessonSummary.trim().length > 0}
                   status={
@@ -1056,7 +1056,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                           <div className="bg-gray-50 p-4 rounded-lg space-y-3">
                             <div>
                               <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-                                {language === 'tr' ? 'Sure Seç' : 'Selecteer Soera'}
+                                {language === 'tr' ? 'Sure seç' : 'Selecteer Soera'}
                               </label>
                               <select
                                 value={selectedSurah}
@@ -1083,7 +1083,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                                 className="w-4 h-4"
                               />
                               <span className="text-xs sm:text-sm font-medium text-gray-700">
-                                {language === 'tr' ? 'Tüm Sure' : 'Hele Soera'}
+                                {language === 'tr' ? 'Tüm sure' : 'Hele Soera'}
                               </span>
                             </label>
                             {!isWholeSurah && (
@@ -1204,7 +1204,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                   {isSaving
                     ? (language === 'tr' ? 'Kaydediliyor...' : 'Opslaan...')
                     : (addHomework
-                        ? (language === 'tr' ? 'Yoklama, Davranış ve Ödev Kaydet' : 'Aanwezigheid, Gedrag & Huiswerk Opslaan')
+                        ? (language === 'tr' ? 'Yoklama, davranış ve ödev kaydet' : 'Aanwezigheid, Gedrag & Huiswerk Opslaan')
                         : t.save)}
                 </button>
               </div>
@@ -1250,7 +1250,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             {activeTab === 'oudergesprekken' && (
               <div>
                 <h3 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-4">
-                  {language === 'tr' ? 'Veli Görüşmeleri' : 'Oudergesprekken'}
+                  {language === 'tr' ? 'Veli görüşmeleri' : 'Oudergesprekken'}
                 </h3>
                 {conferSessions.length === 0 ? (
                   <p className="text-gray-400 text-sm">
@@ -1270,7 +1270,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                           >
                             <div>
                               <h4 className="font-semibold text-emerald-800">
-                                {session.className || (language === 'tr' ? 'Tüm Sınıflar' : 'Alle klassen')}
+                                {session.className || (language === 'tr' ? 'Tüm sınıflar' : 'Alle klassen')}
                               </h4>
                               <p className="text-sm text-gray-500">
                                 {session.date} &middot; {session.startTime} - {session.slots[session.slots.length - 1]?.end || session.endTime}

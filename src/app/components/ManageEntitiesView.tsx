@@ -539,7 +539,7 @@ export default function ManageEntitiesView({
                     {/* Homework details */}
                     <div className="bg-gray-50 p-3 rounded">
                       <p className="text-sm font-medium text-gray-600 mb-1">
-                        {language === 'tr' ? 'Ödev Detayı' : 'Huiswerk Details'}
+                        {language === 'tr' ? 'Ödev detayı' : 'Huiswerk Details'}
                       </p>
                       {dayData.homework.length > 0 ? (
                         <ul className="text-xs space-y-2">
@@ -595,7 +595,7 @@ export default function ManageEntitiesView({
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <div className="mb-6">
               <h4 className="text-lg font-semibold text-gray-700 mb-2">
-                {language === 'tr' ? 'Son Giriş' : 'Laatste Login'}
+                {language === 'tr' ? 'Son giriş' : 'Laatste Login'}
               </h4>
               <p className="text-gray-600">
                 {parentDetails.lastCheckIn
@@ -1042,7 +1042,7 @@ export default function ManageEntitiesView({
           <div className="bg-white rounded-xl p-6 max-w-md w-full">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-semibold text-emerald-800">
-                {language === 'tr' ? 'Öğrenciyi Düzenle' : 'Leerling Bewerken'}
+                {language === 'tr' ? 'Öğrenciyi düzenle' : 'Leerling Bewerken'}
               </h3>
               <button
                 onClick={() => setEditingStudent(null)}

@@ -966,6 +966,94 @@ app.get("/make-server-6679cacd/health", (c) => {
   return c.json({ status: "ok" });
 });
 
+// ============= MONITORING (Sentry + PostHog) =============
+//
+// Superadmin-only summary of app health, pulled live from Sentry and
+// PostHog. Both API tokens are read from env at request time — if a token
+// isn't set, that service's section is reported as unconfigured instead of
+// erroring, so the tab still renders while someone finishes setup.
+
+const SENTRY_ORG = 'rahman-egitim';
+const SENTRY_PROJECT = 'rahman-egitim-app';
+const SENTRY_REGION_HOST = 'de.sentry.io';
+const POSTHOG_HOST = 'eu.posthog.com';
+const POSTHOG_PROJECT_ID = '250041';
+
+app.get("/make-server-6679cacd/monitoring/summary", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error || !user) return c.json({ error: 'Unauthorized' }, 401);
+    const requester = await getUserData(user.id);
+    if (requester?.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmins can view monitoring data' }, 403);
+    }
+
+    const sentryToken = Deno.env.get('SENTRY_AUTH_TOKEN');
+    const posthogKey = Deno.env.get('POSTHOG_PERSONAL_API_KEY');
+
+    const [sentry, posthog] = await Promise.all([
+      sentryToken ? fetchSentrySummary(sentryToken) : Promise.resolve(null),
+      posthogKey ? fetchPostHogSummary(posthogKey) : Promise.resolve(null),
+    ]);
+
+    return c.json({
+      sentry: sentry ?? { configured: false },
+      posthog: posthog ?? { configured: false },
+    });
+  } catch (error: any) {
+    console.error('Error building monitoring summary:', error);
+    return c.json({ error: error.message || 'Failed to load monitoring data' }, 500);
+  }
+});
+
+async function fetchSentrySummary(token: string) {
+  const url = `https://${SENTRY_REGION_HOST}/api/0/projects/${SENTRY_ORG}/${SENTRY_PROJECT}/issues/?query=is%3Aunresolved&statsPeriod=24h&limit=5&sort=freq`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    console.error('Sentry API error:', res.status, await res.text());
+    return { configured: true, error: `Sentry API returned ${res.status}` };
+  }
+  const issues = await res.json();
+  const hits = res.headers.get('X-Hits');
+  return {
+    configured: true,
+    unresolvedCount: hits ? Number(hits) : issues.length,
+    issues: issues.map((i: any) => ({
+      id: i.id,
+      title: i.title,
+      level: i.level,
+      count: i.count,
+      lastSeen: i.lastSeen,
+      permalink: i.permalink,
+    })),
+  };
+}
+
+async function fetchPostHogSummary(apiKey: string) {
+  const res = await fetch(`https://${POSTHOG_HOST}/api/projects/${POSTHOG_PROJECT_ID}/query/`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: {
+        kind: 'HogQLQuery',
+        query: 'SELECT count(), count(DISTINCT person_id) FROM events WHERE timestamp >= today()',
+      },
+    }),
+  });
+  if (!res.ok) {
+    console.error('PostHog API error:', res.status, await res.text());
+    return { configured: true, error: `PostHog API returned ${res.status}` };
+  }
+  const data = await res.json();
+  const row = data.results?.[0] || [0, 0];
+  return {
+    configured: true,
+    eventsToday: Number(row[0] ?? 0),
+    activeUsersToday: Number(row[1] ?? 0),
+    dashboardUrl: `https://${POSTHOG_HOST}/project/${POSTHOG_PROJECT_ID}`,
+  };
+}
+
 // ============= AUTH ROUTES =============
 
 app.post("/make-server-6679cacd/signup", async (c) => {

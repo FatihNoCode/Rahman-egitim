@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2, BarChart3, GraduationCap, BookOpen, CalendarCheck, Send } from 'lucide-react';
+import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2, BarChart3, GraduationCap, BookOpen, CalendarCheck, Send, Activity, AlertTriangle, ExternalLink } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import InboxView from './InboxView';
@@ -115,6 +115,35 @@ interface OrgSummary {
   regionTotals?: { north: RegionTotal; south: RegionTotal; unassigned: RegionTotal };
 }
 
+interface MonitoringIssue {
+  id: string;
+  title: string;
+  level: string;
+  count: string;
+  lastSeen: string;
+  permalink: string;
+}
+
+interface MonitoringSentry {
+  configured: boolean;
+  error?: string;
+  unresolvedCount?: number;
+  issues?: MonitoringIssue[];
+}
+
+interface MonitoringPostHog {
+  configured: boolean;
+  error?: string;
+  eventsToday?: number;
+  activeUsersToday?: number;
+  dashboardUrl?: string;
+}
+
+interface MonitoringSummary {
+  sentry: MonitoringSentry;
+  posthog: MonitoringPostHog;
+}
+
 interface SuperAdminDashboardProps {
   onLogout: () => void;
   onEnterSchool: (schoolId: string) => void;
@@ -187,6 +216,19 @@ const rt = {
     testerRemoveFailed: 'Kon toegang niet intrekken',
     confirmRemoveTester: 'Toegang van dit test-account intrekken?',
     revokeAccess: 'Toegang intrekken',
+    monitoringTab: 'Systeemstatus',
+    monitoringTitle: 'Foutmeldingen en gebruik',
+    errorsCard: 'Openstaande fouten',
+    errorsHint: 'Onopgeloste Sentry-meldingen van de afgelopen 24 uur, inclusief uitval van de website.',
+    activeUsersCard: 'Actieve gebruikers vandaag',
+    activeUsersHint: 'Unieke personen die de app vandaag hebben gebruikt (PostHog).',
+    eventsCard: 'Gebeurtenissen vandaag',
+    eventsHint: 'Totaal aantal geregistreerde acties in de app vandaag.',
+    recentIssues: 'Recente meldingen',
+    noIssues: 'Geen openstaande meldingen.',
+    openInSentry: 'Open in Sentry',
+    openInPostHog: 'Open in PostHog',
+    notConfigured: 'Nog niet ingesteld — vraag de ontwikkelaar om de API-sleutel toe te voegen.',
   },
   tr: {
     regionalTab: 'Bölge yöneticileri',
@@ -251,6 +293,19 @@ const rt = {
     testerRemoveFailed: 'Erişim iptal edilemedi',
     confirmRemoveTester: 'Bu test hesabının erişimi iptal edilsin mi?',
     revokeAccess: 'Erişimi iptal et',
+    monitoringTab: 'Sistem durumu',
+    monitoringTitle: 'Hatalar ve kullanım',
+    errorsCard: 'Açık hatalar',
+    errorsHint: 'Son 24 saatteki çözülmemiş Sentry bildirimleri, site kesintileri dahil.',
+    activeUsersCard: 'Bugünkü aktif kullanıcılar',
+    activeUsersHint: 'Bugün uygulamayı kullanan tekil kişi sayısı (PostHog).',
+    eventsCard: 'Bugünkü olaylar',
+    eventsHint: 'Bugün uygulamada kaydedilen toplam işlem sayısı.',
+    recentIssues: 'Son bildirimler',
+    noIssues: 'Açık bildirim yok.',
+    openInSentry: "Sentry'de aç",
+    openInPostHog: "PostHog'da aç",
+    notConfigured: 'Henüz ayarlanmadı — geliştiriciden API anahtarını eklemesini isteyin.',
   },
 };
 
@@ -307,7 +362,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   // every other role opens on.
   const [tab, setTab] = useHashTab<string>(
     app ? 'performance' : 'locations',
-    ['locations', 'inbox', 'regional', 'performance', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['locations', 'inbox', 'regional', 'performance', 'monitoring', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
 
   const [orgSummary, setOrgSummary] = useState<OrgSummary | null>(null);
@@ -330,12 +385,33 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   const [creatingTester, setCreatingTester] = useState(false);
   const [removingTesterId, setRemovingTesterId] = useState<string | null>(null);
 
+  const [monitoring, setMonitoring] = useState<MonitoringSummary | null>(null);
+  const [loadingMonitoring, setLoadingMonitoring] = useState(false);
+
   useEffect(() => {
     loadData();
     loadRegionalData();
     loadMfaPolicy();
     loadDemoTesters();
   }, []);
+
+  useEffect(() => {
+    if (tab !== 'monitoring' || monitoring) return;
+    loadMonitoring();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  const loadMonitoring = async () => {
+    setLoadingMonitoring(true);
+    try {
+      const data = await apiRequest('/monitoring/summary');
+      setMonitoring(data);
+    } catch (error) {
+      console.error('Error loading monitoring summary:', error);
+    } finally {
+      setLoadingMonitoring(false);
+    }
+  };
 
   const loadDemoTesters = async () => {
     setLoadingDemoTesters(true);
@@ -555,12 +631,14 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
     { id: 'locations', label: t.locations, icon: MapPin },
     { id: 'inbox', label: t.inbox, icon: InboxIcon },
     { id: 'regional', label: rtx.regionalTab, shortLabel: language === 'tr' ? 'Bölge' : 'Regio', icon: Users },
+    { id: 'monitoring', label: rtx.monitoringTab, icon: Activity },
   ];
   const [navOrder, setNavOrder] = useNavOrder('superadmin', [
     'performance',
     'locations',
     'inbox',
     'regional',
+    'monitoring',
     MOBILE_PREFS_ID,
   ]);
   const allMobileItems: MobileNavItem[] = [...navItems, ...mobileExtraNavItems(language)];
@@ -651,6 +729,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
               { id: 'inbox', label: t.inbox, icon: InboxIcon },
               { id: 'regional', label: rtx.regionalTab, icon: Users },
               { id: 'performance', label: rtx.performanceTab, icon: BarChart3 },
+              { id: 'monitoring', label: rtx.monitoringTab, icon: Activity },
             ]}
             activeId={tab}
             onSelect={(id) => setTab(id as typeof tab)}
@@ -1153,6 +1232,95 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                   </h3>
                   <MetricsDrilldown language={language} apiRequest={apiRequest} rootScope="org" />
                 </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {tab === 'monitoring' && (
+          <div className="space-y-4 sm:space-y-6">
+            <h2 className="text-lg font-semibold text-gray-800">{rtx.monitoringTitle}</h2>
+            {loadingMonitoring ? (
+              <div className="text-center py-24 text-gray-400">
+                <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                {t.loading}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <MetricCard
+                    icon={AlertTriangle}
+                    label={rtx.errorsCard}
+                    hint={monitoring?.sentry.configured ? rtx.errorsHint : rtx.notConfigured}
+                    value={monitoring?.sentry.configured ? (monitoring.sentry.unresolvedCount ?? 0) : '—'}
+                  />
+                  <MetricCard
+                    icon={Users}
+                    label={rtx.activeUsersCard}
+                    hint={monitoring?.posthog.configured ? rtx.activeUsersHint : rtx.notConfigured}
+                    value={monitoring?.posthog.configured ? (monitoring.posthog.activeUsersToday ?? 0) : '—'}
+                  />
+                  <MetricCard
+                    icon={Activity}
+                    label={rtx.eventsCard}
+                    hint={monitoring?.posthog.configured ? rtx.eventsHint : rtx.notConfigured}
+                    value={monitoring?.posthog.configured ? (monitoring.posthog.eventsToday ?? 0) : '—'}
+                  />
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-semibold text-gray-800">{rtx.recentIssues}</h3>
+                    <a
+                      href="https://rahman-egitim.sentry.io/issues/?project=4511921049567312&query=is%3Aunresolved"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:text-emerald-800"
+                    >
+                      {rtx.openInSentry} <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                  {!monitoring?.sentry.configured ? (
+                    <div className="text-center py-8 text-gray-400 text-sm">{rtx.notConfigured}</div>
+                  ) : !monitoring.sentry.issues || monitoring.sentry.issues.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400 text-sm">{rtx.noIssues}</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {monitoring.sentry.issues.map((issue) => (
+                            <tr key={issue.id} className="border-b border-gray-50 last:border-0">
+                              <td className="py-2.5 pr-3">
+                                <a
+                                  href={issue.permalink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium text-gray-800 hover:text-emerald-700"
+                                >
+                                  {issue.title}
+                                </a>
+                                <p className="text-xs text-gray-400">{new Date(issue.lastSeen).toLocaleString(language === 'tr' ? 'tr-TR' : 'nl-NL')}</p>
+                              </td>
+                              <td className="py-2.5 pr-3 text-gray-500 whitespace-nowrap">{issue.level}</td>
+                              <td className="py-2.5 text-gray-700 whitespace-nowrap text-right">{issue.count}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {monitoring?.posthog.configured && monitoring.posthog.dashboardUrl && (
+                  <a
+                    href={monitoring.posthog.dashboardUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:text-emerald-800"
+                  >
+                    {rtx.openInPostHog} <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
               </>
             )}
           </div>

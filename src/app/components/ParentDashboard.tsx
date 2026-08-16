@@ -720,6 +720,14 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               {language === 'tr' ? 'Notlar' : 'Cijfers'}
             </button>
             <button
+              onClick={() => setActiveTab('oudergesprekken')}
+              className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm ${
+                activeTab === 'oudergesprekken' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {language === 'tr' ? 'Veli görüşmeleri' : 'Oudergesprekken'}
+            </button>
+            <button
               onClick={() => setActiveTab('alifba')}
               className="px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1.5"
             >

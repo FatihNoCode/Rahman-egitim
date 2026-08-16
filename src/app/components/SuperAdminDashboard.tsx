@@ -10,6 +10,7 @@ import type { LocationRecord } from './LocationsMap';
 import booksLogo from '../../imports/logo.svg';
 import { notify, confirmDialog } from './ui/feedback';
 import MetricsDrilldown from './MetricsDrilldown';
+import MonitoringBarChart from './MonitoringCharts';
 import TestRoleSwitcher from './TestRoleSwitcher';
 import { isNative, isAppLayout } from '../../lib/native';
 import MobileNav from './mobile/MobileNav';
@@ -124,11 +125,17 @@ interface MonitoringIssue {
   permalink: string;
 }
 
+interface MonitoringDailyPoint {
+  date: string;
+  count: number;
+}
+
 interface MonitoringSentry {
   configured: boolean;
   error?: string;
   unresolvedCount?: number;
   issues?: MonitoringIssue[];
+  daily?: MonitoringDailyPoint[];
 }
 
 interface MonitoringPostHog {
@@ -136,6 +143,8 @@ interface MonitoringPostHog {
   error?: string;
   eventsToday?: number;
   activeUsersToday?: number;
+  dailyEvents?: MonitoringDailyPoint[];
+  dailyActiveUsers?: MonitoringDailyPoint[];
   dashboardUrl?: string;
 }
 
@@ -229,6 +238,9 @@ const rt = {
     openInSentry: 'Open in Sentry',
     openInPostHog: 'Open in PostHog',
     notConfigured: 'Nog niet ingesteld — vraag de ontwikkelaar om de API-sleutel toe te voegen.',
+    errorsChartTitle: 'Fouten per dag (laatste 14 dagen)',
+    eventsChartTitle: 'Gebeurtenissen per dag (laatste 14 dagen)',
+    activeUsersChartTitle: 'Actieve gebruikers per dag (laatste 14 dagen)',
   },
   tr: {
     regionalTab: 'Bölge yöneticileri',
@@ -306,6 +318,9 @@ const rt = {
     openInSentry: "Sentry'de aç",
     openInPostHog: "PostHog'da aç",
     notConfigured: 'Henüz ayarlanmadı — geliştiriciden API anahtarını eklemesini isteyin.',
+    errorsChartTitle: 'Günlük hatalar (son 14 gün)',
+    eventsChartTitle: 'Günlük olaylar (son 14 gün)',
+    activeUsersChartTitle: 'Günlük aktif kullanıcılar (son 14 gün)',
   },
 };
 
@@ -1267,6 +1282,41 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                     value={monitoring?.posthog.configured ? (monitoring.posthog.eventsToday ?? 0) : '—'}
                   />
                 </div>
+
+                {monitoring?.sentry.configured && monitoring.sentry.daily && (
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
+                    <h3 className="text-base font-semibold text-gray-800 mb-4">{rtx.errorsChartTitle}</h3>
+                    <MonitoringBarChart
+                      data={monitoring.sentry.daily}
+                      color="#d03b3b"
+                      label={rtx.errorsChartTitle}
+                      locale={language === 'tr' ? 'tr-TR' : 'nl-NL'}
+                    />
+                  </div>
+                )}
+
+                {monitoring?.posthog.configured && monitoring.posthog.dailyEvents && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
+                      <h3 className="text-base font-semibold text-gray-800 mb-4">{rtx.eventsChartTitle}</h3>
+                      <MonitoringBarChart
+                        data={monitoring.posthog.dailyEvents}
+                        color="#059669"
+                        label={rtx.eventsChartTitle}
+                        locale={language === 'tr' ? 'tr-TR' : 'nl-NL'}
+                      />
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
+                      <h3 className="text-base font-semibold text-gray-800 mb-4">{rtx.activeUsersChartTitle}</h3>
+                      <MonitoringBarChart
+                        data={monitoring.posthog.dailyActiveUsers ?? []}
+                        color="#059669"
+                        label={rtx.activeUsersChartTitle}
+                        locale={language === 'tr' ? 'tr-TR' : 'nl-NL'}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
                   <div className="flex items-center justify-between mb-4">

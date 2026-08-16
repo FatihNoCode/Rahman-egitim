@@ -1006,15 +1006,48 @@ app.get("/make-server-6679cacd/monitoring/summary", async (c) => {
   }
 });
 
-async function fetchSentrySummary(token: string) {
-  const url = `https://${SENTRY_REGION_HOST}/api/0/projects/${SENTRY_ORG}/${SENTRY_PROJECT}/issues/?query=is%3Aunresolved&statsPeriod=24h&limit=5&sort=freq`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) {
-    console.error('Sentry API error:', res.status, await res.text());
-    return { configured: true, error: `Sentry API returned ${res.status}` };
+const DAILY_WINDOW_DAYS = 14;
+
+// Zero-fill a sparse {date, count} series onto every day in the window, so a
+// quiet day renders as a real zero bar instead of a gap the reader has to
+// interpret.
+function zeroFillDaily(counts: Map<string, number>): { date: string; count: number }[] {
+  const out: { date: string; count: number }[] = [];
+  for (let i = DAILY_WINDOW_DAYS - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    out.push({ date: key, count: counts.get(key) ?? 0 });
   }
-  const issues = await res.json();
-  const hits = res.headers.get('X-Hits');
+  return out;
+}
+
+async function fetchSentrySummary(token: string) {
+  const issuesUrl = `https://${SENTRY_REGION_HOST}/api/0/projects/${SENTRY_ORG}/${SENTRY_PROJECT}/issues/?query=is%3Aunresolved&statsPeriod=24h&limit=5&sort=freq`;
+  const now = Math.floor(Date.now() / 1000);
+  const since = now - DAILY_WINDOW_DAYS * 86400;
+  const statsUrl = `https://${SENTRY_REGION_HOST}/api/0/projects/${SENTRY_ORG}/${SENTRY_PROJECT}/stats/?stat=received&resolution=1d&since=${since}&until=${now}`;
+
+  const [issuesRes, statsRes] = await Promise.all([
+    fetch(issuesUrl, { headers: { Authorization: `Bearer ${token}` } }),
+    fetch(statsUrl, { headers: { Authorization: `Bearer ${token}` } }),
+  ]);
+  if (!issuesRes.ok) {
+    console.error('Sentry issues API error:', issuesRes.status, await issuesRes.text());
+    return { configured: true, error: `Sentry API returned ${issuesRes.status}` };
+  }
+  const issues = await issuesRes.json();
+  const hits = issuesRes.headers.get('X-Hits');
+
+  let daily: { date: string; count: number }[] = [];
+  if (statsRes.ok) {
+    const points: [number, number][] = await statsRes.json();
+    const counts = new Map(points.map(([ts, count]) => [new Date(ts * 1000).toISOString().slice(0, 10), count]));
+    daily = zeroFillDaily(counts);
+  } else {
+    console.error('Sentry stats API error:', statsRes.status, await statsRes.text());
+  }
+
   return {
     configured: true,
     unresolvedCount: hits ? Number(hits) : issues.length,
@@ -1026,6 +1059,7 @@ async function fetchSentrySummary(token: string) {
       lastSeen: i.lastSeen,
       permalink: i.permalink,
     })),
+    daily,
   };
 }
 
@@ -1036,7 +1070,11 @@ async function fetchPostHogSummary(apiKey: string) {
     body: JSON.stringify({
       query: {
         kind: 'HogQLQuery',
-        query: 'SELECT count(), count(DISTINCT person_id) FROM events WHERE timestamp >= today()',
+        query: `SELECT toDate(timestamp) AS day, count(), count(DISTINCT person_id)
+                 FROM events
+                 WHERE timestamp >= today() - ${DAILY_WINDOW_DAYS}
+                 GROUP BY day
+                 ORDER BY day`,
       },
     }),
   });
@@ -1045,11 +1083,18 @@ async function fetchPostHogSummary(apiKey: string) {
     return { configured: true, error: `PostHog API returned ${res.status}` };
   }
   const data = await res.json();
-  const row = data.results?.[0] || [0, 0];
+  const rows: [string, number, number][] = data.results || [];
+  const eventCounts = new Map(rows.map((r) => [String(r[0]).slice(0, 10), r[1]]));
+  const userCounts = new Map(rows.map((r) => [String(r[0]).slice(0, 10), r[2]]));
+
+  const todayKey = new Date().toISOString().slice(0, 10);
+
   return {
     configured: true,
-    eventsToday: Number(row[0] ?? 0),
-    activeUsersToday: Number(row[1] ?? 0),
+    eventsToday: eventCounts.get(todayKey) ?? 0,
+    activeUsersToday: userCounts.get(todayKey) ?? 0,
+    dailyEvents: zeroFillDaily(eventCounts),
+    dailyActiveUsers: zeroFillDaily(userCounts),
     dashboardUrl: `https://${POSTHOG_HOST}/project/${POSTHOG_PROJECT_ID}`,
   };
 }

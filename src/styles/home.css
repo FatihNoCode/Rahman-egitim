@@ -1,8 +1,9 @@
 /* HomePage.tsx — the public marketing landing page. Small, self-contained
    motion: a mount-time rise/fade for the hero and section cards, a slow idle
-   float on the phone mockup and its floating UI chips, and — driven from
-   HomePage.tsx rather than CSS — a scroll-linked tilt (with a mouse-parallax
-   layer on top) that settles the phone flat as it comes into view. */
+   float on the phone mockup, and — driven from HomePage.tsx rather than CSS —
+   a scroll-linked tilt with a cursor-follow parallax layered on top, which
+   also drives the screen glare and the contact shadow below via the
+   --glare-shift / --shadow-shift custom properties set on the device. */
 
 @keyframes home-rise {
   from {
@@ -20,17 +21,6 @@
   }
 }
 
-/* A second float timing/amplitude for the second floating chip, so the two
-   don't drift in lockstep — same idea as home-float, just out of phase. */
-@keyframes home-float-alt {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-7px);
-  }
-}
-
 .home-rise {
   animation: home-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -43,41 +33,41 @@
    .home-float) would silently replace .home-rise's entrance animation
    rather than adding to it, because both rules have equal specificity and
    only the later one in source order wins the whole property. Elements that
-   need both the one-shot rise-in *and* a continuous float use one of these
-   combined classes instead of stacking .home-rise with .home-float. */
+   need both the one-shot rise-in *and* a continuous float use this combined
+   class instead of stacking .home-rise with .home-float. */
 .home-rise-float {
   animation:
     home-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both,
     home-float 6s ease-in-out infinite;
 }
 
-.home-rise-float-alt {
-  animation:
-    home-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both,
-    home-float-alt 5s ease-in-out infinite;
-}
-
-/* A fixed diagonal highlight across the phone's screen, not an animated
-   sweep — reads as glass catching the light once, the way a real screen
-   photographed at an angle would, rather than a looping ad-banner effect. */
+/* A glass highlight across the phone's screen. It slides with the device's
+   tilt (--glare-shift, written from usePhoneMotion) the way a reflection on
+   real glass tracks the viewing angle, rather than sweeping on a loop — a
+   looping sweep reads as an ad banner, a reflection that answers the cursor
+   reads as glass. */
 .phone-glass::before {
   content: '';
   position: absolute;
-  inset: 0;
+  inset: -20% -40%;
+  transform: translateX(var(--glare-shift, 0%));
   background: linear-gradient(
     115deg,
     rgba(255, 255, 255, 0.5) 0%,
     rgba(255, 255, 255, 0.08) 18%,
-    transparent 32%
+    transparent 34%
   );
+}
+
+/* The contact shadow leans opposite the tilt, which is most of what sells the
+   device as an object sitting in space rather than a flat image. */
+.phone-shadow {
+  transform: translateX(calc(-50% + var(--shadow-shift, 0px)));
 }
 
 @media (prefers-reduced-motion: reduce) {
   .home-rise,
   .home-rise-float,
-  .home-rise-float-alt {
-    animation: none;
-  }
   .home-float {
     animation: none;
   }

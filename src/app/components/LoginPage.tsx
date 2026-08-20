@@ -490,7 +490,7 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
           <div className="flex items-center justify-between mb-1">
             <a
-              href="/home"
+              href="/"
               className="flex items-center gap-1 text-gray-400 hover:text-gray-600 text-xs font-medium transition"
             >
               <ArrowLeft className="h-3.5 w-3.5" />

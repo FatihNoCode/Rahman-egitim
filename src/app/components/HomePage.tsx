@@ -273,7 +273,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
               </button>
             </div>
             <a
-              href="/"
+              href="/login"
               className="px-4 py-2 rounded-full bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold shadow-sm transition"
             >
               {text.login}
@@ -310,7 +310,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
             </p>
             <div className="home-rise flex items-center justify-center gap-3 mt-9" style={{ animationDelay: '240ms' }}>
               <a
-                href="/"
+                href="/login"
                 className="px-6 py-3 rounded-full bg-gray-900 hover:bg-gray-800 text-white font-semibold shadow-lg shadow-gray-900/10 transition hover:-translate-y-0.5"
               >
                 {text.heroCta}

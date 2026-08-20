@@ -417,7 +417,7 @@ export default function InschrijvingPage() {
           </button>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => { window.location.href = '/'; }}
+              onClick={() => { window.location.href = '/login'; }}
               className="px-3 py-1 rounded text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition"
             >
               {language === 'tr' ? 'Giriş yap' : 'Inloggen'}

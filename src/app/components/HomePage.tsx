@@ -431,6 +431,36 @@ function PhoneMockup({
   );
 }
 
+// The dark brand statement banner used to close the page — logo, name and a
+// bilingual one-line pitch, rendered as real markup instead of the flat PNG
+// used for store listings, so it stays crisp, selectable and themeable here.
+function BrandStatement() {
+  return (
+    <section className="relative isolate overflow-hidden">
+      <div
+        className="absolute inset-0 -z-10"
+        style={{
+          background: 'linear-gradient(135deg, #0d2438 0%, #123a42 45%, #1a5f52 100%)',
+        }}
+        aria-hidden="true"
+      />
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-20 sm:py-24 text-center">
+        <div className="home-rise inline-flex items-center gap-4 mb-8">
+          <img src={logo} alt="" className="h-16 w-16 sm:h-[4.5rem] sm:w-[4.5rem] rounded-2xl bg-white p-2 shadow-lg shadow-black/20 object-contain" />
+          <span className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">Rahman Eğitim</span>
+        </div>
+        <p className="home-rise text-lg sm:text-2xl font-bold text-emerald-50" style={{ animationDelay: '80ms' }}>
+          Aanwezigheid, huiswerk, toetsen en oudergesprekken
+        </p>
+        <p className="home-rise text-sm sm:text-base text-emerald-200/80 mt-2" style={{ animationDelay: '140ms' }}>
+          Devam, ödev, sınav ve veli görüşmeleri
+        </p>
+        <div className="home-rise mt-6 h-1 w-14 rounded-full bg-emerald-400 mx-auto" style={{ animationDelay: '200ms' }} />
+      </div>
+    </section>
+  );
+}
+
 function StoreBadge({
   href,
   icon,
@@ -622,6 +652,8 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
           </div>
         </section>
       </main>
+
+      <BrandStatement />
 
       <footer className="border-t border-gray-100">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-7 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-gray-400">

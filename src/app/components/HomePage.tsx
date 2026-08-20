@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple,
-  Home, Receipt, Sparkles,
-} from 'lucide-react';
+import { CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple } from 'lucide-react';
 import type { Language } from '../App';
 import { useForceLightTheme } from '../../lib/theme';
 import logo from '../../imports/logo.svg';
+import appScreenshot from '../../assets/app-screenshot.webp';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FILL THESE IN once the app is listed. Until then both buttons render as
@@ -38,9 +36,6 @@ const t = {
     appTitle: 'Alles ook in uw zak',
     appBody: 'Dezelfde gegevens, onderweg. Meldingen, aanwezigheid en berichten — waar u ook bent.',
     appFeature: 'Pushmeldingen bij nieuwe berichten en updates.',
-    phoneHeading: 'Vandaag',
-    phoneRows: ['Aanwezigheid', 'Cijfers', 'Nieuw bericht'],
-    phoneTabs: ['Start', 'Facturatie', 'Cijfers', 'Elif-Ba'],
     storeSoon: 'Binnenkort beschikbaar',
     footerPrivacy: 'Privacybeleid',
     footerDelete: 'Account verwijderen',
@@ -66,9 +61,6 @@ const t = {
     appTitle: 'Her şey cebinizde',
     appBody: 'Aynı veriler, yolda da yanınızda. Bildirimler, devam durumu ve mesajlar — nerede olursanız olun.',
     appFeature: 'Yeni mesaj ve güncellemelerde anlık bildirim.',
-    phoneHeading: 'Bugün',
-    phoneRows: ['Devam durumu', 'Notlar', 'Okuldan mesaj'],
-    phoneTabs: ['Ana Sayfa', 'Ödemeler', 'Notlar', 'Elif-Ba'],
     storeSoon: 'Yakında',
     footerPrivacy: 'Gizlilik Politikası',
     footerDelete: 'Hesabı sil',
@@ -258,131 +250,53 @@ function useInView(ref: React.RefObject<HTMLElement | null>) {
   return inView;
 }
 
-// A placeholder screen — not a real screenshot — dressed as an actual app
-// view (header, a "today" list) rather than an empty frame or plain skeleton
-// bars, so the mockup reads as a genuine product. Swap for a real screenshot
-// once one exists; the frame and tilt logic stay the same either way.
-const TAB_ICONS = [Home, Receipt, GraduationCap, Sparkles];
+// The screen is a real screenshot of the app's parent dashboard, at its
+// native resolution. Everything the previous hand-drawn placeholder faked —
+// status bar, content, bottom tab bar — is already in the image, so the only
+// things drawn over it are the Dynamic Island (an iOS screenshot does not
+// capture the cutout) and the glass reflection.
+//
+// SCREEN_RADIUS is the screen's own corner radius, derived from the frame:
+// the outer shell is rounded-[2.75rem] (44px) with 3px of rail and 7px of
+// bezel inside it, so the glass beneath curves at 44 - 3 - 7 = 34px. Keeping
+// it derived rather than eyeballed is what stops the screenshot's square
+// corners from poking out past the bezel.
+const SCREEN_RADIUS = '2.125rem';
 
-function PhoneScreen({
-  heading,
-  rows,
-  tabLabels,
-  revealed,
-}: {
-  heading: string;
-  rows: string[];
-  tabLabels: string[];
-  revealed: boolean;
-}) {
-  const tabs = tabLabels.map((label, i) => ({ label, icon: TAB_ICONS[i % TAB_ICONS.length] }));
-  const rowStyles = [
-    { icon: CalendarCheck, bg: 'bg-emerald-100', fg: 'text-emerald-600' },
-    { icon: GraduationCap, bg: 'bg-amber-100', fg: 'text-amber-600' },
-    { icon: MessageCircle, bg: 'bg-sky-100', fg: 'text-sky-600' },
-  ];
-
+function PhoneScreen({ revealed }: { revealed: boolean }) {
   return (
-    <div className="absolute inset-0 flex flex-col bg-gradient-to-b from-white to-gray-50">
-      {/* Status bar — a real device never shows a screen without one, and its
-          absence was a big part of why the mockup read as a drawing. */}
-      <div className="pt-3 px-5 flex items-center justify-between text-[9px] font-semibold text-gray-900">
-        <span>9:41</span>
-        <span className="flex items-center gap-1">
-          <span className="flex items-end gap-[1.5px] h-2">
-            <i className="w-[2px] h-[40%] bg-gray-900 rounded-[1px]" />
-            <i className="w-[2px] h-[60%] bg-gray-900 rounded-[1px]" />
-            <i className="w-[2px] h-[80%] bg-gray-900 rounded-[1px]" />
-            <i className="w-[2px] h-full bg-gray-900 rounded-[1px]" />
-          </span>
-          <span className="w-4 h-2 rounded-[3px] border border-gray-900/70 relative flex items-center px-[1px]">
-            <i className="block w-2/3 h-[60%] bg-gray-900 rounded-[1px]" />
-          </span>
-        </span>
-      </div>
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-[18px] bg-gray-950 rounded-full z-10" />
-
-      <div className="pt-3 px-4 pb-1 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <img src={logo} alt="" className="h-5 w-5 object-contain" />
-          <span className="text-[11px] font-bold text-gray-800 tracking-tight">Rahman Eğitim</span>
-        </div>
-        <div className="relative h-6 w-6 rounded-full bg-emerald-50 flex items-center justify-center">
-          <Bell className="h-3 w-3 text-emerald-600" />
-          <span className="absolute -top-px -right-px h-1.5 w-1.5 rounded-full bg-rose-500 ring-2 ring-white" />
-        </div>
-      </div>
-      <div className="px-4 mt-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-        {heading}
-      </div>
-      <div className="flex-1 px-3 py-2 space-y-2">
-        {rows.map((row, i) => {
-          const style = rowStyles[i % rowStyles.length];
-          return (
-            <div
-              key={row}
-              className="flex items-center gap-2.5 bg-white rounded-xl p-2 shadow-[0_1px_2px_rgba(15,23,42,0.06)] border border-gray-100"
-              style={{
-                opacity: revealed ? 1 : 0,
-                transform: revealed ? 'none' : 'translateY(10px)',
-                transition:
-                  `opacity 0.5s ease ${320 + i * 110}ms,` +
-                  ` transform 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${320 + i * 110}ms`,
-              }}
-            >
-              <div className={`h-7 w-7 rounded-lg ${style.bg} ${style.fg} flex items-center justify-center shrink-0`}>
-                <style.icon className="h-3.5 w-3.5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[10px] font-semibold text-gray-700 truncate">{row}</div>
-                <div className="h-1.5 w-2/3 bg-gray-100 rounded-full mt-1.5" />
-              </div>
-              <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-            </div>
-          );
-        })}
-      </div>
-      {/* Bottom tab bar, mirroring the tabs a parent actually sees in the app
-          (see ParentDashboard's nav items) — both because it fills the screen
-          the way the real thing does, and because an app view with no
-          navigation is the tell that a mockup was drawn rather than shot. */}
-      <div className="mt-auto border-t border-gray-100 bg-white/80 backdrop-blur px-2 pt-1.5 pb-1 flex items-end justify-around">
-        {tabs.map((tab, i) => (
-          <div key={tab.label} className="flex flex-col items-center gap-0.5 flex-1">
-            <tab.icon
-              className={`h-3.5 w-3.5 ${i === 0 ? 'text-emerald-600' : 'text-gray-300'}`}
-              strokeWidth={i === 0 ? 2.5 : 2}
-            />
-            <span
-              className={`text-[7px] font-semibold tracking-tight ${i === 0 ? 'text-emerald-600' : 'text-gray-300'}`}
-            >
-              {tab.label}
-            </span>
-          </div>
-        ))}
-      </div>
-      {/* Home indicator — the last small cue that this is a screen and not a
-          card with rounded corners. */}
-      <div className="pt-1 pb-1.5 flex justify-center bg-white/80">
-        <div className="h-1 w-16 rounded-full bg-gray-900/25" />
-      </div>
+    <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: SCREEN_RADIUS }}>
+      <img
+        src={appScreenshot}
+        alt="Rahman Eğitim app — ouderdashboard"
+        // The radius is repeated on the image itself, not left to the
+        // parent's overflow clip alone: a clip on an ancestor is unreliable
+        // once a 3D transform is in play (some browsers drop it during
+        // compositing), and a square corner peeking out of the bezel is
+        // exactly the artefact that gives a mockup away.
+        className="block w-full h-full object-cover object-top"
+        style={{
+          borderRadius: SCREEN_RADIUS,
+          opacity: revealed ? 1 : 0,
+          transform: revealed ? 'none' : 'scale(1.04)',
+          transition: 'opacity 0.7s ease 150ms, transform 0.9s cubic-bezier(0.16, 1, 0.3, 1) 150ms',
+        }}
+      />
+      {/* Dynamic Island. iOS screenshots render the cutout area as ordinary
+          content, so the device's own hardware has to be drawn back on top. */}
+      <div className="absolute top-[9px] left-1/2 -translate-x-1/2 w-[30%] h-[13px] bg-black rounded-full z-10" />
       {/* A glass highlight that slides against the tilt (see --glare-shift),
           the way a reflection on real glass tracks the viewing angle —
           rather than a looping sweep, which reads as an ad banner. */}
-      <div className="phone-glass absolute inset-0 pointer-events-none overflow-hidden" />
+      <div
+        className="phone-glass absolute inset-0 pointer-events-none overflow-hidden"
+        style={{ borderRadius: SCREEN_RADIUS }}
+      />
     </div>
   );
 }
 
-function PhoneMockup({
-  heading,
-  rows,
-  tabLabels,
-}: {
-  heading: string;
-  rows: string[];
-  tabLabels: string[];
-}) {
+function PhoneMockup() {
   const phoneRef = useRef<HTMLDivElement>(null);
   // The cursor is tracked across this whole stage rather than the device
   // itself, so the phone begins reacting as the pointer approaches instead of
@@ -408,16 +322,20 @@ function PhoneMockup({
           className="phone-shadow absolute -bottom-6 left-1/2 h-6 w-36 -translate-x-1/2 rounded-[50%] bg-emerald-950/25 blur-xl pointer-events-none"
           aria-hidden="true"
         />
+        {/* No fixed height: the screen below carries the screenshot's own
+            aspect ratio and the frame takes its height from that, so the
+            image is never stretched or cropped and swapping in a screenshot
+            from a different device resizes the frame to suit. */}
         <div
           ref={phoneRef}
-          className="relative w-52 h-[27.5rem] rounded-[2.75rem] p-[3px] bg-gradient-to-b from-gray-700 via-gray-950 to-gray-800 shadow-[0_30px_60px_-15px_rgba(6,78,59,0.45)] will-change-transform"
+          className="relative w-52 rounded-[2.75rem] p-[3px] bg-gradient-to-b from-gray-700 via-gray-950 to-gray-800 shadow-[0_30px_60px_-15px_rgba(6,78,59,0.45)] will-change-transform"
         >
           {/* Inner bezel. Splitting the frame into a bright outer rail and a
               black bezel is what gives the edge a machined, metallic read
               instead of looking like a single flat border. */}
-          <div className="relative h-full w-full rounded-[2.6rem] bg-gray-950 p-[7px] overflow-hidden">
-            <div className="relative h-full w-full rounded-[2.15rem] overflow-hidden">
-              <PhoneScreen heading={heading} rows={rows} tabLabels={tabLabels} revealed={revealed} />
+          <div className="relative w-full rounded-[2.6rem] bg-gray-950 p-[7px] overflow-hidden">
+            <div className="relative w-full aspect-[1179/2556]">
+              <PhoneScreen revealed={revealed} />
             </div>
           </div>
 
@@ -586,11 +504,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
         <section id="app" className="max-w-5xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
           <div className="grid sm:grid-cols-2 gap-12 sm:gap-10 items-center">
             <div className="home-rise flex justify-center order-2 sm:order-1">
-              <PhoneMockup
-                heading={text.phoneHeading}
-                rows={text.phoneRows}
-                tabLabels={text.phoneTabs}
-              />
+              <PhoneMockup />
             </div>
             <div className="order-1 sm:order-2 text-center sm:text-left">
               <p className="home-rise text-emerald-700 font-semibold text-sm tracking-wide uppercase mb-3">

@@ -483,7 +483,14 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
       <Backdrop />
       <div className="relative w-full max-w-md m-auto">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
-          <div className="flex items-center justify-end mb-1">
+          <div className="flex items-center justify-between mb-1">
+            <a
+              href="/home"
+              className="flex items-center gap-1 text-gray-400 hover:text-gray-600 text-xs font-medium transition"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              {language === 'tr' ? 'Anasayfa' : 'Startpagina'}
+            </a>
             <LanguageToggle />
           </div>
           <BrandMark />

@@ -250,11 +250,18 @@ export default function App() {
     pathSegments.includes('toets') ||
     pageParam === 'toets';
 
+  // Public marketing landing page — a short explainer of the website and the
+  // app, reachable at rahmanegitim.com/home without logging in. LoginPage
+  // links back here, and this page links to "/" for LoginPage.
+  const isHomePage =
+    pathSegments.includes('home') ||
+    pageParam === 'home';
+
   // Standalone content pages: no login, no dashboard — just a document or a
   // single-purpose flow. The cold-start greeting is for entering the app
   // itself, not for these, so they're excluded from it below.
   const isStandalonePublicPage =
-    isInschrijvingPage || isElifBaPage || isPrivacyPage || isDeleteAccountPage || isToetsPage;
+    isInschrijvingPage || isElifBaPage || isPrivacyPage || isDeleteAccountPage || isToetsPage || isHomePage;
 
   // The cold-start greeting is written out a character at a time, and session
   // checks usually finish sooner. Hold the splash until the line has actually
@@ -276,27 +283,6 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'superadmin' | 'admin'>('superadmin');
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [isRecovery, setIsRecovery] = useState(false);
-
-  // The marketing landing page shown to a signed-out web visitor before
-  // LoginPage. Skipped entirely in the native app / ?app=1 preview — those
-  // visitors already chose to install the app, so they land straight in the
-  // sign-in flow. Remembered per-tab so navigating back from LoginPage (or a
-  // reload mid-flow) doesn't bounce a visitor who already clicked through.
-  const [homeEntered, setHomeEntered] = useState(() => {
-    try {
-      return sessionStorage.getItem('ilimyolu:home_entered') === '1';
-    } catch {
-      return false;
-    }
-  });
-  const enterFromHome = useCallback(() => {
-    try {
-      sessionStorage.setItem('ilimyolu:home_entered', '1');
-    } catch {
-      /* private mode / storage full — still enters for this render */
-    }
-    setHomeEntered(true);
-  }, []);
 
   // Stable across renders so it can be depended on from a child's effect
   // without re-firing that effect on every unrelated App state change.
@@ -440,6 +426,12 @@ export default function App() {
 
     // Public exam page — no login needed
     if (pathParts.includes('toets') || urlParams.get('page') === 'toets') {
+      setLoading(false);
+      return;
+    }
+
+    // Public marketing landing page — no login needed
+    if (pathParts.includes('home') || urlParams.get('page') === 'home') {
       setLoading(false);
       return;
     }
@@ -710,7 +702,9 @@ export default function App() {
               </div>
             }
           >
-            {isPrivacyPage ? (
+            {isHomePage ? (
+              <HomePage language={language} setLanguage={setLanguage} />
+            ) : isPrivacyPage ? (
               <PrivacyPage />
             ) : isDeleteAccountPage ? (
               <DeleteAccountPage />
@@ -736,12 +730,6 @@ export default function App() {
                 setInviteToken(null);
                 window.history.pushState({}, '', '/');
               }} />
-            ) : !user && !isAppLayout() && !homeEntered ? (
-              <HomePage
-                language={language}
-                setLanguage={setLanguage}
-                onEnter={enterFromHome}
-              />
             ) : !user ? (
               <LoginPage
                 onLogin={handleLogin}

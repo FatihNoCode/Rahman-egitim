@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple } from 'lucide-react';
 import type { Language } from '../App';
 import logo from '../../imports/logo.svg';
@@ -66,7 +67,25 @@ const t = {
 interface HomePageProps {
   language: Language;
   setLanguage: (lang: Language) => void;
-  onEnter: () => void;
+}
+
+// The marketing page is built against a light palette only, but appearance
+// otherwise follows the device (see src/lib/theme.ts) and can already be
+// `.dark` by the time this mounts. Force light for as long as this page is
+// up, and hand the previous appearance back on the way out so LoginPage
+// (reached via the link below) still respects the visitor's own preference.
+function useForceLightTheme() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const wasDark = root.classList.contains('dark');
+    const prevColorScheme = root.style.colorScheme;
+    root.classList.remove('dark');
+    root.style.colorScheme = 'light';
+    return () => {
+      if (wasDark) root.classList.add('dark');
+      root.style.colorScheme = prevColorScheme;
+    };
+  }, []);
 }
 
 function StoreBadge({
@@ -109,8 +128,9 @@ function StoreBadge({
   );
 }
 
-export default function HomePage({ language, setLanguage, onEnter }: HomePageProps) {
+export default function HomePage({ language, setLanguage }: HomePageProps) {
   const text = t[language];
+  useForceLightTheme();
 
   return (
     <div className="min-h-screen w-full bg-gray-50 overflow-y-auto overflow-x-hidden">
@@ -136,12 +156,12 @@ export default function HomePage({ language, setLanguage, onEnter }: HomePagePro
                 NL
               </button>
             </div>
-            <button
-              onClick={onEnter}
+            <a
+              href="/"
               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition"
             >
               {text.login}
-            </button>
+            </a>
           </div>
         </div>
       </header>
@@ -164,12 +184,12 @@ export default function HomePage({ language, setLanguage, onEnter }: HomePagePro
             {text.heroSubtitle}
           </p>
           <div className="home-rise flex items-center justify-center gap-3 mt-8" style={{ animationDelay: '260ms' }}>
-            <button
-              onClick={onEnter}
+            <a
+              href="/"
               className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm transition hover:-translate-y-0.5"
             >
               {text.heroCta}
-            </button>
+            </a>
             <a
               href="#app"
               className="px-5 py-2.5 rounded-xl bg-white border border-gray-200 hover:bg-gray-100 text-gray-700 font-semibold transition hover:-translate-y-0.5"

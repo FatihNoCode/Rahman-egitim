@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 const dist = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 
 const ROUTES = [
+  'home',
   'privacy',
   // Both spellings of the deletion page: the Dutch one is what we publish,
   // the English one is what someone typing from memory will try.

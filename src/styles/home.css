@@ -1,0 +1,36 @@
+/* HomePage.tsx — the public marketing landing page. Small, self-contained
+   motion: a mount-time rise/fade for the hero and section cards, and a slow
+   idle float on the phone mockup so the page doesn't feel static. */
+
+@keyframes home-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+@keyframes home-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.home-rise {
+  animation: home-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.home-float {
+  animation: home-float 6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-rise {
+    animation: none;
+  }
+  .home-float {
+    animation: none;
+  }
+}

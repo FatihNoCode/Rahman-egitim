@@ -4,7 +4,8 @@ import { translations } from './translations';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../../lib/supabase';
 import { validatePassword } from '../../lib/password';
-import { isNative, getAuthRedirectTo } from '../../lib/native';
+import { isNative, isAppLayout, getAuthRedirectTo } from '../../lib/native';
+import { useForceLightTheme } from '../../lib/theme';
 import type { Language } from '../App';
 import booksLogo from '../../imports/logo.svg';
 import { APP_VERSION } from '../../lib/version';
@@ -26,6 +27,10 @@ interface LoginPageProps {
 
 export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge, setMfaChallenge }: LoginPageProps) {
   const t = translations[language];
+  // Light by default on the web login screen, matching HomePage — but not
+  // inside the native app / ?app=1 preview, where dark mode is a real,
+  // user-chosen setting (see SettingsPanel) rather than something to override.
+  useForceLightTheme(!isAppLayout());
   const [isSignup, setIsSignup] = useState(false);
   const [signupPending, setSignupPending] = useState(false);
   const [isForgot, setIsForgot] = useState(false);

@@ -9,6 +9,8 @@
 // off. Applied from main.tsx before the first render so a dark-mode device
 // never gets a white flash on launch.
 
+import { useEffect } from 'react';
+
 export type ThemePref = 'system' | 'light' | 'dark';
 
 const KEY = 'ilimyolu:theme';
@@ -65,6 +67,33 @@ export function subscribeTheme(fn: () => void) {
   return () => {
     listeners.delete(fn);
   };
+}
+
+// Some public pages (HomePage, the web LoginPage) are built against a light
+// palette only, but appearance otherwise follows the device/stored
+// preference and can already be `.dark` by the time they mount. Force light
+// for as long as the page using this hook is up, and hand the previous
+// appearance back on unmount so a page reached from it (e.g. navigating from
+// HomePage into LoginPage) still respects whatever the visitor actually
+// chose.
+//
+// `enabled` lets a caller opt out conditionally without breaking the rules
+// of hooks — LoginPage also renders inside the native app / `?app=1`
+// preview, where dark mode is a real setting (see SettingsPanel) and should
+// not be overridden.
+export function useForceLightTheme(enabled = true) {
+  useEffect(() => {
+    if (!enabled) return;
+    const root = document.documentElement;
+    const wasDark = root.classList.contains('dark');
+    const prevColorScheme = root.style.colorScheme;
+    root.classList.remove('dark');
+    root.style.colorScheme = 'light';
+    return () => {
+      if (wasDark) root.classList.add('dark');
+      root.style.colorScheme = prevColorScheme;
+    };
+  }, [enabled]);
 }
 
 // Called once from main.tsx, before render.

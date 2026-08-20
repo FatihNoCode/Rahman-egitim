@@ -1,7 +1,8 @@
 /* HomePage.tsx — the public marketing landing page. Small, self-contained
    motion: a mount-time rise/fade for the hero and section cards, a slow idle
-   float on the phone mockup, and — driven from HomePage.tsx rather than CSS —
-   a scroll-linked tilt that settles the phone flat as it comes into view. */
+   float on the phone mockup and its floating UI chips, and — driven from
+   HomePage.tsx rather than CSS — a scroll-linked tilt (with a mouse-parallax
+   layer on top) that settles the phone flat as it comes into view. */
 
 @keyframes home-rise {
   from {
@@ -19,12 +20,41 @@
   }
 }
 
+/* A second float timing/amplitude for the second floating chip, so the two
+   don't drift in lockstep — same idea as home-float, just out of phase. */
+@keyframes home-float-alt {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
 .home-rise {
   animation: home-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .home-float {
   animation: home-float 6s ease-in-out infinite;
+}
+
+/* `animation` is shorthand: a second class that also sets it (like
+   .home-float) would silently replace .home-rise's entrance animation
+   rather than adding to it, because both rules have equal specificity and
+   only the later one in source order wins the whole property. Elements that
+   need both the one-shot rise-in *and* a continuous float use one of these
+   combined classes instead of stacking .home-rise with .home-float. */
+.home-rise-float {
+  animation:
+    home-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both,
+    home-float 6s ease-in-out infinite;
+}
+
+.home-rise-float-alt {
+  animation:
+    home-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both,
+    home-float-alt 5s ease-in-out infinite;
 }
 
 /* A fixed diagonal highlight across the phone's screen, not an animated
@@ -43,7 +73,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-rise {
+  .home-rise,
+  .home-rise-float,
+  .home-rise-float-alt {
     animation: none;
   }
   .home-float {

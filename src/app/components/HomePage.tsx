@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple } from 'lucide-react';
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple, Check } from 'lucide-react';
 import type { Language } from '../App';
 import { useForceLightTheme } from '../../lib/theme';
 import logo from '../../imports/logo.svg';
@@ -37,6 +37,8 @@ const t = {
     appFeature: 'Pushmeldingen bij nieuwe berichten en updates.',
     phoneHeading: 'Vandaag',
     phoneRows: ['Aanwezigheid', 'Cijfers', 'Bericht van school'],
+    chipAttendance: 'Aanwezig gemeld',
+    chipMessages: 'nieuwe berichten',
     storeSoon: 'Binnenkort beschikbaar',
     footerPrivacy: 'Privacybeleid',
     footerDelete: 'Account verwijderen',
@@ -64,6 +66,8 @@ const t = {
     appFeature: 'Yeni mesaj ve güncellemelerde anlık bildirim.',
     phoneHeading: 'Bugün',
     phoneRows: ['Devam durumu', 'Notlar', 'Okuldan mesaj'],
+    chipAttendance: 'Devam bildirildi',
+    chipMessages: 'yeni mesaj',
     storeSoon: 'Yakında',
     footerPrivacy: 'Gizlilik Politikası',
     footerDelete: 'Hesabı sil',
@@ -75,34 +79,44 @@ interface HomePageProps {
   setLanguage: (lang: Language) => void;
 }
 
+// A mild ease-out-back: eases in, then overshoots slightly past its target
+// before settling — the small "pop" that reads as a deliberate, physical
+// settle rather than a flat linear slide. `overshoot` is kept low (a normal
+// back-ease is closer to 1.7) so the phone rocks very slightly past dead-on
+// and back rather than visibly bouncing.
+function easeOutBack(x: number, overshoot = 0.9) {
+  const c3 = overshoot + 1;
+  return 1 + c3 * Math.pow(x - 1, 3) + overshoot * Math.pow(x - 1, 2);
+}
+
 // Tilts the phone flat as it scrolls into view — starting turned away and
-// lifted, settling to dead-on by the time it's roughly centered — rather
-// than a full spin. A flip all the way to a plain back panel read as a gimmick
-// with nothing real to show back there; a parallax-style settle reads as
-// intentional and keeps the front (the actual point of the mockup) in view
-// the whole time. HomePage's root only sets a *minimum* height
-// (min-h-screen), so once content is taller than the screen it's the window
-// that actually scrolls — this tracks that.
+// lifted, settling to dead-on (with a slight overshoot) by the time it's
+// roughly centered — rather than a full spin. A flip all the way to a plain
+// back panel read as a gimmick with nothing real to show back there; a
+// parallax-style settle reads as intentional and keeps the front (the actual
+// point of the mockup) in view the whole time. HomePage's root only sets a
+// *minimum* height (min-h-screen), so once content is taller than the screen
+// it's the window that actually scrolls — this tracks that.
 function usePhoneTilt(phoneRef: React.RefObject<HTMLElement>) {
-  const [progress, setProgress] = useState(1);
+  const [settle, setSettle] = useState(0);
 
   useEffect(() => {
     const phone = phoneRef.current;
     if (!phone) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setProgress(1);
+      setSettle(0);
       return;
     }
 
-    setProgress(0);
+    setSettle(1);
     let frame = 0;
     const update = () => {
       frame = 0;
       const rect = phone.getBoundingClientRect();
       const start = window.innerHeight * 0.92;
       const end = window.innerHeight * 0.5;
-      const p = (start - rect.top) / (start - end);
-      setProgress(Math.min(1, Math.max(0, p)));
+      const p = Math.min(1, Math.max(0, (start - rect.top) / (start - end)));
+      setSettle(1 - easeOutBack(p));
     };
 
     const onScroll = () => {
@@ -120,7 +134,29 @@ function usePhoneTilt(phoneRef: React.RefObject<HTMLElement>) {
     };
   }, [phoneRef]);
 
-  return progress;
+  return settle;
+}
+
+// A gentle cursor-follow tilt on top of the scroll settle — the kind of
+// subtle interactive parallax that reads as "premium" on product pages
+// without doing anything as loud as a full spin. Capped low (see MAX_*) and
+// simply never wired up on touch devices, since they have no hover to drive
+// it from.
+const MAX_MOUSE_TILT_Y = 9;
+const MAX_MOUSE_TILT_X = 5;
+
+function useMouseTilt() {
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+
+  const onMouseMove = (e: ReactMouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width - 0.5;
+    const py = (e.clientY - rect.top) / rect.height - 0.5;
+    setTilt({ x: px, y: py });
+  };
+  const onMouseLeave = () => setTilt({ x: 0, y: 0 });
+
+  return { tilt, onMouseMove, onMouseLeave };
 }
 
 // A placeholder screen — not a real screenshot — dressed as an actual app
@@ -176,25 +212,96 @@ function PhoneScreen({ heading, rows }: { heading: string; rows: string[] }) {
   );
 }
 
-function PhoneMockup({ heading, rows }: { heading: string; rows: string[] }) {
+function FloatingChip({
+  icon,
+  label,
+  align,
+  delay,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  align: 'top' | 'bottom';
+  delay: string;
+}) {
+  // Positioned entirely above or entirely below the phone frame — never
+  // beside it — so the chip can never land on top of (and hide) the actual
+  // mockup content, whatever the column width happens to be at a given
+  // viewport.
+  const position = align === 'top' ? '-top-9 right-6' : '-bottom-9 left-6';
+  return (
+    <div
+      className={`${align === 'top' ? 'home-rise-float' : 'home-rise-float-alt'} hidden lg:flex absolute ${position} z-20 items-center gap-1.5 bg-white rounded-full shadow-lg shadow-gray-900/10 border border-gray-100 pl-1.5 pr-3 py-1.5`}
+      style={{ animationDelay: delay }}
+    >
+      {icon}
+      <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">{label}</span>
+    </div>
+  );
+}
+
+function PhoneMockup({
+  heading,
+  rows,
+  chipAttendance,
+  chipMessages,
+}: {
+  heading: string;
+  rows: string[];
+  chipAttendance: string;
+  chipMessages: string;
+}) {
   const phoneRef = useRef<HTMLDivElement>(null);
-  const progress = usePhoneTilt(phoneRef);
-  const settle = 1 - progress;
+  const settle = usePhoneTilt(phoneRef);
+  const { tilt, onMouseMove, onMouseLeave } = useMouseTilt();
+
+  const rotateY = settle * -14 + tilt.x * MAX_MOUSE_TILT_Y;
+  const rotateX = settle * 5 - tilt.y * MAX_MOUSE_TILT_X;
 
   return (
-    <div className="relative" style={{ perspective: '1600px' }}>
-      {/* Soft spotlight behind the phone — purely decorative. */}
+    <div
+      className="relative"
+      style={{ perspective: '1600px' }}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+    >
+      {/* Layered ambient glow behind the phone — purely decorative. */}
       <div
-        className="absolute inset-0 -m-10 rounded-full bg-gradient-to-br from-emerald-300/25 to-teal-300/10 blur-3xl pointer-events-none"
+        className="absolute inset-0 -m-10 rounded-full bg-gradient-to-br from-emerald-300/30 via-teal-300/15 to-transparent blur-3xl pointer-events-none"
         aria-hidden="true"
       />
+      <div
+        className="absolute inset-0 -m-2 rounded-full bg-emerald-400/10 blur-2xl pointer-events-none"
+        aria-hidden="true"
+      />
+
+      <FloatingChip
+        align="top"
+        delay="500ms"
+        icon={
+          <span className="h-5 w-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+            <Check className="h-3 w-3" strokeWidth={3} />
+          </span>
+        }
+        label={chipAttendance}
+      />
+      <FloatingChip
+        align="bottom"
+        delay="750ms"
+        icon={
+          <span className="h-5 w-5 rounded-full bg-sky-500 text-white flex items-center justify-center shrink-0 text-[10px] font-bold">
+            2
+          </span>
+        }
+        label={chipMessages}
+      />
+
       <div className="home-float relative">
         <div
           ref={phoneRef}
-          className="relative w-48 h-[26rem] rounded-[2.75rem] border-[10px] border-gray-950 bg-gray-950 shadow-2xl shadow-gray-950/30 overflow-hidden"
+          className="relative w-48 h-[26rem] rounded-[2.75rem] border-[10px] border-gray-950 bg-gray-950 overflow-hidden shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06),0_30px_60px_-15px_rgba(6,78,59,0.45)]"
           style={{
-            transform: `rotateY(${settle * -14}deg) rotateX(${settle * 5}deg) translateY(${settle * 18}px) scale(${1 - settle * 0.04})`,
-            transition: 'transform 0.05s linear',
+            transform: `rotateY(${rotateY}deg) rotateX(${rotateX}deg) translateY(${settle * 18}px) scale(${1 - settle * 0.04})`,
+            transition: 'transform 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
           }}
         >
           <PhoneScreen heading={heading} rows={rows} />
@@ -359,7 +466,12 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
         <section id="app" className="max-w-5xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
           <div className="grid sm:grid-cols-2 gap-12 sm:gap-10 items-center">
             <div className="home-rise flex justify-center order-2 sm:order-1">
-              <PhoneMockup heading={text.phoneHeading} rows={text.phoneRows} />
+              <PhoneMockup
+                heading={text.phoneHeading}
+                rows={text.phoneRows}
+                chipAttendance={text.chipAttendance}
+                chipMessages={text.chipMessages}
+              />
             </div>
             <div className="order-1 sm:order-2 text-center sm:text-left">
               <p className="home-rise text-emerald-700 font-semibold text-sm tracking-wide uppercase mb-3">

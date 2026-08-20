@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple } from 'lucide-react';
 import type { Language } from '../App';
 import { useForceLightTheme } from '../../lib/theme';
@@ -69,6 +70,123 @@ interface HomePageProps {
   setLanguage: (lang: Language) => void;
 }
 
+// Turns the phone as it scrolls into view — one full turn (0 → 360deg) over
+// a fixed distance of scrolling, starting the moment its top edge crosses
+// the bottom of the viewport. A fixed pixel distance rather than the phone's
+// own travel through the viewport: this section sits near the end of a short
+// page, and tying the spin to "until it exits back off the top" left it
+// stranded mid-turn once the page ran out of scroll room below. Once the
+// full turn is done the phone sits front-facing for the rest of the scroll,
+// however much or little is left. HomePage's root only sets a *minimum*
+// height (min-h-screen), so once content is taller than the screen it's the
+// window that actually scrolls — this tracks that.
+const SPIN_SCROLL_DISTANCE = 550;
+
+function usePhoneSpin(phoneRef: React.RefObject<HTMLElement>) {
+  const [rotation, setRotation] = useState(0);
+
+  useEffect(() => {
+    const phone = phoneRef.current;
+    if (!phone) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const rect = phone.getBoundingClientRect();
+      const progress = (window.innerHeight - rect.top) / SPIN_SCROLL_DISTANCE;
+      setRotation(Math.min(1, Math.max(0, progress)) * 360);
+    };
+
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(update);
+    };
+
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [phoneRef]);
+
+  return rotation;
+}
+
+// A placeholder screen — not a real screenshot — dressed up as an actual app
+// header + content skeleton so the mockup reads as a genuine product rather
+// than an empty frame. Swap the content block for a real screenshot once one
+// exists; the frame and spin logic stay the same either way.
+function PhoneScreen() {
+  return (
+    <>
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-4 bg-black rounded-full z-10" />
+      <div className="pt-7 pb-4 px-4 bg-emerald-600 flex items-center gap-2">
+        <img src={logo} alt="" className="h-6 w-6 object-contain" />
+        <span className="text-white text-xs font-bold tracking-tight">Rahman Eğitim</span>
+      </div>
+      <div className="p-4 space-y-3">
+        <div className="h-3 w-3/4 bg-gray-100 rounded-full" />
+        <div className="h-3 w-1/2 bg-gray-100 rounded-full" />
+        <div className="h-16 w-full bg-emerald-50 rounded-xl border border-emerald-100" />
+        <div className="h-3 w-2/3 bg-gray-100 rounded-full" />
+        <div className="h-3 w-1/3 bg-gray-100 rounded-full" />
+        <div className="h-3 w-3/5 bg-gray-100 rounded-full" />
+      </div>
+      <div className="phone-shine absolute inset-0 pointer-events-none" />
+    </>
+  );
+}
+
+function PhoneMockup() {
+  const phoneRef = useRef<HTMLDivElement>(null);
+  const rotation = usePhoneSpin(phoneRef);
+
+  return (
+    <div className="relative" style={{ perspective: '1400px' }}>
+      {/* Soft spotlight behind the phone — purely decorative. */}
+      <div
+        className="absolute inset-0 -m-8 rounded-full bg-emerald-400/20 blur-3xl pointer-events-none"
+        aria-hidden="true"
+      />
+      <div className="home-float relative">
+        <div
+          ref={phoneRef}
+          className="relative w-44 h-[22rem]"
+          style={{ transformStyle: 'preserve-3d', transform: `rotateY(${rotation}deg)` }}
+        >
+          {/* Front face */}
+          <div
+            className="absolute inset-0 rounded-[2.25rem] border-[3px] border-gray-800 bg-white shadow-2xl shadow-emerald-950/30 overflow-hidden"
+            style={{ backfaceVisibility: 'hidden' }}
+          >
+            <PhoneScreen />
+          </div>
+          {/* Back face — a plain metal-and-glass back with a camera bump, so
+              the spin shows a real reverse side instead of a mirrored front. */}
+          <div
+            className="absolute inset-0 rounded-[2.25rem] border-[3px] border-gray-800 bg-gradient-to-br from-gray-800 to-gray-950 shadow-2xl shadow-emerald-950/30 flex items-center justify-center"
+            style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+          >
+            <div className="absolute top-5 left-5 w-12 h-12 rounded-2xl bg-gray-900/80 border border-gray-700 flex items-center justify-center">
+              <div className="h-4 w-4 rounded-full bg-gray-700" />
+            </div>
+            <img src={appIcon} alt="Rahman Eğitim" className="h-16 w-16 rounded-2xl object-contain opacity-90" />
+          </div>
+          {/* Side buttons — part of the same rigid body as both faces, so
+              they turn with the phone rather than staying screen-fixed. */}
+          <div className="absolute -left-[3px] top-20 w-[3px] h-8 bg-gray-800 rounded-l" />
+          <div className="absolute -left-[3px] top-32 w-[3px] h-12 bg-gray-800 rounded-l" />
+          <div className="absolute -right-[3px] top-24 w-[3px] h-16 bg-gray-800 rounded-r" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StoreBadge({
   href,
   icon,
@@ -114,7 +232,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
   useForceLightTheme();
 
   return (
-    <div className="min-h-screen w-full bg-gray-50 overflow-y-auto overflow-x-hidden">
+    <div className="min-h-screen w-full bg-gray-50 overflow-x-hidden">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-gray-50/90 backdrop-blur border-b border-gray-200/70">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -214,14 +332,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
         <section id="app" className="max-w-5xl mx-auto px-4 sm:px-6 py-16">
           <div className="grid sm:grid-cols-2 gap-10 items-center">
             <div className="home-rise flex justify-center order-2 sm:order-1">
-              <div className="home-float relative">
-                <div className="w-44 h-[22rem] rounded-[2.25rem] border-[6px] border-gray-900 bg-gray-900 shadow-xl overflow-hidden flex items-center justify-center">
-                  <div className="absolute top-0 inset-x-0 h-5 flex items-center justify-center">
-                    <div className="h-1.5 w-16 rounded-full bg-gray-700" />
-                  </div>
-                  <img src={appIcon} alt="Rahman Eğitim" className="h-24 w-24 rounded-2xl object-contain" />
-                </div>
-              </div>
+              <PhoneMockup />
             </div>
             <div className="order-1 sm:order-2 text-center sm:text-left">
               <p className="home-rise text-emerald-700 font-semibold text-sm tracking-wide uppercase mb-2">

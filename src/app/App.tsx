@@ -250,18 +250,19 @@ export default function App() {
     pathSegments.includes('toets') ||
     pageParam === 'toets';
 
-  // Public marketing landing page — a short explainer of the website and the
-  // app, reachable at rahmanegitim.com/home without logging in. LoginPage
-  // links back here, and this page links to "/" for LoginPage.
-  const isHomePage =
-    pathSegments.includes('home') ||
-    pageParam === 'home';
+  // The explicit sign-in route. A signed-out visitor anywhere else — bare
+  // "/", the "/home" alias, or any other unrecognized path — sees the
+  // marketing HomePage instead (see the render below); this is the one path
+  // that asks for the sign-in screen specifically.
+  const isLoginPage =
+    pathSegments.includes('login') ||
+    pageParam === 'login';
 
   // Standalone content pages: no login, no dashboard — just a document or a
   // single-purpose flow. The cold-start greeting is for entering the app
   // itself, not for these, so they're excluded from it below.
   const isStandalonePublicPage =
-    isInschrijvingPage || isElifBaPage || isPrivacyPage || isDeleteAccountPage || isToetsPage || isHomePage;
+    isInschrijvingPage || isElifBaPage || isPrivacyPage || isDeleteAccountPage || isToetsPage;
 
   // The cold-start greeting is written out a character at a time, and session
   // checks usually finish sooner. Hold the splash until the line has actually
@@ -426,12 +427,6 @@ export default function App() {
 
     // Public exam page — no login needed
     if (pathParts.includes('toets') || urlParams.get('page') === 'toets') {
-      setLoading(false);
-      return;
-    }
-
-    // Public marketing landing page — no login needed
-    if (pathParts.includes('home') || urlParams.get('page') === 'home') {
       setLoading(false);
       return;
     }
@@ -702,9 +697,7 @@ export default function App() {
               </div>
             }
           >
-            {isHomePage ? (
-              <HomePage language={language} setLanguage={setLanguage} />
-            ) : isPrivacyPage ? (
+            {isPrivacyPage ? (
               <PrivacyPage />
             ) : isDeleteAccountPage ? (
               <DeleteAccountPage />
@@ -719,7 +712,7 @@ export default function App() {
               // in-dashboard entry instead: their children are the players, and
               // a test account sees the whole map.
               <ElifBaPage
-                onBack={() => { window.location.href = '/'; }}
+                onBack={() => { window.location.href = '/login'; }}
                 unlockAll={isTestAccount(user)}
                 players={elifBaPlayers}
               />
@@ -728,16 +721,24 @@ export default function App() {
             ) : inviteToken ? (
               <InvitePage token={inviteToken} onComplete={() => {
                 setInviteToken(null);
-                window.history.pushState({}, '', '/');
+                window.history.pushState({}, '', '/login');
               }} />
             ) : !user ? (
-              <LoginPage
-                onLogin={handleLogin}
-                language={language}
-                setLanguage={setLanguage}
-                mfaChallenge={mfaChallenge}
-                setMfaChallenge={setMfaChallenge}
-              />
+              // The explicit /login route (or the native app / ?app=1
+              // preview, which has no marketing page to show) gets the
+              // sign-in screen; every other unrecognized path — bare "/"
+              // included — gets the public HomePage instead.
+              isLoginPage || isAppLayout() ? (
+                <LoginPage
+                  onLogin={handleLogin}
+                  language={language}
+                  setLanguage={setLanguage}
+                  mfaChallenge={mfaChallenge}
+                  setMfaChallenge={setMfaChallenge}
+                />
+              ) : (
+                <HomePage language={language} setLanguage={setLanguage} />
+              )
             ) : needsProfile ? (
               <CompleteProfilePage
                 language={language}

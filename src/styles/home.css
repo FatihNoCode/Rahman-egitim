@@ -1,8 +1,7 @@
 /* HomePage.tsx — the public marketing landing page. Small, self-contained
    motion: a mount-time rise/fade for the hero and section cards, a slow idle
-   float on the phone mockup, a light sweep across its screen, and — driven
-   from HomePage.tsx rather than CSS — a scroll-linked 360° spin as the phone
-   passes through the viewport. */
+   float on the phone mockup, and — driven from HomePage.tsx rather than CSS —
+   a scroll-linked tilt that settles the phone flat as it comes into view. */
 
 @keyframes home-rise {
   from {
@@ -20,18 +19,6 @@
   }
 }
 
-/* A soft highlight sweeping diagonally across the phone's screen — reads as
-   glass catching the light, which is what sells the mockup as a real device
-   rather than a flat rectangle. */
-@keyframes phone-shine {
-  0%, 15% {
-    transform: translateX(-120%) rotate(20deg);
-  }
-  40%, 100% {
-    transform: translateX(220%) rotate(20deg);
-  }
-}
-
 .home-rise {
   animation: home-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -40,21 +27,19 @@
   animation: home-float 6s ease-in-out infinite;
 }
 
-.phone-shine::before {
+/* A fixed diagonal highlight across the phone's screen, not an animated
+   sweep — reads as glass catching the light once, the way a real screen
+   photographed at an angle would, rather than a looping ad-banner effect. */
+.phone-glass::before {
   content: '';
   position: absolute;
-  top: -20%;
-  left: 0;
-  width: 35%;
-  height: 140%;
+  inset: 0;
   background: linear-gradient(
-    to right,
-    transparent,
-    rgba(255, 255, 255, 0.35),
-    transparent
+    115deg,
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0.08) 18%,
+    transparent 32%
   );
-  animation: phone-shine 5s ease-in-out infinite;
-  animation-delay: 1.5s;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -63,9 +48,5 @@
   }
   .home-float {
     animation: none;
-  }
-  .phone-shine::before {
-    animation: none;
-    display: none;
   }
 }

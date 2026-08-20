@@ -85,12 +85,19 @@ function easeOutBack(x: number, overshoot = 0.9) {
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 // Pose the device settles *from* as it scrolls in, and the ceiling on the
-// cursor-follow parallax layered on top. Both kept low: this should read as a
-// product shot catching the light, not a spinning toy.
+// cursor-follow parallax layered on top. The pointer figures are deliberately
+// well short of the settle's own angle — the device should feel like it is
+// following you, not swinging.
 const SETTLE_ROTATE_Y = -16;
 const SETTLE_ROTATE_X = 6;
-const MAX_POINTER_ROTATE_Y = 10;
-const MAX_POINTER_ROTATE_X = 6;
+const MAX_POINTER_ROTATE_Y = 14;
+const MAX_POINTER_ROTATE_X = 8;
+// A little lateral drift alongside the rotation. Rotation alone reads as the
+// device turning in place; adding a few pixels of travel is what makes it
+// read as *tracking* the cursor, which is most of what makes the effect
+// legible without having to crank the angle up to something garish.
+const MAX_POINTER_SHIFT_X = 12;
+const MAX_POINTER_SHIFT_Y = 7;
 
 /**
  * Drives the phone's 3D pose from two independent inputs, composed into a
@@ -98,10 +105,13 @@ const MAX_POINTER_ROTATE_X = 6;
  *
  *   - scroll — the device starts turned away and lifted, and settles dead-on
  *     (with a slight overshoot) as it scrolls into view.
- *   - pointer — a gentle cursor-follow parallax on top of that, tracked
- *     across the whole `stage` element rather than the phone itself, so the
- *     device reacts as the cursor approaches instead of only while it is
- *     directly over a ~190px-wide target.
+ *   - pointer — a cursor-follow parallax on top of that, measured from the
+ *     device's centre against the size of the *viewport*, so the phone answers
+ *     the cursor anywhere on the page and reaches full deflection out at the
+ *     window edges. Scoping this to a wrapper around the device (as it was)
+ *     meant it only responded within a couple of hundred pixels and snapped
+ *     back to neutral the moment the cursor left that box — which is why the
+ *     effect was so easy to miss.
  *
  * Three things this deliberately does *not* do, each of which broke the
  * effect before:
@@ -119,13 +129,9 @@ const MAX_POINTER_ROTATE_X = 6;
  *     since this updates every frame the cursor moves and re-rendering the
  *     subtree at that rate is both wasteful and visibly janky.
  */
-function usePhoneMotion(
-  phoneRef: React.RefObject<HTMLElement | null>,
-  stageRef: React.RefObject<HTMLElement | null>,
-) {
+function usePhoneMotion(phoneRef: React.RefObject<HTMLElement | null>) {
   useEffect(() => {
     const phone = phoneRef.current;
-    const stage = stageRef.current;
     if (!phone) return;
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -137,13 +143,20 @@ function usePhoneMotion(
     const trackPointer =
       !reduceMotion && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
-    // -0.5 … 0.5, the cursor's offset from the stage's centre.
+    // -1 … 1, the cursor's offset from the device's centre, normalised per
+    // side (see onPointerMove) so ±1 is "cursor out at the window edge" in
+    // every direction and the MAX_POINTER_* constants above are actually
+    // reached rather than merely approached.
     let pointerX = 0;
     let pointerY = 0;
     let targetX = 0;
     let targetY = 0;
     let settle = reduceMotion ? 0 : 1;
     let frame = 0;
+    // Skip the pointer maths entirely while the device is scrolled away —
+    // this listens on the window now, so it would otherwise be doing work on
+    // every mouse move anywhere on the page.
+    let onScreen = true;
 
     const readSettle = () => {
       if (reduceMotion) return;
@@ -156,9 +169,12 @@ function usePhoneMotion(
     const apply = () => {
       const rotateY = settle * SETTLE_ROTATE_Y + pointerX * MAX_POINTER_ROTATE_Y;
       const rotateX = settle * SETTLE_ROTATE_X - pointerY * MAX_POINTER_ROTATE_X;
+      const shiftX = pointerX * MAX_POINTER_SHIFT_X;
+      const shiftY = settle * 18 + pointerY * MAX_POINTER_SHIFT_Y;
       phone.style.transform =
         `perspective(1400px) rotateY(${rotateY.toFixed(2)}deg) rotateX(${rotateX.toFixed(2)}deg)` +
-        ` translateY(${(settle * 18).toFixed(2)}px) scale(${(1 - settle * 0.04).toFixed(4)})`;
+        ` translate3d(${shiftX.toFixed(2)}px, ${shiftY.toFixed(2)}px, 0)` +
+        ` scale(${(1 - settle * 0.04).toFixed(4)})`;
       // The screen's glare slides against the tilt, the way a reflection on
       // real glass would. Set on the device itself, since the glass layer is
       // a descendant of it.
@@ -174,8 +190,8 @@ function usePhoneMotion(
       readSettle();
       // Critically damped-ish follow: fast enough to feel attached to the
       // cursor, slow enough that it glides rather than snaps.
-      pointerX += (targetX - pointerX) * 0.14;
-      pointerY += (targetY - pointerY) * 0.14;
+      pointerX += (targetX - pointerX) * 0.16;
+      pointerY += (targetY - pointerY) * 0.16;
       apply();
       if (Math.abs(targetX - pointerX) > 0.0005 || Math.abs(targetY - pointerY) > 0.0005) {
         schedule();
@@ -188,13 +204,26 @@ function usePhoneMotion(
     }
 
     const onPointerMove = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse' || !stage) return;
-      const rect = stage.getBoundingClientRect();
-      targetX = clamp01((e.clientX - rect.left) / rect.width) - 0.5;
-      targetY = clamp01((e.clientY - rect.top) / rect.height) - 0.5;
+      if (e.pointerType !== 'mouse' || !onScreen) return;
+      const rect = phone.getBoundingClientRect();
+      const centreX = rect.left + rect.width / 2;
+      const centreY = rect.top + rect.height / 2;
+      // Each direction is measured against the room that actually exists on
+      // that side of the device, so both window edges reach full deflection.
+      // A single shared divisor cannot: the device sits well left of centre,
+      // so its short side would top out at little over half the tilt of its
+      // long one and the effect would come out visibly lopsided.
+      const dx = e.clientX - centreX;
+      const dy = e.clientY - centreY;
+      const spanX = dx < 0 ? centreX : window.innerWidth - centreX;
+      const spanY = dy < 0 ? centreY : window.innerHeight - centreY;
+      targetX = spanX > 0 ? Math.max(-1, Math.min(1, dx / spanX)) : 0;
+      targetY = spanY > 0 ? Math.max(-1, Math.min(1, dy / spanY)) : 0;
       schedule();
     };
-    const onPointerLeave = () => {
+    // The cursor leaving the window is the only "away" case now — there is no
+    // small box to fall out of.
+    const onWindowLeave = () => {
       targetX = 0;
       targetY = 0;
       schedule();
@@ -204,20 +233,31 @@ function usePhoneMotion(
     apply();
     window.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', schedule);
-    if (trackPointer && stage) {
-      stage.addEventListener('pointermove', onPointerMove);
-      stage.addEventListener('pointerleave', onPointerLeave);
+
+    let observer: IntersectionObserver | undefined;
+    if (trackPointer) {
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          onScreen = entry.isIntersecting;
+          if (!onScreen) onWindowLeave();
+        },
+        { rootMargin: '120px' },
+      );
+      observer.observe(phone);
+      window.addEventListener('pointermove', onPointerMove, { passive: true });
+      document.addEventListener('pointerleave', onWindowLeave);
     }
     return () => {
       window.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
-      if (trackPointer && stage) {
-        stage.removeEventListener('pointermove', onPointerMove);
-        stage.removeEventListener('pointerleave', onPointerLeave);
+      if (trackPointer) {
+        window.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerleave', onWindowLeave);
+        observer?.disconnect();
       }
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [phoneRef, stageRef]);
+  }, [phoneRef]);
 }
 
 // True once the element has scrolled into view, and stays true. Used to hold
@@ -279,7 +319,7 @@ function PhoneScreen({ revealed }: { revealed: boolean }) {
           borderRadius: SCREEN_RADIUS,
           opacity: revealed ? 1 : 0,
           transform: revealed ? 'none' : 'scale(1.04)',
-          transition: 'opacity 0.7s ease 150ms, transform 0.9s cubic-bezier(0.16, 1, 0.3, 1) 150ms',
+          transition: 'opacity 0.49s ease 105ms, transform 0.63s cubic-bezier(0.16, 1, 0.3, 1) 105ms',
         }}
       />
       {/* Dynamic Island. iOS screenshots render the cutout area as ordinary
@@ -298,16 +338,11 @@ function PhoneScreen({ revealed }: { revealed: boolean }) {
 
 function PhoneMockup() {
   const phoneRef = useRef<HTMLDivElement>(null);
-  // The cursor is tracked across this whole stage rather than the device
-  // itself, so the phone begins reacting as the pointer approaches instead of
-  // only once it is over a ~190px-wide target — which is what made the
-  // parallax so easy to miss that it read as not working at all.
-  const stageRef = useRef<HTMLDivElement>(null);
-  usePhoneMotion(phoneRef, stageRef);
+  usePhoneMotion(phoneRef);
   const revealed = useInView(phoneRef);
 
   return (
-    <div ref={stageRef} className="relative flex items-center justify-center py-12 px-10">
+    <div className="relative flex items-center justify-center py-12 px-10">
       {/* Layered ambient glow behind the phone — purely decorative. */}
       <div
         className="absolute inset-0 rounded-full bg-gradient-to-br from-emerald-300/30 via-teal-300/15 to-transparent blur-3xl pointer-events-none"

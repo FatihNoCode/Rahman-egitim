@@ -3,6 +3,7 @@ import { Mail } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../lib/supabase';
 import LoginPage from './components/LoginPage';
+import HomePage from './components/HomePage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { FeedbackHost } from './components/ui/feedback';
 import OfflineNotice from './components/OfflineNotice';
@@ -275,6 +276,27 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'superadmin' | 'admin'>('superadmin');
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [isRecovery, setIsRecovery] = useState(false);
+
+  // The marketing landing page shown to a signed-out web visitor before
+  // LoginPage. Skipped entirely in the native app / ?app=1 preview — those
+  // visitors already chose to install the app, so they land straight in the
+  // sign-in flow. Remembered per-tab so navigating back from LoginPage (or a
+  // reload mid-flow) doesn't bounce a visitor who already clicked through.
+  const [homeEntered, setHomeEntered] = useState(() => {
+    try {
+      return sessionStorage.getItem('ilimyolu:home_entered') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const enterFromHome = useCallback(() => {
+    try {
+      sessionStorage.setItem('ilimyolu:home_entered', '1');
+    } catch {
+      /* private mode / storage full — still enters for this render */
+    }
+    setHomeEntered(true);
+  }, []);
 
   // Stable across renders so it can be depended on from a child's effect
   // without re-firing that effect on every unrelated App state change.
@@ -714,6 +736,12 @@ export default function App() {
                 setInviteToken(null);
                 window.history.pushState({}, '', '/');
               }} />
+            ) : !user && !isAppLayout() && !homeEntered ? (
+              <HomePage
+                language={language}
+                setLanguage={setLanguage}
+                onEnter={enterFromHome}
+              />
             ) : !user ? (
               <LoginPage
                 onLogin={handleLogin}

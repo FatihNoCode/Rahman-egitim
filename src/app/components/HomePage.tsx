@@ -313,7 +313,7 @@ function PhoneScreen({ revealed }: { revealed: boolean }) {
     <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: SCREEN_RADIUS }}>
       <img
         src={appScreenshot}
-        alt="Rahman Eğitim app — ouderdashboard"
+        alt="Rahman Eğitim app, ouderdashboard"
         // The radius is repeated on the image itself, not left to the
         // parent's overflow clip alone: a clip on an ancestor is unreliable
         // once a 3D transform is in play (some browsers drop it during

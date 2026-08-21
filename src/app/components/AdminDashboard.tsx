@@ -563,19 +563,19 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
 
                   <div className="space-y-4 mb-6">
                     <h4 className="text-lg font-semibold text-gray-700">{t.notificationDeadline}</h4>
-                    <div className="flex gap-3 items-center">
+                    <div className="flex flex-wrap gap-3 items-center">
                       <input
                         type="time"
                         value={notificationDeadline}
                         onChange={(e) => setNotificationDeadline(e.target.value)}
-                        className="px-3 py-2 border rounded-lg"
+                        className="shrink-0 px-3 py-2 border rounded-lg"
                       />
                       <span className="text-sm text-gray-600">
                         {language === 'tr' ? 'Ders günü saati' : 'Tijd op lesdag'}
                       </span>
                       <button
                         onClick={updateNotificationDeadline}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        className="shrink-0 whitespace-nowrap px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                       >
                         {t.updateDeadline}
                       </button>
@@ -597,17 +597,17 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
                           : 'Een nieuw jaar starten sluit het huidige jaar af en reset statistieken. Alle gegevens worden gearchiveerd en bewaard.'}
                       </p>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex flex-col sm:flex-row gap-3">
                       <input
                         type="text"
                         value={newYearName}
                         onChange={(e) => setNewYearName(e.target.value)}
                         placeholder={language === 'tr' ? 'Örn: 2027-2028' : 'Bijv: 2027-2028'}
-                        className="flex-1 px-3 py-2 border rounded-lg"
+                        className="w-full sm:flex-1 min-w-0 px-3 py-2 border rounded-lg"
                       />
                       <button
                         onClick={startNewYear}
-                        className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold"
+                        className="w-full sm:w-auto shrink-0 whitespace-nowrap px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold"
                       >
                         {t.startNewYear}
                       </button>

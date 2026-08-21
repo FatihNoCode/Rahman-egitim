@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { useForceLightTheme } from '../../lib/theme';
-import faviconUrl from '../../imports/logo.svg';
+import SiteHeader from './SiteHeader';
 import { ChevronDown, Plus, X, Mail, Info } from 'lucide-react';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
@@ -410,34 +410,7 @@ export default function InschrijvingPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <div className="bg-white shadow-sm">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
-          <button
-            onClick={() => { window.location.href = '/'; }}
-            className="flex items-center gap-3 cursor-pointer"
-          >
-            <img src={faviconUrl} alt="Logo" className="h-9 w-9 object-contain" />
-            <span className="font-bold text-emerald-800 text-lg">Rahman Eğitim</span>
-          </button>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { window.location.href = '/login'; }}
-              className="px-3 py-1 rounded text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition"
-            >
-              {language === 'tr' ? 'Giriş yap' : 'Inloggen'}
-            </button>
-            <button
-              onClick={() => setLanguage('nl')}
-              className={`px-3 py-1 rounded text-sm font-medium transition ${language === 'nl' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-            >NL</button>
-            <button
-              onClick={() => setLanguage('tr')}
-              className={`px-3 py-1 rounded text-sm font-medium transition ${language === 'tr' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-            >TR</button>
-          </div>
-        </div>
-      </div>
+      <SiteHeader language={language} setLanguage={setLanguage} current="enroll" />
 
       <div className="flex-1 flex items-start justify-center px-4 py-10">
         <div className="w-full max-w-2xl space-y-6">

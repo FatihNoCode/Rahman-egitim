@@ -3,6 +3,7 @@ import type { Language } from '../App';
 import logo from '../../imports/logo.svg';
 import { isAppLayout } from '../../lib/native';
 import { useForceLightTheme } from '../../lib/theme';
+import SiteHeader from './SiteHeader';
 
 /**
  * Public "how do I delete my account" page.
@@ -132,20 +133,9 @@ export default function DeleteAccountPage() {
   const text = t[language];
 
   return (
-    <div className="min-h-screen w-full bg-gray-50 py-8 px-4">
-      <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-9">
-        <div className="flex items-center justify-between mb-6">
-          <a href="/" className="text-emerald-700 hover:text-emerald-900 text-sm font-medium">
-            {text.back}
-          </a>
-          <button
-            onClick={() => setLanguage(language === 'nl' ? 'tr' : 'nl')}
-            className="px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold hover:bg-emerald-200 transition"
-          >
-            {text.langLabel}
-          </button>
-        </div>
-
+    <div className="min-h-screen w-full bg-gray-50">
+      <SiteHeader language={language} setLanguage={setLanguage} />
+      <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-9 my-8 mx-4 sm:mx-auto">
         <div className="flex flex-col items-center text-center mb-6">
           <img src={logo} alt="Rahman Eğitim" className="h-[92px] w-[92px] object-contain mb-3" />
           <h1 className="text-2xl font-bold text-gray-800">{text.title}</h1>

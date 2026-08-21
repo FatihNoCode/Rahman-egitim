@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple } from 'lucide-react';
+import {
+  CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple, PenLine,
+} from 'lucide-react';
 import type { Language } from '../App';
 import { useForceLightTheme } from '../../lib/theme';
 import logo from '../../imports/logo.svg';
@@ -18,11 +20,14 @@ const t = {
   nl: {
     langLabel: 'TR',
     login: 'Inloggen',
+    enroll: 'Inschrijven',
+    enrollLong: 'Kind inschrijven',
+    enrollNote: 'Inschrijven kan het hele jaar door — u hoeft geen account te hebben.',
+    bannerCta: 'Schrijf uw kind in',
     heroBadge: 'Website & app',
     heroTitle: 'Onderwijs, aanwezigheid en communicatie',
     heroTitleAccent: 'op één plek.',
     heroSubtitle: 'Voor ouders, leerkrachten en scholen — op de website en in de app.',
-    heroCta: 'Inloggen',
     heroCtaSecondary: 'Bekijk de app',
     webKicker: 'De website',
     webTitle: 'Eén beheerportaal voor de hele school',
@@ -43,11 +48,14 @@ const t = {
   tr: {
     langLabel: 'NL',
     login: 'Giriş Yap',
+    enroll: 'Kayıt',
+    enrollLong: 'Çocuk kaydı',
+    enrollNote: 'Kayıt yıl boyunca açıktır — hesabınızın olması gerekmez.',
+    bannerCta: 'Çocuğunuzu kaydedin',
     heroBadge: 'Web sitesi & uygulama',
     heroTitle: 'Eğitim, devam ve iletişim',
     heroTitleAccent: 'tek bir yerde.',
     heroSubtitle: 'Veliler, öğretmenler ve okullar için — web sitesinde ve uygulamada.',
-    heroCta: 'Giriş Yap',
     heroCtaSecondary: 'Uygulamaya göz atın',
     webKicker: 'Web sitesi',
     webTitle: 'Tüm okul için tek yönetim paneli',
@@ -387,7 +395,7 @@ function PhoneMockup() {
 // The dark brand statement banner used to close the page — logo, name and a
 // bilingual one-line pitch, rendered as real markup instead of the flat PNG
 // used for store listings, so it stays crisp, selectable and themeable here.
-function BrandStatement() {
+function BrandStatement({ cta }: { cta: string }) {
   return (
     <section className="relative isolate overflow-hidden">
       <div
@@ -409,6 +417,16 @@ function BrandStatement() {
           Devam, ödev, sınav ve veli görüşmeleri
         </p>
         <div className="home-rise mt-6 h-1 w-14 rounded-full bg-emerald-400 mx-auto" style={{ animationDelay: '200ms' }} />
+        {/* Repeated here so someone who read the whole page does not have to
+            scroll back up to the header to act on it. */}
+        <a
+          href="/inschrijven"
+          className="home-rise inline-flex items-center justify-center gap-2 mt-8 px-7 py-3.5 rounded-full bg-white hover:bg-emerald-50 text-emerald-900 font-semibold shadow-lg shadow-black/20 transition hover:-translate-y-0.5"
+          style={{ animationDelay: '260ms' }}
+        >
+          <PenLine className="h-5 w-5 shrink-0" />
+          {cta}
+        </a>
       </div>
     </section>
   );
@@ -462,31 +480,42 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
     <div className="min-h-screen w-full bg-white overflow-x-hidden">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img src={logo} alt="Rahman Eğitim" className="h-9 w-9 object-contain" />
-            <span className="font-bold text-gray-900 tracking-tight">Rahman Eğitim</span>
+            <span className="hidden sm:inline font-bold text-gray-900 tracking-tight">Rahman Eğitim</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             <div className="flex gap-1 bg-gray-100 rounded-full p-1">
               <button
                 onClick={() => setLanguage('tr')}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'tr' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'tr' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 TR
               </button>
               <button
                 onClick={() => setLanguage('nl')}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'nl' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'nl' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 NL
               </button>
             </div>
+            {/* Enrolling is what a *new* visitor came here to do, so it takes
+                the primary style; logging in is a returning-user action and
+                sits beside it as the quieter one. Both stay visible at every
+                width — the enrol button is the one thing on this page that
+                must never be the item that collapses into a menu. */}
             <a
               href="/login"
-              className="px-4 py-2 rounded-full bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold shadow-sm transition"
+              className="px-2 sm:px-4 py-2 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm font-semibold transition"
             >
               {text.login}
+            </a>
+            <a
+              href="/inschrijven"
+              className="px-3.5 sm:px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm shadow-emerald-600/20 transition"
+            >
+              {text.enroll}
             </a>
           </div>
         </div>
@@ -518,20 +547,31 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
             <p className="home-rise text-gray-500 text-lg mt-6 max-w-lg mx-auto" style={{ animationDelay: '160ms' }}>
               {text.heroSubtitle}
             </p>
-            <div className="home-rise flex items-center justify-center gap-3 mt-9" style={{ animationDelay: '240ms' }}>
+            {/* Enrolling leads, and is the only button here carrying brand
+                colour and an icon, so it wins the page at a glance. Wraps to
+                a stacked column on narrow screens rather than shrinking, so
+                it never ends up as a cramped half-width target on a phone. */}
+            <div
+              className="home-rise flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 mt-9"
+              style={{ animationDelay: '240ms' }}
+            >
               <a
-                href="/login"
-                className="px-6 py-3 rounded-full bg-gray-900 hover:bg-gray-800 text-white font-semibold shadow-lg shadow-gray-900/10 transition hover:-translate-y-0.5"
+                href="/inschrijven"
+                className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-lg shadow-lg shadow-emerald-600/25 transition hover:-translate-y-0.5"
               >
-                {text.heroCta}
+                <PenLine className="h-5 w-5 shrink-0" />
+                {text.enrollLong}
               </a>
               <a
                 href="#app"
-                className="px-6 py-3 rounded-full bg-white/80 backdrop-blur border border-gray-200 hover:bg-white text-gray-700 font-semibold transition hover:-translate-y-0.5"
+                className="inline-flex items-center justify-center px-6 py-3.5 rounded-full bg-white/80 backdrop-blur border border-gray-200 hover:bg-white text-gray-700 font-semibold transition hover:-translate-y-0.5"
               >
                 {text.heroCtaSecondary}
               </a>
             </div>
+            <p className="home-rise text-sm text-gray-400 mt-4" style={{ animationDelay: '300ms' }}>
+              {text.enrollNote}
+            </p>
           </div>
         </section>
 
@@ -602,7 +642,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
         </section>
       </main>
 
-      <BrandStatement />
+      <BrandStatement cta={text.bannerCta} />
 
       <footer className="border-t border-gray-100">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-7 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-gray-400">

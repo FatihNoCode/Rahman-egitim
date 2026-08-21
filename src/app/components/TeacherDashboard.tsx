@@ -14,6 +14,7 @@ import SignalsView from './SignalsView';
 import MomentComposer from './MomentComposer';
 import ExamListView from './toets/ExamListView';
 import UserMenu from './UserMenu';
+import RoleSwitchPill from './RoleSwitchPill';
 import Sidebar from './Sidebar';
 import { notify } from './ui/feedback';
 import { isAppLayout } from '../../lib/native';
@@ -622,6 +623,10 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             <h1 className="min-w-0 flex-1 text-2xl font-bold leading-tight text-gray-800">
               {mobileById[activeTab]?.label ?? t.teacherDashboard}
             </h1>
+            {/* A teacher with children of her own switches to Ouder from here
+                rather than from the bottom of the settings screen. Renders
+                nothing for the single-role majority. */}
+            <RoleSwitchPill language={language} />
             <AccountAvatarButton onOpen={() => setActiveTab(MOBILE_ACCOUNT_ID)} />
           </div>
         )}
@@ -638,6 +643,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <RoleSwitchPill language={language} />
             <div className="flex gap-1 bg-white rounded-full p-1 shadow-sm">
               <button
                 onClick={() => setLanguage('tr')}

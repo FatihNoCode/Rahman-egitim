@@ -1361,6 +1361,8 @@ app.get("/make-server-6679cacd/session", async (c) => {
       }
     }
 
+    userData = await syncDerivedRoles(user.id, userData);
+
     return c.json({ user: { ...userData, id: user.id, mfaRequired: await mfaRequiredForRole(userData) } });
   } catch (err) {
     console.log('Session error:', err);
@@ -1389,6 +1391,60 @@ function applyActiveRole(userData: any, role: string) {
     classId: 'classId' in ctx ? ctx.classId : userData.classId,
     region: 'region' in ctx ? ctx.region : userData.region,
   };
+}
+
+// A person is not one thing. The mother who teaches on Saturday, the board
+// member whose own children are enrolled — the account already holds both
+// facts (a `teacher_classes` list and a `parent_children` list), but only the
+// single `role` field was ever consulted, so one of the two hats was simply
+// invisible: a teacher with a child at the school had no way to see that
+// child's attendance without a second account.
+//
+// This derives the full set of roles from data that is already there and
+// stores it as `roles`, which is what the role switcher reads. It only ever
+// *adds* — a role assigned deliberately (demo testers, manual grants) is never
+// taken away — and it leaves the active `role` alone.
+async function syncDerivedRoles(userId: string, userData: any) {
+  if (!userData || userData.status !== 'approved') return userData;
+
+  const before: string[] =
+    Array.isArray(userData.roles) && userData.roles.length > 0 ? userData.roles : [userData.role];
+  const roles = [...before];
+  const add = (r: string) => {
+    if (r && !roles.includes(r)) roles.push(r);
+  };
+
+  const children = await kv.get(`parent_children:${userId}`);
+  const classes = await kv.get(`teacher_classes:${userId}`);
+  if (Array.isArray(children) && children.length > 0) add('parent');
+  if (Array.isArray(classes) && classes.length > 0) add('teacher');
+
+  // Nothing new, and a single-role account stays single-role: don't write.
+  if (roles.length === before.length && Array.isArray(userData.roles)) return userData;
+  if (roles.length < 2) return userData;
+
+  // Switching roles rewrites the flat schoolId/classId/region fields from the
+  // target role's stored context (see applyActiveRole). Snapshot what the
+  // account currently has under its *active* role first, so switching away and
+  // back is lossless, then fill in what each derived role needs.
+  const roleContext: Record<string, any> = { ...(userData.roleContext || {}) };
+  if (!roleContext[userData.role]) {
+    roleContext[userData.role] = {
+      schoolId: userData.schoolId,
+      classId: userData.classId,
+      region: userData.region,
+    };
+  }
+  if (roles.includes('teacher') && !roleContext.teacher && Array.isArray(classes) && classes.length > 0) {
+    roleContext.teacher = { schoolId: userData.schoolId, classId: classes[0] };
+  }
+  if (roles.includes('parent') && !roleContext.parent) {
+    roleContext.parent = { schoolId: userData.schoolId };
+  }
+
+  const updated = { ...userData, roles, roleContext };
+  await kv.set(`user:${userId}`, updated);
+  return updated;
 }
 
 app.post("/make-server-6679cacd/switch-role", async (c) => {
@@ -1427,7 +1483,15 @@ app.post("/make-server-6679cacd/switch-role", async (c) => {
 // contain any other admin/teacher/parent to their own school. The
 // DEMO_TESTER_BLOCKED_PREFIXES check above is the second line of defence.
 const DEMO_SCHOOL_ID = '75c1a8c0-9368-474f-ba32-2fa1994da5d7'; // "Darul Furkan (Demo)"
-const DEMO_CHILD_STUDENT_ID = '24df7ee9-7c6f-497c-abe1-f084515abaa1'; // "Ömer Demir", already seeded there
+// Two children, not one, and deliberately in *different* classes. A family
+// with a single child never exercises the child switcher, the per-child
+// worklist entries, or any of the "which child am I looking at" wiring — so a
+// tester with one child cannot report on the part of the app most families
+// actually live in.
+const DEMO_CHILD_STUDENT_IDS = [
+  '24df7ee9-7c6f-497c-abe1-f084515abaa1', // "Ömer Demir"  — Darul Furkan Erkek
+  'eb0b6ff6-843e-47e7-8db7-1af35ca5140d', // "Zeynep Demir" — Darul Furkan Kız
+];
 const DEMO_TEACHER_CLASS_ID = '36ab7b8f-515e-453b-8863-5262feb2c4f7'; // "Darul Furkan Erkek"
 
 const PORTAL_ROLES = ['parent', 'teacher', 'admin'] as const;
@@ -1456,9 +1520,10 @@ async function ensureTesterTeacherClass(testerId: string) {
 
 async function ensureTesterParentChild(testerId: string) {
   const existing = await kv.get(`parent_children:${testerId}`);
-  if (!existing || existing.length === 0) {
-    await kv.set(`parent_children:${testerId}`, [DEMO_CHILD_STUDENT_ID]);
-  }
+  const current: string[] = Array.isArray(existing) ? existing : [];
+  const missing = DEMO_CHILD_STUDENT_IDS.filter((id) => !current.includes(id));
+  if (missing.length === 0) return;
+  await kv.set(`parent_children:${testerId}`, [...current, ...missing]);
 }
 
 app.post("/make-server-6679cacd/demo-testers", async (c) => {

@@ -1428,7 +1428,10 @@ export function buildParentFeed(input: ParentFeedInput): FeedItem[] {
         titleTr: `${named}ödev bekliyor`,
         bodyNl: `${openHomework.length} ${openHomework.length === 1 ? 'opdracht' : 'opdrachten'} nog te doen, eerstvolgende inleverdatum ${soonest}.`,
         bodyTr: `${openHomework.length} ödev yapılmayı bekliyor, en yakın teslim tarihi ${soonest}.`,
-        link: '#overview',
+        // Carries the child so the dashboard can switch to them before it
+        // opens the tab — otherwise a family with two children lands on a page
+        // that is about the *other* one.
+        link: `#overview:${child.id}`,
         count: openHomework.length,
       });
     }
@@ -1444,7 +1447,7 @@ export function buildParentFeed(input: ParentFeedInput): FeedItem[] {
         titleTr: `${named}ödenmemiş okul ücreti`,
         bodyNl: `Er staat nog € ${outstanding.toFixed(2)} open. Bekijk het overzicht voor de details.`,
         bodyTr: `Halen € ${outstanding.toFixed(2)} tutarında ödenmemiş bakiye var. Ayrıntılar için özete bakın.`,
-        link: '#billing',
+        link: `#billing:${child.id}`,
       });
     }
 
@@ -1461,7 +1464,7 @@ export function buildParentFeed(input: ParentFeedInput): FeedItem[] {
         titleTr: `${named}veli görüşmesi için saat seçin`,
         bodyNl: `Het oudergesprek op ${session.date} staat gepland en u heeft nog geen tijd gekozen.`,
         bodyTr: `${session.date} tarihli veli görüşmesi planlandı ve henüz bir saat seçmediniz.`,
-        link: '#oudergesprekken',
+        link: `#oudergesprekken:${child.id}`,
       });
     }
   }

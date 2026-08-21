@@ -46,6 +46,24 @@ export default function MobileNav({ items, active, onChange, language, floating 
   // than `pointerup` — see onPointerCancel.
   const downSlot = useRef(-1);
   const moved = useRef(false);
+  // When the More sheet was opened. The backdrop closes on click, and the
+  // compatibility click that follows the very tap that opened it lands on that
+  // backdrop — it is created underneath the finger before the click is
+  // dispatched. That ghost click closed the sheet in the same frame it opened,
+  // which is why More looked completely dead to a tap while a drag-and-release
+  // onto it worked (a drag suppresses the click entirely).
+  const openedAt = useRef(0);
+
+  const openMore = () => {
+    openedAt.current = Date.now();
+    setMoreOpen(true);
+  };
+
+  const closeMore = () => {
+    // Ignore anything arriving in the same gesture that opened the sheet.
+    if (Date.now() - openedAt.current < 400) return;
+    setMoreOpen(false);
+  };
 
   // With just one extra destination there's no point hiding it behind More —
   // show everything. Otherwise keep VISIBLE_SLOTS on the bar + a More button.
@@ -132,7 +150,10 @@ export default function MobileNav({ items, active, onChange, language, floating 
     const i = slotAt(e.clientX);
     setPressed(null);
     selectionEnd();
-    if (slots[i]?.kind === 'more') setMoreOpen(true);
+    // Only a *drag* that ended on More opens it from here. A plain tap is left
+    // to the button's own onClick, which fires after this handler returns — by
+    // then there is no backdrop under the finger to swallow it.
+    if (moved.current && slots[i]?.kind === 'more') openMore();
   };
 
   // Android's WebView routinely ends a plain tap on the bar with `pointercancel`
@@ -152,7 +173,7 @@ export default function MobileNav({ items, active, onChange, language, floating 
     dragging.current = false;
     setPressed(null);
     selectionEnd();
-    if (!moved.current && slots[downSlot.current]?.kind === 'more') setMoreOpen(true);
+    if (!moved.current && slots[downSlot.current]?.kind === 'more') openMore();
   };
 
   return (
@@ -200,11 +221,14 @@ export default function MobileNav({ items, active, onChange, language, floating 
                   key={slot.kind === 'more' ? '__more' : slot.item.id}
                   type="button"
                   aria-current={isActive ? 'page' : undefined}
+                  aria-haspopup={slot.kind === 'more' ? 'dialog' : undefined}
+                  aria-expanded={slot.kind === 'more' ? moreOpen : undefined}
+                  aria-label={slot.kind === 'more' ? MORE_LABEL[language] : undefined}
                   // Pointer events drive the touch interaction, but they never
                   // fire for Enter/Space on a focused button — so keyboard
                   // users need this too. Re-selecting the current tab is a
                   // no-op, so the duplicate click after a tap is harmless.
-                  onClick={() => (slot.kind === 'more' ? setMoreOpen(true) : pick(slot.item.id))}
+                  onClick={() => (slot.kind === 'more' ? openMore() : pick(slot.item.id))}
                   // min-w-0 is load-bearing twice over: without it a flex item
                   // refuses to shrink below its content, so long labels like
                   // "Oudergesprekken" widen their slot (pushing neighbours out
@@ -240,7 +264,7 @@ export default function MobileNav({ items, active, onChange, language, floating 
         <div
           className="fixed inset-0 z-50 flex flex-col bg-black/30 backdrop-blur-[2px]"
           style={{ animation: `mobilenav-fade 220ms ${APPLE_EASE}` }}
-          onClick={() => setMoreOpen(false)}
+          onClick={closeMore}
         >
           <div
             className="ios-glass-sheet mt-auto w-full overflow-hidden rounded-t-[2.25rem]"

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CheckCircle2, ChevronRight, RefreshCw } from 'lucide-react';
+import { childAccent, childInitial } from './childIdentity';
 
 /**
  * "Wat vraagt om uw aandacht" — the parent's worklist.
@@ -52,6 +53,17 @@ interface ActionCenterProps {
    * answer. Everywhere else silence is better than a permanent empty card.
    */
   showAllClear?: boolean;
+  /**
+   * The family's children, in the order the child switcher shows them.
+   *
+   * This is the one parent surface that deliberately spans *every* child, so
+   * it is also the one place where two entries side by side can be about two
+   * different people. Given the list, each entry gets the child's colour and
+   * initial (see childIdentity) — the list becomes scannable by colour, and
+   * the reader can tell the two apart before reading a word. Omit it, or pass
+   * a single child, and the badges are left off entirely.
+   */
+  childrenList?: { id: string; name: string }[];
 }
 
 const LEVEL_STYLES: Record<Level, { border: string; dot: string }> = {
@@ -66,6 +78,7 @@ export default function ActionCenter({
   onNavigate,
   refreshKey = 0,
   showAllClear = false,
+  childrenList = [],
 }: ActionCenterProps) {
   const tr = language === 'tr';
   const text = tr
@@ -122,6 +135,18 @@ export default function ActionCenter({
   const label = (item: ActionItem) => (tr ? item.titleTr : item.titleNl);
   const body = (item: ActionItem) => (tr ? item.bodyTr : item.bodyNl);
 
+  // Which child an entry is about. Every per-child key and link the server
+  // builds carries the student id (`parent_billing:<id>`, `#billing:<id>`);
+  // account-level entries such as the missing phone number carry neither, and
+  // correctly get no badge.
+  const showBadges = childrenList.length > 1;
+  const childFor = (item: ActionItem) => {
+    if (!showBadges) return null;
+    const haystack = `${item.key}:${item.link || ''}`;
+    const i = childrenList.findIndex((c) => haystack.includes(c.id));
+    return i < 0 ? null : { child: childrenList[i], accent: childAccent(i) };
+  };
+
   return (
     <div className="mb-4 sm:mb-6">
       <div className="flex items-center justify-between gap-3 mb-3">
@@ -144,6 +169,18 @@ export default function ActionCenter({
               className={`bg-white border border-gray-200 rounded-xl ${LEVEL_STYLES[item.level].border} flex items-start gap-3 p-4`}
             >
               <span className={`mt-2 w-2 h-2 rounded-full shrink-0 ${LEVEL_STYLES[item.level].dot}`} />
+              {(() => {
+                const owner = childFor(item);
+                if (!owner) return null;
+                return (
+                  <span
+                    title={owner.child.name}
+                    className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${owner.accent.solid}`}
+                  >
+                    {childInitial(owner.child.name)}
+                  </span>
+                );
+              })()}
               <button
                 onClick={() => clickable && onNavigate!(item.link!)}
                 disabled={!clickable}

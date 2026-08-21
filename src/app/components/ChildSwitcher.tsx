@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Check, ChevronDown, Users } from 'lucide-react';
+import { Check, ChevronDown, ArrowLeftRight } from 'lucide-react';
+import { childAccent, childInitial } from './childIdentity';
+import { isAppLayout } from '../../lib/native';
 import type { Language } from '../App';
 
 interface SwitchableChild {
@@ -19,15 +21,15 @@ interface ChildSwitcherProps {
 
 const T = {
   nl: {
-    viewing: 'Je bekijkt nu de gegevens van',
-    switchTo: (name: string) => `Tik om te wisselen naar ${name}`,
-    switchAny: 'Tik om een ander kind te kiezen',
+    viewing: 'Je bekijkt nu',
+    switchTo: (name: string) => `Wissel naar ${name}`,
+    switchAny: 'Kies een ander kind',
     pick: 'Kies een kind',
   },
   tr: {
-    viewing: 'Şu anda şu çocuğun bilgilerini görüyorsunuz',
-    switchTo: (name: string) => `${name} için dokunun`,
-    switchAny: 'Başka bir çocuk seçmek için dokunun',
+    viewing: 'Şu anda görüntülenen',
+    switchTo: (name: string) => `${name} adlı çocuğa geç`,
+    switchAny: 'Başka bir çocuk seçin',
     pick: 'Bir çocuk seçin',
   },
 };
@@ -36,6 +38,12 @@ const T = {
 // name pills this replaced never said *which* child the page below was about —
 // you had to notice which pill was filled in. This states it in words, and the
 // action it offers is the one thing you'd want next: switch to the other child.
+//
+// It is also sticky. Every tab below it — facturatie, cijfers, de agenda — is a
+// long scroll, and the answer to "whose money is this, whose grades are these"
+// used to scroll off the top on the first flick. Pinned to the top of the
+// scroller it is the one thing on the screen that never leaves, which is what
+// lets every tab underneath stay free of the child's name.
 export default function ChildSwitcher({
   children,
   selectedId,
@@ -48,7 +56,9 @@ export default function ChildSwitcher({
 
   if (children.length < 2) return null;
 
-  const selected = children.find((c) => c.id === selectedId) || children[0];
+  const selectedIndex = Math.max(0, children.findIndex((c) => c.id === selectedId));
+  const selected = children[selectedIndex];
+  const accent = childAccent(selectedIndex);
   const others = children.filter((c) => c.id !== selected.id);
   // With exactly one other child there is nothing to choose between — tapping
   // just swaps. A list would be three taps to do what one can.
@@ -57,40 +67,61 @@ export default function ChildSwitcher({
   const subtitle = (c: SwitchableChild) =>
     [c.className, c.schoolId ? schoolNames[c.schoolId] : null].filter(Boolean).join(' · ');
 
-  const initial = (name: string) => name.trim().charAt(0).toUpperCase();
+  // The negative margins let the sticky bar's own background run to the edge of
+  // the padded page while its content stays aligned with everything else, so
+  // nothing appears to slide *under* a floating card as you scroll. They have
+  // to cancel the scroller's padding exactly, and the app shell keeps a flat
+  // 12px at every width where the website steps 12 → 16 → 24; being off by a
+  // few pixels here shows up as a horizontal scrollbar, not as a rounding
+  // error, so the two cases are spelled out separately.
+  const bleed = isAppLayout()
+    ? '-mx-3 px-3'
+    : '-mx-3 px-3 sm:-mx-4 sm:px-4 md:-mx-6 md:px-6';
 
   return (
-    <div className="mb-4">
+    <div className={`sticky top-0 z-30 mb-4 bg-gray-50/95 pb-2 pt-1 backdrop-blur ${bleed}`}>
       <button
         type="button"
         onClick={() => (isToggle ? onSelect(others[0].id) : setOpen((v) => !v))}
         aria-expanded={isToggle ? undefined : open}
-        className="flex w-full items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3 text-left transition active:scale-[0.99]"
+        className={`flex w-full items-center gap-3 rounded-2xl border ${accent.border} ${accent.surface} p-2.5 text-left transition active:scale-[0.99]`}
       >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-base font-bold text-white shadow-sm">
-          {initial(selected.name)}
+        <span
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-bold shadow-sm ${accent.solid}`}
+        >
+          {childInitial(selected.name)}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[11px] font-medium uppercase tracking-wide text-emerald-700/70">
+          <span className={`block text-[10px] font-semibold uppercase tracking-wide ${accent.textMuted}`}>
             {text.viewing}
           </span>
-          <span className="block truncate text-base font-bold leading-tight text-gray-800">
+          <span className="block truncate text-[15px] font-bold leading-tight text-gray-800">
             {selected.name}
-          </span>
-          <span className="mt-0.5 flex items-center gap-1 text-xs font-medium text-emerald-700">
-            <Users className="h-3 w-3 shrink-0" />
-            <span className="truncate">
-              {isToggle ? text.switchTo(others[0].name) : text.switchAny}
-            </span>
+            {subtitle(selected) && (
+              <span className="ml-1.5 text-xs font-medium text-gray-400">{subtitle(selected)}</span>
+            )}
           </span>
         </span>
-        {!isToggle && (
-          <ChevronDown
-            className={`h-5 w-5 shrink-0 text-emerald-600 transition-transform duration-200 ${
-              open ? 'rotate-180' : ''
-            }`}
-          />
-        )}
+        {/* The switch affordance is an icon rather than a second line of text:
+            the row has to stay short enough to pin to the top of every screen
+            without eating the content it sits above. */}
+        <span
+          className={`flex shrink-0 items-center gap-1 rounded-full bg-white/70 px-2.5 py-1.5 text-[11px] font-semibold ${accent.text}`}
+        >
+          {isToggle ? (
+            <>
+              <ArrowLeftRight className="h-3.5 w-3.5 shrink-0" />
+              <span className="hidden sm:inline">{text.switchTo(others[0].name)}</span>
+            </>
+          ) : (
+            <>
+              <span className="hidden sm:inline">{text.switchAny}</span>
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+              />
+            </>
+          )}
+        </span>
       </button>
 
       {open && !isToggle && (
@@ -98,8 +129,9 @@ export default function ChildSwitcher({
           <p className="px-4 pt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
             {text.pick}
           </p>
-          {children.map((child) => {
+          {children.map((child, i) => {
             const isCurrent = child.id === selected.id;
+            const rowAccent = childAccent(i);
             return (
               <button
                 key={child.id}
@@ -109,15 +141,15 @@ export default function ChildSwitcher({
                   setOpen(false);
                 }}
                 className={`flex w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50 ${
-                  isCurrent ? 'bg-emerald-50/60' : ''
+                  isCurrent ? rowAccent.surface : ''
                 }`}
               >
                 <span
                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                    isCurrent ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-500'
+                    isCurrent ? rowAccent.solid : 'bg-gray-100 text-gray-500'
                   }`}
                 >
-                  {initial(child.name)}
+                  {childInitial(child.name)}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold text-gray-800">{child.name}</span>
@@ -125,7 +157,7 @@ export default function ChildSwitcher({
                     <span className="block truncate text-xs text-gray-400">{subtitle(child)}</span>
                   )}
                 </span>
-                {isCurrent && <Check className="h-4 w-4 shrink-0 text-emerald-600" />}
+                {isCurrent && <Check className={`h-4 w-4 shrink-0 ${rowAccent.text}`} />}
               </button>
             );
           })}

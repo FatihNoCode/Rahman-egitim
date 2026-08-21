@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FlaskConical, Check, Loader2, ShieldCheck, Map, Building2, GraduationCap, Users } from 'lucide-react';
+import { FlaskConical, UserCog, Check, Loader2, ShieldCheck, Map, Building2, GraduationCap, Users } from 'lucide-react';
 import { useApp, type TestRole, type Language } from '../App';
 import { notify } from './ui/feedback';
 
@@ -20,16 +20,24 @@ const ROLE_LABELS: Record<TestRole, { icon: typeof ShieldCheck; nl: string; tr: 
   parent: { icon: Users, nl: 'Ouder / leerling', tr: 'Veli / öğrenci' },
 };
 
+// Two audiences, one control. A demo tester is switching roles to poke at the
+// app; a teacher whose own children are enrolled is switching because she is
+// genuinely both, and telling her she is looking at a "testrol" would be
+// wrong. Same list, honest heading for each.
 const T = {
   nl: {
-    title: 'Testrol',
-    hint: 'Wissel van rol zonder uit te loggen. Alleen zichtbaar voor de demo-accounts.',
+    testTitle: 'Testrol',
+    testHint: 'Wissel van rol zonder uit te loggen. Alleen zichtbaar voor de demo-accounts.',
+    title: 'Uw rollen',
+    hint: 'U heeft meer dan één rol bij de school. Wissel hier zonder uit te loggen.',
     switching: 'Wisselen…',
     failed: 'Kon niet van rol wisselen',
   },
   tr: {
-    title: 'Test rolü',
-    hint: 'Çıkış yapmadan rol değiştirin. Yalnızca demo hesapları için görünür.',
+    testTitle: 'Test rolü',
+    testHint: 'Çıkış yapmadan rol değiştirin. Yalnızca demo hesapları için görünür.',
+    title: 'Rolleriniz',
+    hint: 'Okulda birden fazla rolünüz var. Çıkış yapmadan buradan geçiş yapın.',
     switching: 'Değiştiriliyor…',
     failed: 'Rol değiştirilemedi',
   },
@@ -39,6 +47,9 @@ export default function TestRoleSwitcher({ language }: { language: Language }) {
   const { user, switchTestRole } = useApp();
   const text = T[language];
   const [busy, setBusy] = useState<TestRole | null>(null);
+  const demo = !!user?.isDemoTester;
+  const title = demo ? text.testTitle : text.title;
+  const hint = demo ? text.testHint : text.hint;
 
   // Which role is live now — used to mark the current row and disable it.
   const current = user?.role as TestRole | undefined;
@@ -59,10 +70,14 @@ export default function TestRoleSwitcher({ language }: { language: Language }) {
   return (
     <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
       <div className="flex items-start gap-2 px-4 pb-2 pt-4">
-        <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+        {demo ? (
+          <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+        ) : (
+          <UserCog className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+        )}
         <div>
-          <p className="text-sm font-semibold text-gray-700">{text.title}</p>
-          <p className="text-xs text-gray-400">{text.hint}</p>
+          <p className="text-sm font-semibold text-gray-700">{title}</p>
+          <p className="text-xs text-gray-400">{hint}</p>
         </div>
       </div>
       <div className="px-2 pb-2">

@@ -7,6 +7,7 @@ import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
 import ChildSwitcher from './ChildSwitcher';
+import RoleSwitchPill from './RoleSwitchPill';
 import ActionCenter from './ActionCenter';
 import MomentsFeed from './MomentsFeed';
 import { notify } from './ui/feedback';
@@ -386,6 +387,11 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       else setProfileSignal((n) => n + 1);
       return;
     }
+    // Every per-child entry carries the child it is about. Without this a
+    // family with two children could tap "openstaand schoolgeld" under one
+    // name and land on the other child's facturatie — the tab is right, the
+    // child is wrong, and nothing on the page says so.
+    if (arg && students.some((s) => s.id === arg)) setSelectedChildId(arg);
     setActiveTab(target);
   };
 
@@ -609,6 +615,8 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             <h1 className="min-w-0 flex-1 text-2xl font-bold leading-tight text-gray-800">
               {activeTab === 'overview' ? '' : byId[activeTab]?.label ?? ''}
             </h1>
+            {/* Only renders for accounts that hold more than one role. */}
+            <RoleSwitchPill language={language} />
             <AccountAvatarButton onOpen={() => setActiveTab(MOBILE_ACCOUNT_ID)} />
           </div>
         )}
@@ -625,6 +633,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <RoleSwitchPill language={language} />
             <div className="flex gap-1 bg-white rounded-full p-1 shadow-sm">
               <button
                 onClick={() => setLanguage('tr')}
@@ -668,7 +677,15 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             {selectedChild && activeTab === 'overview' && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">{selectedChild.name}</h2>
+                  {/* With two or more children the sticky switcher directly
+                      above is already saying the name, on this tab and every
+                      other one — repeating it here is the kind of duplication
+                      that teaches people to stop reading headings. With one
+                      child there is no switcher, so the name is stated here
+                      instead. */}
+                  {students.length < 2 && (
+                    <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">{selectedChild.name}</h2>
+                  )}
                   <p className="text-sm text-gray-500">
                     {t.class}: {selectedChild.className || '-'}
                     {selectedChild.schoolId && schoolNames[selectedChild.schoolId] ? ` · ${schoolNames[selectedChild.schoolId]}` : ''}
@@ -919,6 +936,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           onNavigate={handleActionNavigate}
           refreshKey={actionRefresh}
           showAllClear
+          childrenList={students}
         />
 
         {showStats && stats && (

@@ -26,6 +26,68 @@ interface LoginPageProps {
   setMfaChallenge: (v: boolean) => void;
 }
 
+// Shared plain background for both screens.
+const Backdrop = () => <div className="absolute inset-0 bg-gray-50 pointer-events-none" />;
+
+function LanguageToggle({ language, setLanguage }: { language: Language; setLanguage: (l: Language) => void }) {
+  return (
+    <div className="flex gap-1 bg-gray-100 rounded-full p-1">
+      <button
+        onClick={() => setLanguage('tr')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'tr' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+      >
+        TR
+      </button>
+      <button
+        onClick={() => setLanguage('nl')}
+        className={`px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'nl' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+      >
+        NL
+      </button>
+    </div>
+  );
+}
+
+function BrandMark() {
+  return (
+    <div className="flex flex-col items-center mb-6">
+      <img src={booksLogo} alt="Rahman Eğitim" className="h-[104px] w-[104px] object-contain mb-3" />
+      <h1 className="text-xl font-bold text-gray-800 tracking-tight">Rahman Eğitim</h1>
+    </div>
+  );
+}
+
+// Every one of this screen's states (sign in, sign up, MFA, forgot
+// password, pending approval) sits inside the same shell, so the site
+// header does not appear and disappear as you move between them. Skipped in
+// the native app, which has its own chrome and no homepage to link to.
+//
+// These four live at module scope on purpose. Declared inside LoginPage they
+// were a *new component type* on every render, so React tore down the whole
+// subtree and rebuilt it on each keystroke — which is what made the email and
+// password fields lose focus after every character typed.
+function AuthShell({
+  children,
+  language,
+  setLanguage,
+}: {
+  children: React.ReactNode;
+  language: Language;
+  setLanguage: (l: Language) => void;
+}) {
+  return (
+    <div className="min-h-screen w-full flex flex-col bg-gray-50">
+      {!isAppLayout() && (
+        <SiteHeader language={language} setLanguage={setLanguage} current="login" />
+      )}
+      <div className="relative flex-1 overflow-y-auto flex p-3 sm:p-4">
+        <Backdrop />
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge, setMfaChallenge }: LoginPageProps) {
   const t = translations[language];
   // Always light, matching HomePage and the enrolment form. This screen has
@@ -272,52 +334,9 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
     }
   };
 
-  // Shared plain background for both screens.
-  const Backdrop = () => <div className="absolute inset-0 bg-gray-50 pointer-events-none" />;
-
-  const LanguageToggle = () => (
-    <div className="flex gap-1 bg-gray-100 rounded-full p-1">
-      <button
-        onClick={() => setLanguage('tr')}
-        className={`px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'tr' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-      >
-        TR
-      </button>
-      <button
-        onClick={() => setLanguage('nl')}
-        className={`px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'nl' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-      >
-        NL
-      </button>
-    </div>
-  );
-
-  const BrandMark = () => (
-    <div className="flex flex-col items-center mb-6">
-      <img src={booksLogo} alt="Rahman Eğitim" className="h-[104px] w-[104px] object-contain mb-3" />
-      <h1 className="text-xl font-bold text-gray-800 tracking-tight">Rahman Eğitim</h1>
-    </div>
-  );
-
-  // Every one of this screen's states (sign in, sign up, MFA, forgot
-  // password, pending approval) sits inside the same shell, so the site
-  // header does not appear and disappear as you move between them. Skipped in
-  // the native app, which has its own chrome and no homepage to link to.
-  const AuthShell = ({ children }: { children: React.ReactNode }) => (
-    <div className="min-h-screen w-full flex flex-col bg-gray-50">
-      {!isAppLayout() && (
-        <SiteHeader language={language} setLanguage={setLanguage} current="login" />
-      )}
-      <div className="relative flex-1 overflow-y-auto flex p-3 sm:p-4">
-        <Backdrop />
-        {children}
-      </div>
-    </div>
-  );
-
   if (mfaChallenge) {
     return (
-      <AuthShell>
+      <AuthShell language={language} setLanguage={setLanguage}>
         <div className="relative w-full max-w-md m-auto">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
             <BrandMark />
@@ -366,7 +385,7 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
 
   if (signupPending) {
     return (
-      <AuthShell>
+      <AuthShell language={language} setLanguage={setLanguage}>
         <div className="relative w-full max-w-md m-auto">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
             <BrandMark />
@@ -412,7 +431,7 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
 
   if (isForgot) {
     return (
-      <AuthShell>
+      <AuthShell language={language} setLanguage={setLanguage}>
         <div className="relative w-full max-w-md m-auto">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
             <BrandMark />
@@ -420,7 +439,7 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
               <h2 className="text-lg font-semibold text-gray-800">
                 {language === 'tr' ? 'Şifremi unuttum' : 'Wachtwoord vergeten'}
               </h2>
-              {isAppLayout() && <LanguageToggle />}
+              {isAppLayout() && <LanguageToggle language={language} setLanguage={setLanguage} />}
             </div>
 
             {forgotSent ? (
@@ -498,12 +517,12 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
   }
 
   return (
-    <AuthShell>
+    <AuthShell language={language} setLanguage={setLanguage}>
       <div className="relative w-full max-w-md m-auto">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
           {isAppLayout() && (
             <div className="flex items-center justify-end mb-1">
-              <LanguageToggle />
+              <LanguageToggle language={language} setLanguage={setLanguage} />
             </div>
           )}
           <BrandMark />
@@ -722,24 +741,29 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
           )}
         </div>
 
-        {/* Elif-Ba learning game — no login needed */}
-        <button
-          onClick={() => { window.location.href = '/elif-ba'; }}
-          className="w-full flex items-center justify-center gap-2 mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-sm transition text-sm sm:text-base"
-        >
-          <span lang="ar" dir="rtl" style={{ fontFamily: 'var(--font-arabic), serif', fontSize: 20 }}>أ ب</span>
-          {language === 'tr' ? 'Elif-Be öğren' : 'Elif-Ba leren'}
-          <Sparkles className="h-4 w-4" />
-        </button>
+        {/* Only in the native app. On the website the header already carries
+            both of these, so repeating them at the foot of the sign-in card
+            was pure duplication. */}
+        {isAppLayout() && (
+          <>
+            <button
+              onClick={() => { window.location.href = '/elif-ba'; }}
+              className="w-full flex items-center justify-center gap-2 mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-sm transition text-sm sm:text-base"
+            >
+              <span lang="ar" dir="rtl" style={{ fontFamily: 'var(--font-arabic), serif', fontSize: 20 }}>أ ب</span>
+              {language === 'tr' ? 'Elif-Be öğren' : 'Elif-Ba leren'}
+              <Sparkles className="h-4 w-4" />
+            </button>
 
-        {/* Prospective parents — link out to the public enrollment form */}
-        <button
-          onClick={() => { window.location.href = '/inschrijven'; }}
-          className="w-full flex items-center justify-center gap-2 mt-3 bg-white hover:bg-gray-50 text-emerald-700 font-semibold py-3 rounded-xl shadow-sm border border-gray-200 transition text-sm sm:text-base"
-        >
-          <UserPlus className="h-4 w-4" />
-          {language === 'tr' ? 'Çocuğumu/çocuklarımı kaydettirmek istiyorum' : 'Ik wil mijn kind(eren) inschrijven'}
-        </button>
+            <button
+              onClick={() => { window.location.href = '/inschrijven'; }}
+              className="w-full flex items-center justify-center gap-2 mt-3 bg-white hover:bg-gray-50 text-emerald-700 font-semibold py-3 rounded-xl shadow-sm border border-gray-200 transition text-sm sm:text-base"
+            >
+              <UserPlus className="h-4 w-4" />
+              {language === 'tr' ? 'Çocuğumu/çocuklarımı kaydettirmek istiyorum' : 'Ik wil mijn kind(eren) inschrijven'}
+            </button>
+          </>
+        )}
 
         <div className="mt-4 flex items-center justify-center gap-2 text-xs">
           <a href="/privacy" className="text-gray-400 hover:text-gray-600 transition">

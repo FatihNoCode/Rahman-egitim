@@ -3,6 +3,8 @@ import { Clock, CheckCircle2, Loader2 } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import booksLogo from '../../imports/logo.svg';
 import { missingWordInstruction } from './toets/examText';
+import { isAppLayout } from '../../lib/native';
+import { useForceLightTheme } from '../../lib/theme';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
 
@@ -27,6 +29,10 @@ async function api(path: string, options: RequestInit = {}) {
 type Step = 'code' | 'name' | 'exam' | 'done';
 
 export default function ToetsPage() {
+  // Public exam page, opened from a code on the web with no login, so it
+  // follows the rest of the public pages into light mode. Not inside the
+  // native app, where dark mode is a user setting.
+  useForceLightTheme(!isAppLayout());
   // Bilingual by default — students may be either; keep labels dual like the
   // public inschrijfpagina does.
   const [step, setStep] = useState<Step>('code');

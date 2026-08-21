@@ -22,11 +22,11 @@ const t = {
     login: 'Inloggen',
     enroll: 'Inschrijven',
     enrollLong: 'Kind inschrijven',
-    enrollNote: 'Inschrijven kan het hele jaar door — u hoeft geen account te hebben.',
+    enrollNote: 'Inschrijven kan het hele jaar door. U hoeft geen account te hebben.',
     bannerCta: 'Schrijf uw kind in',
     heroTitle: 'Onderwijs, aanwezigheid en communicatie',
     heroTitleAccent: 'op één plek.',
-    heroSubtitle: 'Voor ouders, leerkrachten en scholen — op de website en in de app.',
+    heroSubtitle: 'Voor ouders, leerkrachten en scholen. Op de website en in de app.',
     heroCtaSecondary: 'Bekijk de app',
     webKicker: 'De website',
     webTitle: 'Eén beheerportaal voor de hele school',
@@ -38,22 +38,24 @@ const t = {
     ],
     appKicker: 'De app',
     appTitle: 'Alles ook in uw zak',
-    appBody: 'Dezelfde gegevens, onderweg. Meldingen, aanwezigheid en berichten — waar u ook bent.',
+    appBody: 'Dezelfde gegevens, onderweg. Meldingen, aanwezigheid en berichten, waar u ook bent.',
     appFeature: 'Pushmeldingen bij nieuwe berichten en updates.',
-    storeSoon: 'Binnenkort beschikbaar',
+    storeApple: 'Download in de App Store',
+    storeGoogle: 'Download in de Play Store',
+    storeSoon: 'Binnenkort beschikbaar in beide stores.',
     footerPrivacy: 'Privacybeleid',
     footerDelete: 'Account verwijderen',
   },
   tr: {
     langLabel: 'NL',
-    login: 'Giriş Yap',
+    login: 'Giriş yap',
     enroll: 'Kayıt',
     enrollLong: 'Çocuk kaydı',
-    enrollNote: 'Kayıt yıl boyunca açıktır — hesabınızın olması gerekmez.',
+    enrollNote: 'Kayıt yıl boyunca açıktır. Hesabınızın olması gerekmez.',
     bannerCta: 'Çocuğunuzu kaydedin',
     heroTitle: 'Eğitim, devam ve iletişim',
     heroTitleAccent: 'tek bir yerde.',
-    heroSubtitle: 'Veliler, öğretmenler ve okullar için — web sitesinde ve uygulamada.',
+    heroSubtitle: 'Veliler, öğretmenler ve okullar için. Web sitesinde ve uygulamada.',
     heroCtaSecondary: 'Uygulamaya göz atın',
     webKicker: 'Web sitesi',
     webTitle: 'Tüm okul için tek yönetim paneli',
@@ -65,10 +67,12 @@ const t = {
     ],
     appKicker: 'Uygulama',
     appTitle: 'Her şey cebinizde',
-    appBody: 'Aynı veriler, yolda da yanınızda. Bildirimler, devam durumu ve mesajlar — nerede olursanız olun.',
+    appBody: 'Aynı veriler, yolda da yanınızda. Bildirimler, devam durumu ve mesajlar, nerede olursanız olun.',
     appFeature: 'Yeni mesaj ve güncellemelerde anlık bildirim.',
-    storeSoon: 'Yakında',
-    footerPrivacy: 'Gizlilik Politikası',
+    storeApple: "App Store'dan indirin",
+    storeGoogle: "Play Store'dan indirin",
+    storeSoon: 'Yakında her iki mağazada.',
+    footerPrivacy: 'Gizlilik politikası',
     footerDelete: 'Hesabı sil',
   },
 };
@@ -433,39 +437,40 @@ function BrandStatement({ cta }: { cta: string }) {
 function StoreBadge({
   href,
   icon,
-  soon,
-  eyebrow,
-  name,
+  label,
 }: {
   href: string;
   icon: React.ReactNode;
-  soon: string;
-  eyebrow: string;
-  name: string;
+  label: string;
 }) {
-  // No live store URL yet — render the same badge shape but inert, so the
-  // page never links out to nothing. Swap in STORE_LINKS above once real.
+  // Both badges are the same solid button, differing only in icon and label.
+  // `w-full` inside the equal-width grid the caller sets up is what keeps them
+  // exactly the same size whichever language is showing, rather than each one
+  // sizing to its own text.
   const classes =
-    'flex items-center gap-3 rounded-2xl border border-gray-800 bg-gray-950 text-white px-4 py-2.5 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-gray-950/20';
-  const content = (
-    <>
-      {icon}
-      <span className="text-left leading-tight">
-        <span className="block text-[10px] uppercase tracking-wide text-gray-400">{eyebrow}</span>
-        <span className="block text-sm font-semibold">{name}</span>
-      </span>
-    </>
-  );
+    'w-full inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gray-900 px-3 py-3.5' +
+    ' text-white text-[13px] font-semibold whitespace-nowrap shadow-lg shadow-gray-900/20';
+
+  // No live store URL yet. The button still reads as a real one rather than
+  // being greyed out, but it is inert instead of linking nowhere, and the
+  // caller prints a line underneath saying the stores are still to come.
   if (!href) {
     return (
-      <span className={`${classes} opacity-60 cursor-default select-none`} aria-disabled="true" title={soon}>
-        {content}
+      <span className={`${classes} cursor-default select-none`} aria-disabled="true">
+        {icon}
+        {label}
       </span>
     );
   }
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className={classes}>
-      {content}
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`${classes} transition hover:-translate-y-0.5 hover:bg-gray-800`}
+    >
+      {icon}
+      {label}
     </a>
   );
 }
@@ -612,22 +617,25 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
                 <Bell className="h-4 w-4 text-emerald-600 shrink-0" />
                 {text.appFeature}
               </p>
-              <div className="home-rise flex flex-wrap items-center justify-center sm:justify-start gap-3 mt-7">
-                <StoreBadge
-                  href={STORE_LINKS.playStore}
-                  icon={<Smartphone className="h-6 w-6 shrink-0" />}
-                  soon={text.storeSoon}
-                  eyebrow="Google"
-                  name="Play Store"
-                />
+              {/* Equal grid columns are what guarantee the two buttons stay
+                  exactly the same width in both languages, where the labels
+                  differ in length. They only sit side by side from lg up: at
+                  sm this text column is already half the section, and splitting
+                  that again left ~130px per button, far too narrow for
+                  "Download in de Play Store" to fit without being cut off. */}
+              <div className="home-rise grid grid-cols-1 lg:grid-cols-2 gap-3 mt-7 max-w-md mx-auto sm:mx-0 lg:max-w-none">
                 <StoreBadge
                   href={STORE_LINKS.appStore}
-                  icon={<Apple className="h-6 w-6 shrink-0" />}
-                  soon={text.storeSoon}
-                  eyebrow="Download on the"
-                  name="App Store"
+                  icon={<Apple className="h-5 w-5 shrink-0" />}
+                  label={text.storeApple}
+                />
+                <StoreBadge
+                  href={STORE_LINKS.playStore}
+                  icon={<Smartphone className="h-5 w-5 shrink-0" />}
+                  label={text.storeGoogle}
                 />
               </div>
+              <p className="home-rise text-sm text-gray-400 mt-3">{text.storeSoon}</p>
             </div>
           </div>
         </section>

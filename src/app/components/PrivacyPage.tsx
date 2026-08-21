@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { Language } from '../App';
 import logo from '../../imports/logo.svg';
+import { isAppLayout } from '../../lib/native';
+import { useForceLightTheme } from '../../lib/theme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FILL THESE IN before publishing. They are the only details the code can't
@@ -185,6 +187,10 @@ const t = {
 };
 
 export default function PrivacyPage() {
+  // Public document, reached from the website's footer, so it follows the
+  // rest of the public pages into light mode. Not inside the native app,
+  // where dark mode is a real user-chosen setting (see SettingsPanel).
+  useForceLightTheme(!isAppLayout());
   // Default to Dutch (primary audience, GDPR jurisdiction); toggle to Turkish.
   const [language, setLanguage] = useState<Language>('nl');
   const text = t[language];

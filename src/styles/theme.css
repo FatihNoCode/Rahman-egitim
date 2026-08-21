@@ -179,3 +179,35 @@
     line-height: 1.5;
   }
 }
+
+/* WebKit sizes a native date/time field from its own shadow DOM and then
+   ignores `width` and `max-width` on it: on iOS, where the 16px font bump in
+   native.css widens that intrinsic size further, a `w-full` date field measures
+   ~378px inside a 352px card and hangs off the screen. Dropping the native
+   appearance is the only thing that makes it honour the width it is given; the
+   colour and alignment below put back what `appearance: none` strips off, so
+   the field still reads like every other input in the app. Verified in the iOS
+   simulator: without `appearance: none` the field measures 378px inside a
+   352px card; with it, exactly 352px.
+
+   Deliberately not scoped to .platform-ios — Safari on an iPhone hits the same
+   sizing on the plain website, where that class is never set. In @layer base,
+   so a Tailwind utility on the element still wins. */
+@layer base {
+  input[type='date'],
+  input[type='time'],
+  input[type='datetime-local'] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    color: inherit;
+    background-color: transparent;
+  }
+
+  input[type='date']::-webkit-date-and-time-value,
+  input[type='time']::-webkit-date-and-time-value,
+  input[type='datetime-local']::-webkit-date-and-time-value {
+    text-align: left;
+  }
+}

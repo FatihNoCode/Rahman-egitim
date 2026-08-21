@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple, PenLine,
+  CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple,
 } from 'lucide-react';
 import type { Language } from '../App';
 import { useForceLightTheme } from '../../lib/theme';
@@ -19,9 +19,7 @@ const STORE_LINKS = {
 
 const t = {
   nl: {
-    enrollLong: 'Kind inschrijven',
     enrollNote: 'Inschrijven kan het hele jaar door. U hoeft geen account te hebben.',
-    bannerCta: 'Schrijf uw kind in',
     heroTitle: 'Onderwijs, aanwezigheid en communicatie',
     heroTitleAccent: 'op één plek.',
     heroSubtitle: 'Voor ouders, leerkrachten en scholen. Op de website en in de app.',
@@ -45,9 +43,7 @@ const t = {
     footerDelete: 'Account verwijderen',
   },
   tr: {
-    enrollLong: 'Çocuk kaydı',
     enrollNote: 'Kayıt yıl boyunca açıktır. Hesabınızın olması gerekmez.',
-    bannerCta: 'Çocuğunuzu kaydedin',
     heroTitle: 'Eğitim, devam ve iletişim',
     heroTitleAccent: 'tek bir yerde.',
     heroSubtitle: 'Veliler, öğretmenler ve okullar için. Web sitesinde ve uygulamada.',
@@ -392,7 +388,7 @@ function PhoneMockup() {
 // The dark brand statement banner used to close the page — logo, name and a
 // bilingual one-line pitch, rendered as real markup instead of the flat PNG
 // used for store listings, so it stays crisp, selectable and themeable here.
-function BrandStatement({ cta }: { cta: string }) {
+function BrandStatement() {
   return (
     <section className="relative isolate overflow-hidden">
       <div
@@ -414,16 +410,6 @@ function BrandStatement({ cta }: { cta: string }) {
           Devam, ödev, sınav ve veli görüşmeleri
         </p>
         <div className="home-rise mt-6 h-1 w-14 rounded-full bg-emerald-400 mx-auto" style={{ animationDelay: '200ms' }} />
-        {/* Repeated here so someone who read the whole page does not have to
-            scroll back up to the header to act on it. */}
-        <a
-          href="/inschrijven"
-          className="home-rise inline-flex items-center justify-center gap-2 mt-8 px-7 py-3.5 rounded-full bg-white hover:bg-emerald-50 text-emerald-900 font-semibold shadow-lg shadow-black/20 transition hover:-translate-y-0.5"
-          style={{ animationDelay: '260ms' }}
-        >
-          <PenLine className="h-5 w-5 shrink-0" />
-          {cta}
-        </a>
       </div>
     </section>
   );
@@ -497,21 +483,14 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
             <p className="home-rise text-gray-500 text-lg mt-6 max-w-lg mx-auto" style={{ animationDelay: '80ms' }}>
               {text.heroSubtitle}
             </p>
-            {/* Enrolling leads, and is the only button here carrying brand
-                colour and an icon, so it wins the page at a glance. Wraps to
-                a stacked column on narrow screens rather than shrinking, so
-                it never ends up as a cramped half-width target on a phone. */}
+            {/* Enrolling is reached from the header now, so the only button
+                left here points down at the app. It still stacks rather than
+                shrinking on narrow screens, so it never ends up as a cramped
+                half-width target on a phone. */}
             <div
               className="home-rise flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 mt-9"
               style={{ animationDelay: '160ms' }}
             >
-              <a
-                href="/inschrijven"
-                className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-lg shadow-lg shadow-emerald-600/25 transition hover:-translate-y-0.5"
-              >
-                <PenLine className="h-5 w-5 shrink-0" />
-                {text.enrollLong}
-              </a>
               <a
                 href="#app"
                 className="inline-flex items-center justify-center px-6 py-3.5 rounded-full bg-white/80 backdrop-blur border border-gray-200 hover:bg-white text-gray-700 font-semibold transition hover:-translate-y-0.5"
@@ -595,7 +574,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
         </section>
       </main>
 
-      <BrandStatement cta={text.bannerCta} />
+      <BrandStatement />
 
       <footer className="border-t border-gray-100">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-7 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-gray-400">

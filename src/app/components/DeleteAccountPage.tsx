@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { Language } from '../App';
 import logo from '../../imports/logo.svg';
+import { isAppLayout } from '../../lib/native';
+import { useForceLightTheme } from '../../lib/theme';
 
 /**
  * Public "how do I delete my account" page.
@@ -120,6 +122,10 @@ const t = {
 };
 
 export default function DeleteAccountPage() {
+  // Public document, reached from the website's footer and from the Play
+  // Store listing, so it follows the rest of the public pages into light
+  // mode. Not inside the native app, where dark mode is a user setting.
+  useForceLightTheme(!isAppLayout());
   // Dutch by default, like the privacy policy: primary audience and the
   // jurisdiction the wording is written for.
   const [language, setLanguage] = useState<Language>('nl');

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple, PenLine, BookOpen,
+  CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple, PenLine,
 } from 'lucide-react';
 import type { Language } from '../App';
 import { useForceLightTheme } from '../../lib/theme';
@@ -19,16 +19,12 @@ const STORE_LINKS = {
 
 const t = {
   nl: {
-    heroKicker: 'Islamitisch onderwijs voor kinderen',
     enrollLong: 'Kind inschrijven',
     enrollNote: 'Inschrijven kan het hele jaar door. U hoeft geen account te hebben.',
     bannerCta: 'Schrijf uw kind in',
     heroTitle: 'Onderwijs, aanwezigheid en communicatie',
     heroTitleAccent: 'op één plek.',
     heroSubtitle: 'Voor ouders, leerkrachten en scholen. Op de website en in de app.',
-    quote: 'Het zoeken van kennis is een plicht voor iedere moslim.',
-    quoteSource: 'Hadith, overgeleverd door Ibn Mâdja',
-    quoteBody: 'Van Elif-Bâ tot Koran-onderwijs, met aandacht voor ieder kind. Wij houden de administratie bij, zodat de les over kennis kan gaan.',
     heroCtaSecondary: 'Bekijk de app',
     webKicker: 'De website',
     webTitle: 'Eén beheerportaal voor de hele school',
@@ -49,16 +45,12 @@ const t = {
     footerDelete: 'Account verwijderen',
   },
   tr: {
-    heroKicker: 'Çocuklar için İslami eğitim',
     enrollLong: 'Çocuk kaydı',
     enrollNote: 'Kayıt yıl boyunca açıktır. Hesabınızın olması gerekmez.',
     bannerCta: 'Çocuğunuzu kaydedin',
     heroTitle: 'Eğitim, devam ve iletişim',
     heroTitleAccent: 'tek bir yerde.',
     heroSubtitle: 'Veliler, öğretmenler ve okullar için. Web sitesinde ve uygulamada.',
-    quote: 'İlim öğrenmek her müslümana farzdır.',
-    quoteSource: 'Hadis, İbn Mâce rivayeti',
-    quoteBody: 'Elif-Bâ\'dan Kur\'an eğitimine, her çocuğa ayrı özenle. İdari işleri biz takip edelim, dersler ilme kalsın.',
     heroCtaSecondary: 'Uygulamaya göz atın',
     webKicker: 'Web sitesi',
     webTitle: 'Tüm okul için tek yönetim paneli',
@@ -397,48 +389,6 @@ function PhoneMockup() {
   );
 }
 
-// The same eight-pointed star the background tiling is built from, drawn once
-// at a legible size. Used as a rule between the two halves of the quote band,
-// the way a tile panel is broken up by a single medallion.
-function StarOrnament({ className = '' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 40 40" className={className} aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4">
-      <rect x="8" y="8" width="24" height="24" />
-      <rect x="8" y="8" width="24" height="24" transform="rotate(45 20 20)" />
-      <circle cx="20" cy="20" r="4" />
-    </svg>
-  );
-}
-
-// A quiet band carrying the hadith the school takes as its starting point.
-// It sits between the product sections and the closing banner: by that point
-// the page has said what the software does, and this says who it is for.
-function QuoteBand({ quote, source, body }: { quote: string; source: string; body: string }) {
-  return (
-    <section className="relative isolate overflow-hidden bg-emerald-50/60 border-y border-emerald-100/70">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-20 sm:py-24 text-center">
-        <div className="home-rise flex items-center justify-center gap-3 text-emerald-600/70">
-          <span className="h-px w-10 sm:w-16 bg-emerald-300" />
-          <StarOrnament className="h-7 w-7 shrink-0" />
-          <span className="h-px w-10 sm:w-16 bg-emerald-300" />
-        </div>
-        <blockquote
-          className="home-rise mt-7 text-2xl sm:text-3xl font-semibold text-emerald-950 leading-snug tracking-tight"
-          style={{ animationDelay: '80ms', fontFamily: 'Georgia, "Times New Roman", serif' }}
-        >
-          {quote}
-        </blockquote>
-        <p className="home-rise text-sm text-emerald-700/80 mt-4" style={{ animationDelay: '140ms' }}>
-          {source}
-        </p>
-        <p className="home-rise text-gray-600 mt-8 max-w-xl mx-auto leading-relaxed" style={{ animationDelay: '200ms' }}>
-          {body}
-        </p>
-      </div>
-    </section>
-  );
-}
-
 // The dark brand statement banner used to close the page — logo, name and a
 // bilingual one-line pitch, rendered as real markup instead of the flat PNG
 // used for store listings, so it stays crisp, selectable and themeable here.
@@ -526,161 +476,124 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
 
   return (
     <div className="min-h-screen w-full bg-white overflow-x-hidden">
-      {/* Everything above the closing banner shares one panel rather than
-          getting one per section: a single layer spanning this whole stretch
-          keeps the scroll continuous, so the artwork never restarts mid-page
-          at a section boundary. It ends here deliberately — the dark banner
-          and the footer below are left plain.
+      <SiteHeader language={language} setLanguage={setLanguage} current="home" />
 
-          It sits at z-0 with the content above it at z-10, and the sections
-          that tint the page (the grey band, the quote band) do so with
-          translucent backgrounds so the panel carries straight through them.
-          Sections that need to hide it — the phone, which needs a clean
-          backdrop — set an opaque background of their own instead. */}
-      <div className="relative isolate">
-        <div className="home-pattern absolute inset-0 z-0 opacity-[0.07] pointer-events-none" aria-hidden="true" />
-
-        <div className="relative z-10">
-          <SiteHeader language={language} setLanguage={setLanguage} current="home" />
-
-          <main>
-          {/* Hero */}
-          <section className="relative overflow-hidden">
-            <div className="absolute inset-0 -z-10" aria-hidden="true">
-              <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[42rem] h-[42rem] rounded-full bg-emerald-200/40 blur-[100px]" />
-              <div className="absolute top-40 left-1/4 w-72 h-72 rounded-full bg-teal-200/30 blur-[90px]" />
-            </div>
-            <div className="relative max-w-5xl mx-auto px-4 sm:px-6 pt-20 sm:pt-28 pb-16 sm:pb-20 text-center">
-              {/* Says what kind of school this is before the headline says what
-                  the software does. Without it the page could be any school. */}
-              <p className="home-rise inline-flex items-center gap-2 mb-6 px-4 py-1.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-800 text-sm font-semibold">
-                <BookOpen className="h-4 w-4 shrink-0" />
-                {text.heroKicker}
-              </p>
-              <h1
-                className="home-rise text-4xl sm:text-5xl md:text-6xl font-extrabold text-gray-900 tracking-tight leading-[1.08] max-w-3xl mx-auto"
-              >
-                {text.heroTitle}{' '}
-                <span className="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">
-                  {text.heroTitleAccent}
-                </span>
-              </h1>
-              <p className="home-rise text-gray-500 text-lg mt-6 max-w-lg mx-auto" style={{ animationDelay: '80ms' }}>
-                {text.heroSubtitle}
-              </p>
-              {/* Enrolling leads, and is the only button here carrying brand
-                  colour and an icon, so it wins the page at a glance. Wraps to
-                  a stacked column on narrow screens rather than shrinking, so
-                  it never ends up as a cramped half-width target on a phone. */}
-              <div
-                className="home-rise flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 mt-9"
-                style={{ animationDelay: '160ms' }}
-              >
-                <a
-                  href="/inschrijven"
-                  className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-lg shadow-lg shadow-emerald-600/25 transition hover:-translate-y-0.5"
-                >
-                  <PenLine className="h-5 w-5 shrink-0" />
-                  {text.enrollLong}
-                </a>
-                <a
-                  href="#app"
-                  className="inline-flex items-center justify-center px-6 py-3.5 rounded-full bg-white/80 backdrop-blur border border-gray-200 hover:bg-white text-gray-700 font-semibold transition hover:-translate-y-0.5"
-                >
-                  {text.heroCtaSecondary}
-                </a>
-              </div>
-              <p className="home-rise text-sm text-gray-400 mt-4" style={{ animationDelay: '220ms' }}>
-                {text.enrollNote}
-              </p>
-            </div>
-          </section>
-
-          {/* Website */}
-          <section className="bg-gray-50/70">
-            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-20 sm:py-24">
-              <p className="home-rise text-emerald-700 font-semibold text-sm tracking-wide uppercase mb-3 text-center">
-                {text.webKicker}
-              </p>
-              <h2 className="home-rise text-3xl sm:text-4xl font-bold text-gray-900 text-center tracking-tight">
-                {text.webTitle}
-              </h2>
-              <p className="home-rise text-gray-500 text-center mt-4 max-w-lg mx-auto">
-                {text.webSubtitle}
-              </p>
-              <div className="grid sm:grid-cols-3 gap-5 mt-12">
-                {text.webFeatures.map((f, i) => (
-                  <div
-                    key={f.title}
-                    className="home-rise bg-white rounded-2xl border border-gray-100 p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-                    style={{ animationDelay: `${i * 100}ms` }}
-                  >
-                    <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white flex items-center justify-center mb-4 shadow-md shadow-emerald-500/25">
-                      <f.icon className="h-5 w-5" />
-                    </div>
-                    <h3 className="font-semibold text-gray-900">{f.title}</h3>
-                    <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">{f.body}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* App */}
-          {/* The only section that covers the tiling. The phone is the page's
-              one photographic object and it needs a plain backdrop: a pattern
-              running behind a floating device reads as the device sitting on
-              wallpaper rather than in space. `w-screen` with a negative margin
-              is what lets the white reach the window edges while the content
-              inside stays on the same 5xl measure as every other section. */}
-          <section id="app" className="relative py-20 sm:py-28">
+      <main>
+        {/* Hero */}
+        <section className="relative overflow-hidden">
+          <div className="absolute inset-0 -z-10" aria-hidden="true">
+            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[42rem] h-[42rem] rounded-full bg-emerald-200/40 blur-[100px]" />
+            <div className="absolute top-40 left-1/4 w-72 h-72 rounded-full bg-teal-200/30 blur-[90px]" />
+          </div>
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-20 sm:pt-28 pb-16 sm:pb-20 text-center">
+            <h1
+              className="home-rise text-4xl sm:text-5xl md:text-6xl font-extrabold text-gray-900 tracking-tight leading-[1.08] max-w-3xl mx-auto"
+            >
+              {text.heroTitle}{' '}
+              <span className="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">
+                {text.heroTitleAccent}
+              </span>
+            </h1>
+            <p className="home-rise text-gray-500 text-lg mt-6 max-w-lg mx-auto" style={{ animationDelay: '80ms' }}>
+              {text.heroSubtitle}
+            </p>
+            {/* Enrolling leads, and is the only button here carrying brand
+                colour and an icon, so it wins the page at a glance. Wraps to
+                a stacked column on narrow screens rather than shrinking, so
+                it never ends up as a cramped half-width target on a phone. */}
             <div
-              className="absolute inset-0 left-1/2 -translate-x-1/2 w-screen bg-white"
-              aria-hidden="true"
-            />
-            <div className="relative max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="grid sm:grid-cols-2 gap-12 sm:gap-10 items-center">
-              <div className="home-rise flex justify-center order-2 sm:order-1">
-                <PhoneMockup />
-              </div>
-              <div className="order-1 sm:order-2 text-center sm:text-left">
-                <p className="home-rise text-emerald-700 font-semibold text-sm tracking-wide uppercase mb-3">
-                  {text.appKicker}
-                </p>
-                <h2 className="home-rise text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight">{text.appTitle}</h2>
-                <p className="home-rise text-gray-500 text-lg mt-4 leading-relaxed">{text.appBody}</p>
-                <p className="home-rise flex items-center justify-center sm:justify-start gap-2 text-sm text-gray-500 mt-4">
-                  <Bell className="h-4 w-4 text-emerald-600 shrink-0" />
-                  {text.appFeature}
-                </p>
-                {/* Equal grid columns are what guarantee the two buttons stay
-                    exactly the same width in both languages, where the labels
-                    differ in length. They only sit side by side from lg up: at
-                    sm this text column is already half the section, and splitting
-                    that again left ~130px per button, far too narrow for
-                    "Download in de Play Store" to fit without being cut off. */}
-                <div className="home-rise grid grid-cols-1 lg:grid-cols-2 gap-3 mt-7 max-w-md mx-auto sm:mx-0 lg:max-w-none">
-                  <StoreBadge
-                    href={STORE_LINKS.appStore}
-                    icon={<Apple className="h-5 w-5 shrink-0" />}
-                    label={text.storeApple}
-                  />
-                  <StoreBadge
-                    href={STORE_LINKS.playStore}
-                    icon={<Smartphone className="h-5 w-5 shrink-0" />}
-                    label={text.storeGoogle}
-                  />
-                </div>
-                <p className="home-rise text-sm text-gray-400 mt-3">{text.storeSoon}</p>
-              </div>
-              </div>
+              className="home-rise flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 mt-9"
+              style={{ animationDelay: '160ms' }}
+            >
+              <a
+                href="/inschrijven"
+                className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-lg shadow-lg shadow-emerald-600/25 transition hover:-translate-y-0.5"
+              >
+                <PenLine className="h-5 w-5 shrink-0" />
+                {text.enrollLong}
+              </a>
+              <a
+                href="#app"
+                className="inline-flex items-center justify-center px-6 py-3.5 rounded-full bg-white/80 backdrop-blur border border-gray-200 hover:bg-white text-gray-700 font-semibold transition hover:-translate-y-0.5"
+              >
+                {text.heroCtaSecondary}
+              </a>
             </div>
-          </section>
-        </main>
+            <p className="home-rise text-sm text-gray-400 mt-4" style={{ animationDelay: '220ms' }}>
+              {text.enrollNote}
+            </p>
+          </div>
+        </section>
 
-        <QuoteBand quote={text.quote} source={text.quoteSource} body={text.quoteBody} />
-        </div>
-      </div>
+        {/* Website */}
+        <section className="bg-gray-50/70">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-20 sm:py-24">
+            <p className="home-rise text-emerald-700 font-semibold text-sm tracking-wide uppercase mb-3 text-center">
+              {text.webKicker}
+            </p>
+            <h2 className="home-rise text-3xl sm:text-4xl font-bold text-gray-900 text-center tracking-tight">
+              {text.webTitle}
+            </h2>
+            <p className="home-rise text-gray-500 text-center mt-4 max-w-lg mx-auto">
+              {text.webSubtitle}
+            </p>
+            <div className="grid sm:grid-cols-3 gap-5 mt-12">
+              {text.webFeatures.map((f, i) => (
+                <div
+                  key={f.title}
+                  className="home-rise bg-white rounded-2xl border border-gray-100 p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+                  style={{ animationDelay: `${i * 100}ms` }}
+                >
+                  <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white flex items-center justify-center mb-4 shadow-md shadow-emerald-500/25">
+                    <f.icon className="h-5 w-5" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900">{f.title}</h3>
+                  <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">{f.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* App */}
+        <section id="app" className="max-w-5xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
+          <div className="grid sm:grid-cols-2 gap-12 sm:gap-10 items-center">
+            <div className="home-rise flex justify-center order-2 sm:order-1">
+              <PhoneMockup />
+            </div>
+            <div className="order-1 sm:order-2 text-center sm:text-left">
+              <p className="home-rise text-emerald-700 font-semibold text-sm tracking-wide uppercase mb-3">
+                {text.appKicker}
+              </p>
+              <h2 className="home-rise text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight">{text.appTitle}</h2>
+              <p className="home-rise text-gray-500 text-lg mt-4 leading-relaxed">{text.appBody}</p>
+              <p className="home-rise flex items-center justify-center sm:justify-start gap-2 text-sm text-gray-500 mt-4">
+                <Bell className="h-4 w-4 text-emerald-600 shrink-0" />
+                {text.appFeature}
+              </p>
+              {/* Equal grid columns are what guarantee the two buttons stay
+                  exactly the same width in both languages, where the labels
+                  differ in length. They only sit side by side from lg up: at
+                  sm this text column is already half the section, and splitting
+                  that again left ~130px per button, far too narrow for
+                  "Download in de Play Store" to fit without being cut off. */}
+              <div className="home-rise grid grid-cols-1 lg:grid-cols-2 gap-3 mt-7 max-w-md mx-auto sm:mx-0 lg:max-w-none">
+                <StoreBadge
+                  href={STORE_LINKS.appStore}
+                  icon={<Apple className="h-5 w-5 shrink-0" />}
+                  label={text.storeApple}
+                />
+                <StoreBadge
+                  href={STORE_LINKS.playStore}
+                  icon={<Smartphone className="h-5 w-5 shrink-0" />}
+                  label={text.storeGoogle}
+                />
+              </div>
+              <p className="home-rise text-sm text-gray-400 mt-3">{text.storeSoon}</p>
+            </div>
+          </div>
+        </section>
+      </main>
 
       <BrandStatement cta={text.bannerCta} />
 

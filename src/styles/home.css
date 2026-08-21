@@ -72,29 +72,3 @@
     animation: none;
   }
 }
-
-/* ─── Calligraphic panel ────────────────────────────────────────────────────
-   The artwork behind the page, as SVG rather than a bitmap so it stays sharp
-   at any size and any zoom. It is built from a vector trace by
-   scripts/build-calligraphy-panel.py; see that file for how the trace is cut
-   down from five megabytes to something a background can afford, and for why
-   the paper is painted white instead of being stripped out.
-
-   White paper over a white page is invisible, so at this opacity only the two
-   hands show: emerald for the heavy strokes, teal for the field behind them.
-   The panel repeats, and is deliberately set large — a full panel is roughly
-   the width of the text measure, so the eye reads it as one artwork behind
-   the words rather than as a busy repeating texture. */
-.home-pattern {
-  background-image: url('../imports/calligraphy-panel.svg');
-  background-size: 860px auto;
-}
-
-/* Smaller panels on phones. At the desktop size a single repeat would be
-   wider than the screen, which leaves the reader looking at one enormous
-   fragment instead of a composition. */
-@media (max-width: 640px) {
-  .home-pattern {
-    background-size: 420px auto;
-  }
-}

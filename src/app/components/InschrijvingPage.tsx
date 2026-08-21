@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { isAppLayout } from '../../lib/native';
+import { useForceLightTheme } from '../../lib/theme';
 import faviconUrl from '../../imports/logo.svg';
 import { ChevronDown, Plus, X, Mail, Info } from 'lucide-react';
 
@@ -207,6 +209,11 @@ interface PublicSchool {
 }
 
 export default function InschrijvingPage() {
+  // Light by default, matching the homepage this form is reached from — but
+  // not inside the native app / ?app=1 preview, where dark mode is a real,
+  // user-chosen setting (see SettingsPanel) rather than something to override.
+  // Reachable from there via LoginPage's sign-up link, hence the gate.
+  useForceLightTheme(!isAppLayout());
   const [language, setLanguage] = useState<Language>('nl');
   const t = T[language];
 

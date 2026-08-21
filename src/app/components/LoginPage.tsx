@@ -4,8 +4,9 @@ import { translations } from './translations';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../../lib/supabase';
 import { validatePassword } from '../../lib/password';
-import { isNative, getAuthRedirectTo } from '../../lib/native';
+import { isNative, isAppLayout, getAuthRedirectTo } from '../../lib/native';
 import { useForceLightTheme } from '../../lib/theme';
+import SiteHeader from './SiteHeader';
 import type { Language } from '../App';
 import booksLogo from '../../imports/logo.svg';
 import { APP_VERSION } from '../../lib/version';
@@ -298,10 +299,25 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
     </div>
   );
 
+  // Every one of this screen's states (sign in, sign up, MFA, forgot
+  // password, pending approval) sits inside the same shell, so the site
+  // header does not appear and disappear as you move between them. Skipped in
+  // the native app, which has its own chrome and no homepage to link to.
+  const AuthShell = ({ children }: { children: React.ReactNode }) => (
+    <div className="min-h-screen w-full flex flex-col bg-gray-50">
+      {!isAppLayout() && (
+        <SiteHeader language={language} setLanguage={setLanguage} current="login" />
+      )}
+      <div className="relative flex-1 overflow-y-auto flex p-3 sm:p-4">
+        <Backdrop />
+        {children}
+      </div>
+    </div>
+  );
+
   if (mfaChallenge) {
     return (
-      <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
-        <Backdrop />
+      <AuthShell>
         <div className="relative w-full max-w-md m-auto">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
             <BrandMark />
@@ -344,14 +360,13 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
             </form>
           </div>
         </div>
-      </div>
+      </AuthShell>
     );
   }
 
   if (signupPending) {
     return (
-      <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
-        <Backdrop />
+      <AuthShell>
         <div className="relative w-full max-w-md m-auto">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
             <BrandMark />
@@ -391,14 +406,13 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
             </div>
           </div>
         </div>
-      </div>
+      </AuthShell>
     );
   }
 
   if (isForgot) {
     return (
-      <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
-        <Backdrop />
+      <AuthShell>
         <div className="relative w-full max-w-md m-auto">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
             <BrandMark />
@@ -406,7 +420,7 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
               <h2 className="text-lg font-semibold text-gray-800">
                 {language === 'tr' ? 'Şifremi unuttum' : 'Wachtwoord vergeten'}
               </h2>
-              <LanguageToggle />
+              {isAppLayout() && <LanguageToggle />}
             </div>
 
             {forgotSent ? (
@@ -479,25 +493,19 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
             )}
           </div>
         </div>
-      </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="relative size-full overflow-y-auto flex p-3 sm:p-4">
-      <Backdrop />
+    <AuthShell>
       <div className="relative w-full max-w-md m-auto">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-7 md:p-9">
-          <div className="flex items-center justify-between mb-1">
-            <a
-              href="/"
-              className="flex items-center gap-1 text-gray-400 hover:text-gray-600 text-xs font-medium transition"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              {language === 'tr' ? 'Anasayfa' : 'Startpagina'}
-            </a>
-            <LanguageToggle />
-          </div>
+          {isAppLayout() && (
+            <div className="flex items-center justify-end mb-1">
+              <LanguageToggle />
+            </div>
+          )}
           <BrandMark />
 
           {/* Login / signup segmented switch */}
@@ -749,6 +757,6 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
           <span className="selectable text-gray-300">v{APP_VERSION}</span>
         </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }

@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import type { Language } from '../App';
 import { useForceLightTheme } from '../../lib/theme';
+import SiteHeader from './SiteHeader';
 import logo from '../../imports/logo.svg';
 import appScreenshot from '../../assets/app-screenshot.webp';
 
@@ -18,9 +19,6 @@ const STORE_LINKS = {
 
 const t = {
   nl: {
-    langLabel: 'TR',
-    login: 'Inloggen',
-    enroll: 'Inschrijven',
     enrollLong: 'Kind inschrijven',
     enrollNote: 'Inschrijven kan het hele jaar door. U hoeft geen account te hebben.',
     bannerCta: 'Schrijf uw kind in',
@@ -47,9 +45,6 @@ const t = {
     footerDelete: 'Account verwijderen',
   },
   tr: {
-    langLabel: 'NL',
-    login: 'Giriş yap',
-    enroll: 'Kayıt',
     enrollLong: 'Çocuk kaydı',
     enrollNote: 'Kayıt yıl boyunca açıktır. Hesabınızın olması gerekmez.',
     bannerCta: 'Çocuğunuzu kaydedin',
@@ -481,48 +476,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
 
   return (
     <div className="min-h-screen w-full bg-white overflow-x-hidden">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <img src={logo} alt="Rahman Eğitim" className="h-9 w-9 object-contain" />
-            <span className="hidden sm:inline font-bold text-gray-900 tracking-tight">Rahman Eğitim</span>
-          </div>
-          <div className="flex items-center gap-1.5 sm:gap-3">
-            <div className="flex gap-1 bg-gray-100 rounded-full p-1">
-              <button
-                onClick={() => setLanguage('tr')}
-                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'tr' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                TR
-              </button>
-              <button
-                onClick={() => setLanguage('nl')}
-                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold transition ${language === 'nl' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                NL
-              </button>
-            </div>
-            {/* Enrolling is what a *new* visitor came here to do, so it takes
-                the primary style; logging in is a returning-user action and
-                sits beside it as the quieter one. Both stay visible at every
-                width — the enrol button is the one thing on this page that
-                must never be the item that collapses into a menu. */}
-            <a
-              href="/login"
-              className="px-2 sm:px-4 py-2 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm font-semibold transition"
-            >
-              {text.login}
-            </a>
-            <a
-              href="/inschrijven"
-              className="px-3.5 sm:px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm shadow-emerald-600/20 transition"
-            >
-              {text.enroll}
-            </a>
-          </div>
-        </div>
-      </header>
+      <SiteHeader language={language} setLanguage={setLanguage} current="home" />
 
       <main>
         {/* Hero */}

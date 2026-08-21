@@ -65,6 +65,22 @@
   font-size: max(16px, 1rem);
 }
 
+/* Date and time fields size themselves to their own content and, unlike other
+   inputs, refuse to shrink below it: their `min-width: auto` beats the
+   `width: 100%` the field is given, so the declared width never binds. The
+   16px bump above widens that intrinsic content further, which is why a
+   full-width date field ends up wider than the card holding it and runs off
+   the right edge of the screen.
+
+   Deliberately not scoped to .platform-ios: the same sizing applies to Safari
+   on an iPhone, where the app is only a website and that class is never set. */
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'] {
+  min-width: 0;
+  max-width: 100%;
+}
+
 /* Momentum scrolling for the app's scroll containers. */
 .native-app .overflow-auto,
 .native-app .overflow-y-auto,

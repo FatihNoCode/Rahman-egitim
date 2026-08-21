@@ -24,7 +24,6 @@ const t = {
     enrollLong: 'Kind inschrijven',
     enrollNote: 'Inschrijven kan het hele jaar door — u hoeft geen account te hebben.',
     bannerCta: 'Schrijf uw kind in',
-    heroBadge: 'Website & app',
     heroTitle: 'Onderwijs, aanwezigheid en communicatie',
     heroTitleAccent: 'op één plek.',
     heroSubtitle: 'Voor ouders, leerkrachten en scholen — op de website en in de app.',
@@ -52,7 +51,6 @@ const t = {
     enrollLong: 'Çocuk kaydı',
     enrollNote: 'Kayıt yıl boyunca açıktır — hesabınızın olması gerekmez.',
     bannerCta: 'Çocuğunuzu kaydedin',
-    heroBadge: 'Web sitesi & uygulama',
     heroTitle: 'Eğitim, devam ve iletişim',
     heroTitleAccent: 'tek bir yerde.',
     heroSubtitle: 'Veliler, öğretmenler ve okullar için — web sitesinde ve uygulamada.',
@@ -529,22 +527,15 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
             <div className="absolute top-40 left-1/4 w-72 h-72 rounded-full bg-teal-200/30 blur-[90px]" />
           </div>
           <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-20 sm:pt-28 pb-16 sm:pb-20 text-center">
-            <div
-              className="home-rise inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 backdrop-blur px-4 py-1.5 text-xs font-semibold text-gray-600 shadow-sm mb-7"
-            >
-              <img src={logo} alt="" className="h-4 w-4 object-contain" />
-              {text.heroBadge}
-            </div>
             <h1
               className="home-rise text-4xl sm:text-5xl md:text-6xl font-extrabold text-gray-900 tracking-tight leading-[1.08] max-w-3xl mx-auto"
-              style={{ animationDelay: '80ms' }}
             >
               {text.heroTitle}{' '}
               <span className="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">
                 {text.heroTitleAccent}
               </span>
             </h1>
-            <p className="home-rise text-gray-500 text-lg mt-6 max-w-lg mx-auto" style={{ animationDelay: '160ms' }}>
+            <p className="home-rise text-gray-500 text-lg mt-6 max-w-lg mx-auto" style={{ animationDelay: '80ms' }}>
               {text.heroSubtitle}
             </p>
             {/* Enrolling leads, and is the only button here carrying brand
@@ -553,7 +544,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
                 it never ends up as a cramped half-width target on a phone. */}
             <div
               className="home-rise flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 mt-9"
-              style={{ animationDelay: '240ms' }}
+              style={{ animationDelay: '160ms' }}
             >
               <a
                 href="/inschrijven"
@@ -569,7 +560,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
                 {text.heroCtaSecondary}
               </a>
             </div>
-            <p className="home-rise text-sm text-gray-400 mt-4" style={{ animationDelay: '300ms' }}>
+            <p className="home-rise text-sm text-gray-400 mt-4" style={{ animationDelay: '220ms' }}>
               {text.enrollNote}
             </p>
           </div>

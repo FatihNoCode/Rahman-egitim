@@ -46,14 +46,20 @@ export function FeedbackHostImpl() {
   return (
     <>
       {/* On iOS the WebView extends under the status bar and the notch, so a
-          toast at sonner's default 32px offset lands *behind* them — the top of
-          "Niet gevonden" was being clipped by the Dynamic Island. Clear the
-          safe-area inset first, then apply a normal gap below it. */}
+          toast at sonner's default offset lands *behind* them — "Opgeslagen"
+          was coming up half-hidden under the Dynamic Island. Clear the
+          safe-area inset first, then apply a normal gap below it.
+          `mobileOffset` has to be set alongside `offset`: sonner uses one or
+          the other depending on viewport width, and a phone gets the mobile
+          one — which is exactly the case that needs the inset, so setting
+          `offset` alone (as this did) left the bug in place on the device it
+          was meant to fix. */}
       <Toaster
         richColors
         closeButton
         position="top-center"
         offset={isAppLayout() ? 'calc(var(--safe-top) + 20px)' : undefined}
+        mobileOffset={isAppLayout() ? 'calc(var(--safe-top) + 16px)' : undefined}
       />
       <AlertDialog
         open={open}

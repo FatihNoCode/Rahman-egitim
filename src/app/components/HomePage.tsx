@@ -19,7 +19,6 @@ const STORE_LINKS = {
 
 const t = {
   nl: {
-    enrollNote: 'Inschrijven kan het hele jaar door. U hoeft geen account te hebben.',
     heroTitle: 'Onderwijs, aanwezigheid en communicatie',
     heroTitleAccent: 'op één plek.',
     heroSubtitle: 'Voor ouders, leerkrachten en scholen. Op de website en in de app.',
@@ -43,7 +42,6 @@ const t = {
     footerDelete: 'Account verwijderen',
   },
   tr: {
-    enrollNote: 'Kayıt yıl boyunca açıktır. Hesabınızın olması gerekmez.',
     heroTitle: 'Eğitim, devam ve iletişim',
     heroTitleAccent: 'tek bir yerde.',
     heroSubtitle: 'Veliler, öğretmenler ve okullar için. Web sitesinde ve uygulamada.',
@@ -498,9 +496,6 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
                 {text.heroCtaSecondary}
               </a>
             </div>
-            <p className="home-rise text-sm text-gray-400 mt-4" style={{ animationDelay: '220ms' }}>
-              {text.enrollNote}
-            </p>
           </div>
         </section>
 

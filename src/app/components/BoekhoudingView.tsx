@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Settings, X, Check, ChevronDown, ChevronUp, Euro, Trash2, Plus, Pencil, Mail } from 'lucide-react';
+import { Settings, X, Check, Trash2, Plus, Pencil, Mail } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
 import { matches } from '../../lib/search';
 
@@ -8,11 +8,6 @@ interface Student {
   name: string;
   classId?: string;
   parentId?: string;
-}
-
-interface Class {
-  id: string;
-  name: string;
 }
 
 interface BoekhoudingSettings {
@@ -32,8 +27,8 @@ interface StudentRecord {
   studentId: string;
   isMember: boolean;
   hasSibling: boolean;
-  // All amounts paid-to-date, summed from the payment log. Read-only here —
-  // the logboek tab is the only place that can change these.
+  // All amounts paid-to-date, summed from the payment log. The server keeps
+  // this summary in step with the log; the parents' billing screen reads it.
   payments: {
     schoolgeld: number;
     tas: number;
@@ -45,7 +40,6 @@ interface StudentRecord {
 }
 
 interface BoekhoudingViewProps {
-  classes: Class[];
   students: Student[];
   language: 'tr' | 'nl';
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
@@ -94,16 +88,13 @@ interface PaymentLogEntry {
   createdAt: string;
 }
 
-export default function BoekhoudingView({ classes, students, language, apiRequest }: BoekhoudingViewProps) {
-  const [subTab, setSubTab] = useState<'overzicht' | 'log'>('overzicht');
+export default function BoekhoudingView({ students, language, apiRequest }: BoekhoudingViewProps) {
   const [settings, setSettings] = useState<BoekhoudingSettings>(DEFAULT_SETTINGS);
   const [editSettings, setEditSettings] = useState<BoekhoudingSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
 
-  const [search, setSearch] = useState('');
   const [records, setRecords] = useState<Record<string, StudentRecord>>({});
-  const [expandedClasses, setExpandedClasses] = useState<Set<string>>(new Set());
 
   // Send schoolgeld reminder
   const [showReminderConfirm, setShowReminderConfirm] = useState(false);
@@ -138,8 +129,8 @@ export default function BoekhoudingView({ classes, students, language, apiReques
   }, [students]);
 
   useEffect(() => {
-    if (subTab === 'log') loadLogEntries();
-  }, [subTab]);
+    loadLogEntries();
+  }, []);
 
   const loadLogEntries = async () => {
     setLoadingLog(true);
@@ -171,9 +162,9 @@ export default function BoekhoudingView({ classes, students, language, apiReques
           note: logForm.note,
         }),
       });
-      // The server recomputes the student's Overzicht summary from the full
-      // log and returns it — use it directly so Overzicht stays in sync
-      // without a full re-fetch of every student.
+      // The server recomputes the student's paid-to-date summary from the
+      // full log and returns it — use it directly so the record the parents'
+      // billing screen reads stays in step, without re-fetching every student.
       if (res.record) {
         setRecords(prev => ({ ...prev, [studentId]: res.record }));
       }
@@ -233,7 +224,7 @@ export default function BoekhoudingView({ classes, students, language, apiReques
     try {
       await apiRequest(`/boekhouding/payments/${id}`, { method: 'DELETE' });
       setLogEntries(prev => prev.filter(e => e.id !== id));
-      // Re-sync Overzicht for the affected student now that the log changed.
+      // Re-sync the affected student's summary now that the log changed.
       const res = await apiRequest(`/boekhouding/student/${studentId}`).catch(() => null);
       if (res?.record) setRecords(prev => ({ ...prev, [studentId]: res.record }));
     } catch (e) {
@@ -271,9 +262,9 @@ export default function BoekhoudingView({ classes, students, language, apiReques
     } finally { setSavingSettings(false); }
   };
 
-  // The only editable fields left on a student's Overzicht row — membership
-  // and sibling status affect the schoolgeld price but aren't "money in", so
-  // they're toggled from the logboek tab rather than from the read-only table.
+  // Membership and sibling status affect the schoolgeld price but aren't
+  // "money in", so they are toggled here, from the entry form, rather than
+  // being logged as payments.
   const toggleLabel = async (studentId: string, label: 'isMember' | 'hasSibling') => {
     const current = records[studentId] || emptyRecord(studentId);
     const newValue = !current[label];
@@ -292,29 +283,6 @@ export default function BoekhoudingView({ classes, students, language, apiReques
       setSavingLabel(null);
     }
   };
-
-  const toggleClass = (classId: string) => {
-    setExpandedClasses(prev => {
-      const next = new Set(prev);
-      next.has(classId) ? next.delete(classId) : next.add(classId);
-      return next;
-    });
-  };
-
-  // ─── Totals (across ALL students, regardless of search) ───
-  const totals = students.reduce(
-    (acc, s) => {
-      const rec = records[s.id] || emptyRecord(s.id);
-      acc.schoolgeld += Number(rec.payments.schoolgeld) || 0;
-      acc.tas += Number(rec.payments.tas) || 0;
-      acc.quran += Number(rec.payments.quran) || 0;
-      acc.elifbe += Number(rec.payments.elifbe) || 0;
-      acc.temel += Number(rec.payments.temel) || 0;
-      return acc;
-    },
-    { schoolgeld: 0, tas: 0, quran: 0, elifbe: 0, temel: 0 }
-  );
-  const grandTotal = totals.schoolgeld + totals.tas + totals.quran + totals.elifbe + totals.temel;
 
   // Unique parents (by parentId) who have at least one child with outstanding
   // schoolgeld — mirrors the server's own computation used when actually sending.
@@ -345,124 +313,6 @@ export default function BoekhoudingView({ classes, students, language, apiReques
     }
   };
 
-  // ─── Filter + group ───
-  const filteredStudents = search.trim()
-    ? students.filter(s => matches(s.name, search))
-    : students;
-
-  const byClass = classes.map(cls => ({
-    cls,
-    students: filteredStudents.filter(s => s.classId === cls.id),
-  })).filter(g => g.students.length > 0);
-
-  const unclassed = filteredStudents.filter(s => !s.classId || !classes.find(c => c.id === s.classId));
-
-  // ─── Sub-components ───
-  const SchoolgeldCell = ({ student }: { student: Student }) => {
-    const rec = records[student.id] || emptyRecord(student.id);
-    const fullPrice = getSchoolPrice(settings, rec.isMember, rec.hasSibling);
-    const paid = Number(rec.payments.schoolgeld) || 0;
-    const isFullyPaid = paid >= fullPrice;
-    const isPartial = paid > 0 && paid < fullPrice;
-
-    return (
-      <td className="border border-gray-200 px-2 py-1.5 align-middle min-w-[130px]">
-        <div className={`rounded-lg px-2 py-1.5 ${isFullyPaid ? 'bg-emerald-50' : isPartial ? 'bg-amber-50' : 'bg-gray-50'}`}>
-          <p className={`text-sm font-semibold ${isFullyPaid ? 'text-emerald-700' : isPartial ? 'text-amber-700' : 'text-gray-400'}`}>
-            €{paid} <span className="text-xs font-normal text-gray-400">/ €{fullPrice}</span>
-          </p>
-          <div className="text-[10px] text-gray-400 leading-tight">
-            {isFullyPaid
-              ? <span className="text-emerald-600 font-medium">✓ {nl('Tam ödendi', 'Volledig betaald')}</span>
-              : isPartial
-              ? <span className="text-amber-600 font-medium">⬤ {nl(`Kalan: €${fullPrice - paid}`, `Rest: €${fullPrice - paid}`)}</span>
-              : <span>{nl('Ödenmedi', 'Niet betaald')}</span>
-            }
-          </div>
-        </div>
-      </td>
-    );
-  };
-
-  const PaymentCell = ({ studentId, field, price }: { studentId: string; field: 'tas' | 'quran' | 'elifbe' | 'temel'; price: number }) => {
-    const rec = records[studentId] || emptyRecord(studentId);
-    const paid = Number(rec.payments[field]) || 0;
-    const isFullyPaid = paid >= price && price > 0;
-    const isPartial = paid > 0 && paid < price;
-    const paidDate = rec.paidDates?.[field];
-
-    return (
-      <td className="border border-gray-200 px-2 py-2 text-center align-middle min-w-[90px]">
-        <div
-          title={paidDate ? new Date(paidDate).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL') : ''}
-          className={`w-full flex flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 px-1 text-xs font-medium ${
-            isFullyPaid ? 'bg-emerald-100 text-emerald-700' : isPartial ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400'
-          }`}
-        >
-          <span className="text-base leading-none">{isFullyPaid ? '✓' : isPartial ? '⬤' : '○'}</span>
-          <span>€{paid} / €{price}</span>
-          {paidDate && (
-            <span className={`text-[10px] leading-tight ${isFullyPaid ? 'text-emerald-600' : 'text-amber-600'}`}>
-              {new Date(paidDate).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', { day: '2-digit', month: '2-digit' })}
-            </span>
-          )}
-        </div>
-      </td>
-    );
-  };
-
-  const StudentRow = ({ student }: { student: Student }) => {
-    const rec = records[student.id] || emptyRecord(student.id);
-    return (
-      <tr className="hover:bg-gray-50">
-        <td className="border border-gray-200 px-3 py-2 font-medium text-sm text-gray-800 min-w-[140px] sticky left-0 bg-white z-10">
-          {student.name}
-        </td>
-        <td className="border border-gray-200 px-2 py-2 text-center align-middle">
-          <span className={`text-xs px-2 py-1 rounded-full font-medium ${rec.isMember ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'}`}>
-            {rec.isMember ? nl('Üye', 'Lid') : nl('Üye değil', 'Geen lid')}
-          </span>
-        </td>
-        <td className="border border-gray-200 px-2 py-2 text-center align-middle">
-          <span className={`text-xs px-2 py-1 rounded-full font-medium ${rec.hasSibling ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-400'}`}>
-            {rec.hasSibling ? nl('Kardeş', 'Broer/Zus') : nl('Kardeş yok', 'Geen B/Z')}
-          </span>
-        </td>
-        <SchoolgeldCell student={student} />
-        <PaymentCell studentId={student.id} field="tas" price={settings.tas} />
-        <PaymentCell studentId={student.id} field="quran" price={settings.quran} />
-        <PaymentCell studentId={student.id} field="elifbe" price={settings.elifbe} />
-        <PaymentCell studentId={student.id} field="temel" price={settings.temel} />
-      </tr>
-    );
-  };
-
-  const TableHeader = () => (
-    <thead>
-      <tr className="bg-emerald-50">
-        <th className="border border-gray-200 px-3 py-2 text-left text-sm font-semibold text-emerald-800 sticky left-0 bg-emerald-50 z-10">
-          {nl('Öğrenci', 'Leerling')}
-        </th>
-        <th className="border border-gray-200 px-2 py-2 text-center text-sm font-semibold text-emerald-800 min-w-[80px]">{nl('Üye', 'Lid')}</th>
-        <th className="border border-gray-200 px-2 py-2 text-center text-sm font-semibold text-emerald-800 min-w-[90px]">{nl('Kardeş', 'Broer/Zus')}</th>
-        <th className="border border-gray-200 px-2 py-2 text-center text-sm font-semibold text-emerald-800 min-w-[130px]">Schoolgeld</th>
-        <th className="border border-gray-200 px-2 py-2 text-center text-sm font-semibold text-emerald-800 min-w-[90px]">Tas</th>
-        <th className="border border-gray-200 px-2 py-2 text-center text-sm font-semibold text-emerald-800 min-w-[90px]">Quran</th>
-        <th className="border border-gray-200 px-2 py-2 text-center text-sm font-semibold text-emerald-800 min-w-[90px]">Elif-be</th>
-        <th className="border border-gray-200 px-2 py-2 text-center text-sm font-semibold text-emerald-800 min-w-[110px]">Temel Bilgileri</th>
-      </tr>
-    </thead>
-  );
-
-  const ClassTable = ({ clsStudents }: { clsStudents: Student[] }) => (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-sm">
-        <TableHeader />
-        <tbody>{clsStudents.map(s => <StudentRow key={s.id} student={s} />)}</tbody>
-      </table>
-    </div>
-  );
-
   const logStudentOptions = logStudentSearch.trim()
     ? students.filter(s => matches(s.name, logStudentSearch))
     : students;
@@ -475,50 +325,31 @@ export default function BoekhoudingView({ classes, students, language, apiReques
       {/* Header */}
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between mb-5">
         <h3 className="text-xl sm:text-2xl font-semibold text-emerald-800">{nl('Muhasebe', 'Boekhouding')}</h3>
-        {subTab === 'overzicht' && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowReminderConfirm(true)}
-              disabled={outstandingParentIds.size === 0}
-              className="flex items-center gap-2 px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Mail className="h-4 w-4" />
-              {nl('Hatırlatma gönder', 'Herinnering sturen')}
-            </button>
-            <button
-              onClick={() => { setEditSettings(settings); setShowSettings(true); }}
-              className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition"
-            >
-              <Settings className="h-4 w-4" />
-              {nl('Ayarlar', 'Instellingen')}
-            </button>
-          </div>
-        )}
+        {/* These two used to hang off the overzicht tab. That tab is gone, so
+            they sit on the header itself — the prices behind Instellingen are
+            what the parents' billing is computed from, and there would
+            otherwise be no way to reach them. */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowReminderConfirm(true)}
+            disabled={outstandingParentIds.size === 0}
+            className="flex items-center gap-2 px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Mail className="h-4 w-4" />
+            {nl('Hatırlatma gönder', 'Herinnering sturen')}
+          </button>
+          <button
+            onClick={() => { setEditSettings(settings); setShowSettings(true); }}
+            className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition"
+          >
+            <Settings className="h-4 w-4" />
+            {nl('Ayarlar', 'Instellingen')}
+          </button>
+        </div>
       </div>
 
-      {/* Sub-tabs */}
-      <div className="flex gap-2 sm:gap-3 mb-5 border-b overflow-x-auto">
-        <button
-          onClick={() => setSubTab('overzicht')}
-          className={`pb-2 sm:pb-3 px-2 sm:px-3 font-semibold transition whitespace-nowrap text-sm ${
-            subTab === 'overzicht' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'
-          }`}
-        >
-          {nl('Genel bakış', 'Overzicht')}
-        </button>
-        <button
-          onClick={() => setSubTab('log')}
-          className={`pb-2 sm:pb-3 px-2 sm:px-3 font-semibold transition whitespace-nowrap text-sm ${
-            subTab === 'log' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'
-          }`}
-        >
-          {nl('Ödeme kaydı', 'Betalingslogboek')}
-        </button>
-      </div>
-
-      {subTab === 'log' ? (
-        <div>
-          {/* New entry form */}
+      <div>
+        {/* New entry form */}
           <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
             <h4 className="text-sm font-semibold text-gray-700 mb-3">{nl('Yeni ödeme kaydı', 'Nieuwe betaling loggen')}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -727,109 +558,6 @@ export default function BoekhoudingView({ classes, students, language, apiReques
             </div>
           </div>
         </div>
-      ) : (
-      <>
-      {/* ── Total collected banner ── */}
-      <div className="bg-emerald-700 text-white rounded-xl p-4 mb-5 flex flex-col lg:flex-row lg:items-center gap-3">
-        <div className="flex items-center gap-3 flex-1">
-          <div className="bg-emerald-600 rounded-lg p-2">
-            <Euro className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-xs text-emerald-200 font-medium uppercase tracking-wide">
-              {nl('Toplam tahsilat', 'Totaal ontvangen')}
-            </p>
-            <p className="text-3xl font-bold">€{grandTotal.toFixed(2)}</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-xs">
-          {[
-            { label: 'Schoolgeld', val: totals.schoolgeld },
-            { label: 'Tas', val: totals.tas },
-            { label: 'Quran', val: totals.quran },
-            { label: 'Elif-be', val: totals.elifbe },
-            { label: 'Temel', val: totals.temel },
-          ].map(({ label, val }) => (
-            <div key={label} className="bg-emerald-600/50 rounded-lg px-2 py-1.5 text-center">
-              <p className="text-emerald-200 truncate">{label}</p>
-              <p className="font-semibold">€{val}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Search */}
-      <div className="relative mb-5">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder={nl('Öğrenci ara...', 'Zoek leerling...')}
-          className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-        />
-        {search && (
-          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-
-      {/* Legend + read-only notice */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex flex-wrap gap-4 text-xs text-gray-500">
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-emerald-100 inline-block" /> {nl('Tam ödendi', 'Volledig betaald')}</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-amber-100 inline-block" /> {nl('Kısmi ödeme', 'Gedeeltelijk betaald')}</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-gray-100 inline-block" /> {nl('Ödenmedi', 'Niet betaald')}</span>
-        </div>
-        <p className="text-xs text-gray-400 italic">
-          {nl('Salt okunur — ödeme eklemek/silmek için Ödeme Kaydı sekmesini kullanın', 'Alleen-lezen — gebruik het tabblad Betalingslogboek om betalingen toe te voegen/verwijderen')}
-        </p>
-      </div>
-
-      {/* Tables */}
-      {byClass.length === 0 && unclassed.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">{nl('Öğrenci bulunamadı', 'Geen leerlingen gevonden')}</div>
-      ) : (
-        <div className="space-y-4">
-          {byClass.map(({ cls, students: clsStudents }) => {
-            const expanded = expandedClasses.has(cls.id);
-            return (
-              <div key={cls.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => toggleClass(cls.id)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-emerald-50 hover:bg-emerald-100 transition"
-                >
-                  <span className="font-semibold text-emerald-800">{cls.name}</span>
-                  <div className="flex items-center gap-2 text-emerald-600">
-                    <span className="text-sm">{clsStudents.length} {nl('öğrenci', 'leerlingen')}</span>
-                    {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </div>
-                </button>
-                {expanded && <ClassTable clsStudents={clsStudents} />}
-              </div>
-            );
-          })}
-
-          {unclassed.length > 0 && (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <button
-                onClick={() => toggleClass('__unclassed')}
-                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition"
-              >
-                <span className="font-semibold text-gray-600">{nl('Sınıfsız', 'Geen klas')}</span>
-                <div className="flex items-center gap-2 text-gray-500">
-                  <span className="text-sm">{unclassed.length}</span>
-                  {expandedClasses.has('__unclassed') ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </div>
-              </button>
-              {expandedClasses.has('__unclassed') && <ClassTable clsStudents={unclassed} />}
-            </div>
-          )}
-        </div>
-      )}
-      </>
-      )}
 
       {/* Send schoolgeld reminder confirmation */}
       {showReminderConfirm && (

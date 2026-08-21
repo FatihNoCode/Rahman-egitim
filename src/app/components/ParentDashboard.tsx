@@ -611,10 +611,18 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           // header the user scrolls past a dozen times a day.
           <div className="mb-4 flex items-start justify-between gap-3">
             {/* The home tab shows no title — "Ouderpaneel" only restated where
-                the user already is. Other destinations still name themselves. */}
-            <h1 className="min-w-0 flex-1 text-2xl font-bold leading-tight text-gray-800">
-              {activeTab === 'overview' ? '' : byId[activeTab]?.label ?? ''}
-            </h1>
+                the user already is. Other destinations still name themselves,
+                and carry the child's name underneath: the switcher that used
+                to answer "whose grades are these" on every tab now only
+                appears on home, so each destination has to say it itself. */}
+            <div className="min-w-0 flex-1">
+              <h1 className="text-2xl font-bold leading-tight text-gray-800">
+                {activeTab === 'overview' ? '' : byId[activeTab]?.label ?? ''}
+              </h1>
+              {activeTab !== 'overview' && students.length > 1 && selectedChild && (
+                <p className="mt-0.5 truncate text-sm text-gray-500">{selectedChild.name}</p>
+              )}
+            </div>
             {/* Only renders for accounts that hold more than one role. */}
             <RoleSwitchPill language={language} />
             <AccountAvatarButton onOpen={() => setActiveTab(MOBILE_ACCOUNT_ID)} />
@@ -659,7 +667,11 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           </div>
         ) : (
           <>
-            {/* Child switcher (only when there is more than one child) */}
+            {/* Child switcher (only when there is more than one child, and in
+                the app only on home — it was following the reader onto every
+                tab, where it took up the top of a screen they had already
+                chosen a child for). */}
+            {(!app || activeTab === 'overview') && (
             <ChildSwitcher
               children={students}
               selectedId={selectedChildId}
@@ -670,6 +682,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               schoolNames={schoolNames}
               language={language}
             />
+            )}
 
             {/* Selected child header + actions. Overview only: the billing and
                 oudergesprekken tabs already say which child they're about, and

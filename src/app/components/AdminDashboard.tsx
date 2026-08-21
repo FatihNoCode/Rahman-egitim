@@ -620,7 +620,6 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
 
           {activeTab === 'boekhouding' && (
             <BoekhoudingView
-              classes={classes}
               students={students}
               language={language}
               apiRequest={apiRequest}

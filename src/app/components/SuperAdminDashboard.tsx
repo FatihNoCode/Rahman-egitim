@@ -12,6 +12,7 @@ import { notify, confirmDialog } from './ui/feedback';
 import MetricsDrilldown from './MetricsDrilldown';
 import MonitoringBarChart from './MonitoringCharts';
 import TestRoleSwitcher from './TestRoleSwitcher';
+import LoadError from './ui/load-error';
 import { isNative, isAppLayout } from '../../lib/native';
 import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
@@ -367,6 +368,9 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   const [locations, setLocations] = useState<LocationRecord[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<LocationRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  // A failed load leaves every list empty, which reads as "there is nothing
+  // here" rather than "we never got an answer".
+  const [loadFailed, setLoadFailed] = useState(false);
   const [newSchoolName, setNewSchoolName] = useState('');
   const [creating, setCreating] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -526,6 +530,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
 
   const loadData = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const [locationData, schoolData] = await Promise.all([
         apiRequest('/locations'),
@@ -540,6 +545,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
       );
     } catch (error) {
       console.error('Error loading locations/schools:', error);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -762,6 +768,8 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
               <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
               {t.loading}
             </div>
+          ) : loadFailed ? (
+            <LoadError language={language} onRetry={loadData} />
           ) : (
             <>
               <p className="text-sm text-gray-500 mb-3">{t.selectLocationHint}</p>
@@ -852,6 +860,8 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                   <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
                   {t.loading}
                 </div>
+              ) : loadFailed ? (
+                <LoadError language={language} onRetry={loadData} />
               ) : schoolsAtLocation.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">{t.noSchoolsYet}</div>
               ) : (
@@ -895,7 +905,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
           </>
         )}
 
-        {tab === 'inbox' && <InboxView t={t} apiRequest={apiRequest} />}
+        {tab === 'inbox' && <InboxView t={t} apiRequest={apiRequest} language={language} />}
 
         {tab === 'regional' && (
           <div className="space-y-4 sm:space-y-6">

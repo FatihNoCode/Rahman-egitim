@@ -38,6 +38,7 @@ const t = {
     storeAppleTop: 'Download in de',
     storeGoogleTop: 'Ontdek het op',
     storeSoon: 'Binnenkort beschikbaar in beide stores.',
+    footerContact: 'Contact',
     footerPrivacy: 'Privacybeleid',
     footerDelete: 'Account verwijderen',
   },
@@ -61,6 +62,7 @@ const t = {
     storeAppleTop: 'İndirin',
     storeGoogleTop: 'İndirin',
     storeSoon: 'Yakında her iki mağazada.',
+    footerContact: 'İletişim',
     footerPrivacy: 'Gizlilik politikası',
     footerDelete: 'Hesabı sil',
   },
@@ -610,6 +612,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-7 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-gray-400">
           <span>© {new Date().getFullYear()} Rahman Eğitim</span>
           <div className="flex items-center gap-4">
+            <a href="/contact" className="hover:text-gray-600 transition">{text.footerContact}</a>
             <a href="/privacy" className="hover:text-gray-600 transition">{text.footerPrivacy}</a>
             <a href="/account-verwijderen" className="hover:text-gray-600 transition">{text.footerDelete}</a>
           </div>

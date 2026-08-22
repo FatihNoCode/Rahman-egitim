@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { notify, confirmDialog } from './ui/feedback';
+import LoadError from './ui/load-error';
 
 interface Slot {
   start: string;
@@ -30,6 +31,10 @@ interface OudergesprekkenViewProps {
 export default function OudergesprekkenView({ language, apiRequest }: OudergesprekkenViewProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "nothing to show" from "we never got an answer" — both
+  // rendered the same empty state before, which is how a load failure came to
+  // look like good news.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [creating, setCreating] = useState(false);
 
   // Form state
@@ -46,11 +51,13 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
   }, []);
 
   const loadSessions = async () => {
+    setLoadFailed(false);
     try {
       const data = await apiRequest('/oudergesprekken');
       setSessions(data.sessions || []);
     } catch (err) {
       console.error('Error loading conferences:', err);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -243,6 +250,8 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
 
         {loading ? (
           <p className="text-gray-400 text-sm">{language === 'tr' ? 'Yükleniyor...' : 'Laden...'}</p>
+        ) : loadFailed ? (
+          <LoadError language={language} onRetry={loadSessions} />
         ) : sessions.length === 0 ? (
           <p className="text-gray-400 text-sm">
             {language === 'tr' ? 'Henüz veli görüşmesi oluşturulmadı.' : 'Nog geen oudergesprekken aangemaakt.'}

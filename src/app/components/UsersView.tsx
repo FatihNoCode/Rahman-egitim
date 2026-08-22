@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Pencil, Check, X, Users as UsersIcon, Search, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { notify } from './ui/feedback';
+import LoadError from './ui/load-error';
 import { matchesAny } from '../../lib/search';
 
 interface Class {
@@ -52,6 +53,10 @@ export default function UsersView({
 }: UsersViewProps) {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "nothing to show" from "we never got an answer" — both
+  // rendered the same empty state before, which is how a load failure came to
+  // look like good news.
+  const [loadFailed, setLoadFailed] = useState(false);
   // id -> name lookup, used to show which location a registration chose.
   const [schoolNames, setSchoolNames] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -195,11 +200,13 @@ export default function UsersView({
 
   const loadUsers = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const data = await apiRequest('/users');
       setUsers(data.users || []);
     } catch (error) {
       console.error('Error loading users:', error);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -438,6 +445,8 @@ export default function UsersView({
 
       {loading ? (
         <div className="text-center py-12 text-gray-400">{text.loading}</div>
+      ) : loadFailed ? (
+        <LoadError language={language} onRetry={loadUsers} />
       ) : (
         <div className="overflow-x-auto -mx-3 sm:-mx-4 md:-mx-6 px-3 sm:px-4 md:px-6 mb-8">
           <table className="w-full min-w-full">

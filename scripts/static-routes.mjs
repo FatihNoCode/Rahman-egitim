@@ -28,6 +28,7 @@ const ROUTES = [
   'inschrijving', // legacy path, still linked from older mails
   'elif-ba',
   'toets',
+  'contact',
 ];
 
 const source = join(dist, 'index.html');

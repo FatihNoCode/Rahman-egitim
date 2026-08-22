@@ -11,6 +11,7 @@ import RoleSwitchPill from './RoleSwitchPill';
 import ActionCenter from './ActionCenter';
 import MomentsFeed from './MomentsFeed';
 import { notify } from './ui/feedback';
+import LoadError from './ui/load-error';
 import { isAppLayout } from '../../lib/native';
 import { logAction } from '../../lib/deviceLog';
 import MobileNav from './mobile/MobileNav';
@@ -92,6 +93,10 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [students, setStudents] = useState<Student[]>([]);
   const [homeworkCompletion, setHomeworkCompletion] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  // The whole dashboard hangs off this one load, so a failure has to be
+  // visible: an empty screen reads as "your child has nothing" rather than
+  // "we could not reach the server".
+  const [loadFailed, setLoadFailed] = useState(false);
   const [schoolNames, setSchoolNames] = useState<Record<string, string>>({});
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [lessons, setLessons] = useState<any[]>([]);
@@ -100,6 +105,9 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [conferSessions, setConferSessions] = useState<any[]>([]);
   const [bookingSessionId, setBookingSessionId] = useState<string | null>(null);
   const [showAbsenceModal, setShowAbsenceModal] = useState(false);
+  // In flight, so the send button can lock. Without it a slow connection
+  // invites a second tap and the mosque gets the same ziekmelding twice.
+  const [submittingAbsence, setSubmittingAbsence] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<string>('');
   const [absenceDate, setAbsenceDate] = useState('');
   const [absenceReason, setAbsenceReason] = useState('');
@@ -233,6 +241,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   };
 
   const loadData = async () => {
+    setLoadFailed(false);
     try {
       const [studentsData, classesData, completionData, conferData] = await Promise.all([
         apiRequest('/students'),
@@ -279,7 +288,11 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     } catch (error: any) {
       console.error('Error loading data:', error);
       console.error('Error details:', error.message);
-      notify.error(`Error loading data: ${error.message}`);
+      // A panel with a retry, not a toast: the toast used to disappear and
+      // leave a blank dashboard behind with no way to try again short of
+      // reloading the page — and it put a raw error message in front of a
+      // parent, which told them nothing they could act on.
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -359,10 +372,23 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     }
   };
 
+  // toISOString() would hand back the UTC day, which for anyone in the
+  // Netherlands is yesterday's date for the first two hours after midnight —
+  // exactly when a parent filing for "vandaag" would be misfiled.
+  const localDay = (offsetDays = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   const openAbsenceModal = (studentId: string) => {
     setSelectedStudent(studentId);
-    setAbsenceDate('');
+    // Today, not blank. A ziekmelding is almost always about today, and an
+    // empty date picker asks the parent to work out and type the very thing we
+    // already know — the one field that made the form feel like paperwork.
+    setAbsenceDate(localDay());
     setAbsenceReason('');
+    setSubmittingAbsence(false);
     setShowAbsenceModal(true);
   };
 
@@ -400,6 +426,8 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       notify.error(language === 'tr' ? 'Lütfen tüm alanları doldurun' : 'Vul alle velden in');
       return;
     }
+    if (submittingAbsence) return;
+    setSubmittingAbsence(true);
 
     // A report after the deadline is still accepted. A school that refuses a
     // late ziekmelding does not get a punctual one — it gets no ziekmelding at
@@ -436,6 +464,8 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     } catch (error: any) {
       console.error('Error reporting absence:', error);
       notify.error(error.message || 'Error reporting absence');
+    } finally {
+      setSubmittingAbsence(false);
     }
   };
 
@@ -497,6 +527,20 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     return (
       <div className="size-full flex items-center justify-center">
         <div className="text-lg text-emerald-800">{t.loading}</div>
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="size-full flex flex-col items-center justify-center gap-4 p-6">
+        <LoadError language={language} onRetry={() => { setLoading(true); loadData(); }} className="max-w-md" />
+        <button
+          onClick={onLogout}
+          className="text-sm text-gray-400 hover:text-gray-600 transition"
+        >
+          {t.logout}
+        </button>
       </div>
     );
   }
@@ -1012,9 +1056,37 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{t.lessonDate}</label>
+                  {/* Today and tomorrow cover almost every ziekmelding there
+                      is; the picker stays for the rest. `min` stops a mistyped
+                      year filing a report against a date that has long gone. */}
+                  <div className="flex gap-2 mb-2">
+                    {([0, 1] as const).map((offset) => {
+                      const day = localDay(offset);
+                      const label = offset === 0
+                        ? (language === 'tr' ? 'Bugün' : 'Vandaag')
+                        : (language === 'tr' ? 'Yarın' : 'Morgen');
+                      const active = absenceDate === day;
+                      return (
+                        <button
+                          key={offset}
+                          type="button"
+                          onClick={() => setAbsenceDate(day)}
+                          aria-pressed={active}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition border ${
+                            active
+                              ? 'bg-emerald-600 border-emerald-600 text-white'
+                              : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <input
                     type="date"
                     value={absenceDate}
+                    min={localDay()}
                     onChange={(e) => setAbsenceDate(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg text-sm"
                   />
@@ -1046,13 +1118,20 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                 <div className="flex gap-2 sm:gap-3">
                   <button
                     onClick={submitAbsenceNotification}
-                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"
+                    disabled={submittingAbsence}
+                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
                   >
-                    {t.submitNotification}
+                    {submittingAbsence && (
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    )}
+                    {submittingAbsence
+                      ? (language === 'tr' ? 'Gönderiliyor...' : 'Versturen...')
+                      : t.submitNotification}
                   </button>
                   <button
                     onClick={() => setShowAbsenceModal(false)}
-                    className="flex-1 px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400 text-sm"
+                    disabled={submittingAbsence}
+                    className="flex-1 px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400 disabled:opacity-60 text-sm"
                   >
                     {t.cancel}
                   </button>

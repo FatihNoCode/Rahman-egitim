@@ -628,7 +628,11 @@ function toBase64(text: string): string {
   return btoa(binary);
 }
 
-async function sendEmail(to: string, subject: string, html: string, attachments?: EmailAttachment[]) {
+// `replyTo` is for mail we send on someone else's behalf — a contact-form
+// question arrives from info@ (the only address the domain is allowed to send
+// as) but should reply to the person who asked, so hitting Reply in the
+// mailbox goes to them and not to ourselves.
+async function sendEmail(to: string, subject: string, html: string, attachments?: EmailAttachment[], replyTo?: string) {
   const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
   if (!RESEND_API_KEY) {
     console.log('RESEND_API_KEY not configured, skipping email to', to);
@@ -641,6 +645,7 @@ async function sendEmail(to: string, subject: string, html: string, attachments?
       subject,
       html,
     };
+    if (replyTo) payload.reply_to = replyTo;
     if (attachments && attachments.length > 0) {
       payload.attachments = attachments.map((a) => ({
         filename: a.filename,
@@ -1483,6 +1488,11 @@ app.post("/make-server-6679cacd/switch-role", async (c) => {
 // contain any other admin/teacher/parent to their own school. The
 // DEMO_TESTER_BLOCKED_PREFIXES check above is the second line of defence.
 const DEMO_SCHOOL_ID = '75c1a8c0-9368-474f-ba32-2fa1994da5d7'; // "Darul Furkan (Demo)"
+// The mosque both demo programmes ("Darul Furkan (Demo)" and "Haftasonu
+// Eğitim (Demo)") hang off. Filtering the public sign-up list on the location
+// rather than on DEMO_SCHOOL_ID alone catches both, and keeps catching any
+// further demo programme added under the same mosque later.
+const DEMO_LOCATION_ID = '66a0efcb-7ac7-4654-b7aa-2d8e60262e77'; // "Amersfoort (Demo)"
 // Two children, not one, and deliberately in *different* classes. A family
 // with a single child never exercises the child switcher, the per-child
 // worklist entries, or any of the "which child am I looking at" wiring — so a
@@ -2912,7 +2922,13 @@ app.get("/make-server-6679cacd/schools/public", async (c) => {
         };
       })
       // A programme whose mosque was deactivated can't be signed up for.
-      .filter((s: any) => !s.locationId || locationById.get(s.locationId)?.active !== false);
+      .filter((s: any) => !s.locationId || locationById.get(s.locationId)?.active !== false)
+      // The demo mosque and its programmes exist for testers and app-store
+      // reviewers, and are active on purpose so the demo account keeps working.
+      // They have no business on the public sign-up form: a parent who picks
+      // "Amersfoort (Demo)" from the dropdown files a real registration into
+      // demo data, where nobody is looking for it.
+      .filter((s: any) => s.id !== DEMO_SCHOOL_ID && s.locationId !== DEMO_LOCATION_ID);
     return c.json({ schools });
   } catch (err) {
     console.log('List public schools error:', err);
@@ -7458,11 +7474,11 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
       contactEmail,
       'Inschrijving ontvangen | Kayıt Alındı - Rahman Eğitim',
       emailWrapper('Inschrijving ontvangen', `
-        <p style="color:#374151;line-height:1.6">Beste ${contactNaam},</p>
+        <p style="color:#374151;line-height:1.6">Beste ${escapeHtml(contactNaam)},</p>
         <p style="color:#374151;line-height:1.6">Wij hebben de inschrijving van <strong>${escapeHtml(voornaam)} ${escapeHtml(achternaam)}</strong> in goede orde ontvangen. Wij nemen de aanvraag in behandeling en informeren u, in shaa Allah, zodra hier een update in is.</p>
         <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
         <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-        <p style="color:#374151;line-height:1.6">Sayın ${contactNaam},</p>
+        <p style="color:#374151;line-height:1.6">Sayın ${escapeHtml(contactNaam)},</p>
         <p style="color:#374151;line-height:1.6"><strong>${escapeHtml(voornaam)} ${escapeHtml(achternaam)}</strong> için yapılan kaydı aldık. Başvurunuzu inceliyoruz ve inşaallah bir gelişme olduğunda sizi bilgilendireceğiz.</p>
       `)
     );
@@ -7471,6 +7487,198 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
   } catch (err) {
     console.log('Inschrijving error:', err);
     return c.json({ error: 'Failed to save inschrijving' }, 500);
+  }
+});
+
+// ============= PUBLIC CONTACT FORM =============
+// A question box for people who are not (yet) parents at the mosque, and for
+// parents who have no account. Both endpoints below are unauthenticated, so
+// each one is rate-limited per IP and the send is gated on a captcha the
+// server hands out and remembers.
+//
+// The captcha is deliberately our own rather than hCaptcha or Turnstile: the
+// site ships a strict Content-Security-Policy with `script-src 'self'`, so a
+// third-party widget would mean punching a hole in it and carrying another
+// key. A spelled-out sum ("Hoeveel is drie plus vier?") stops the scripted
+// form-spam this form will actually attract, reads in the visitor's own
+// language, and needs nothing loaded from anywhere else.
+
+// Written-out numerals, so the question cannot be answered by regex-matching
+// digits out of the page.
+const CAPTCHA_WORDS = {
+  nl: ['nul', 'een', 'twee', 'drie', 'vier', 'vijf', 'zes', 'zeven', 'acht', 'negen', 'tien', 'elf', 'twaalf', 'dertien', 'veertien', 'vijftien', 'zestien', 'zeventien', 'achttien'],
+  tr: ['sıfır', 'bir', 'iki', 'üç', 'dört', 'beş', 'altı', 'yedi', 'sekiz', 'dokuz', 'on', 'on bir', 'on iki', 'on üç', 'on dört', 'on beş', 'on altı', 'on yedi', 'on sekiz'],
+};
+
+const CAPTCHA_TTL_SECONDS = 900; // 15 minutes — long enough to write a message.
+
+app.get("/make-server-6679cacd/captcha", async (c) => {
+  try {
+    if (await rateLimited('captcha-ip', clientIp(c), 60, 3600)) {
+      return c.json({ error: 'Te veel aanvragen. Probeer het later opnieuw.' }, 429);
+    }
+
+    // Kept small and additive: the point is to be trivial for a person and
+    // awkward for a bot that does not read Dutch, not to be a puzzle.
+    const a = 1 + Math.floor(Math.random() * 8);
+    const b = 1 + Math.floor(Math.random() * 8);
+    const id = crypto.randomUUID();
+    await kv.set(`captcha:${id}`, {
+      answer: a + b,
+      expiresAt: Date.now() + CAPTCHA_TTL_SECONDS * 1000,
+    });
+
+    return c.json({
+      id,
+      questionNl: `Hoeveel is ${CAPTCHA_WORDS.nl[a]} plus ${CAPTCHA_WORDS.nl[b]}?`,
+      questionTr: `${CAPTCHA_WORDS.tr[a]} artı ${CAPTCHA_WORDS.tr[b]} kaç eder?`,
+    });
+  } catch (err) {
+    console.log('Captcha issue error:', err);
+    return c.json({ error: 'Failed to issue captcha' }, 500);
+  }
+});
+
+// Single-use: the challenge is deleted whether the answer was right or wrong,
+// so a wrong guess costs a round trip and a fresh question instead of letting
+// one id be brute-forced.
+async function consumeCaptcha(id: unknown, answer: unknown): Promise<boolean> {
+  if (typeof id !== 'string' || !id) return false;
+  const record = await kv.get(`captcha:${id}`);
+  if (!record) return false;
+  await kv.del(`captcha:${id}`);
+  if (typeof record.expiresAt !== 'number' || record.expiresAt < Date.now()) return false;
+
+  // Digits or the written-out word are both accepted — someone answering
+  // "zeven" has plainly read the question.
+  const raw = String(answer ?? '').trim().toLowerCase();
+  if (!raw) return false;
+  const asNumber = Number(raw);
+  if (Number.isFinite(asNumber) && asNumber === record.answer) return true;
+  return raw === CAPTCHA_WORDS.nl[record.answer] || raw === CAPTCHA_WORDS.tr[record.answer];
+}
+
+// Where contact-form questions are delivered. info@rahmanegitim.com is the
+// address the app already sends from; if that mailbox cannot take delivery
+// the send is retried at the mosque's Gmail so a question is never lost
+// because of a mail-routing problem the visitor cannot see. Either can be
+// overridden without a deploy via the CONTACT_INBOX_EMAIL env var.
+const CONTACT_INBOX_FALLBACK = 'onderwijs.rahman@gmail.com';
+function contactInbox(): string {
+  return Deno.env.get('CONTACT_INBOX_EMAIL') || 'info@rahmanegitim.com';
+}
+
+app.post("/make-server-6679cacd/contact", async (c) => {
+  try {
+    // Public, unauthenticated and it sends two mails per call — cap it the
+    // same way the public enrollment endpoint is capped.
+    if (await rateLimited('contact-ip', clientIp(c), 5, 3600)) {
+      return c.json({ error: 'Te veel berichten vanaf deze verbinding. Probeer het later opnieuw.' }, 429);
+    }
+
+    const body = await c.req.json();
+    const { naam, email, onderwerp, bericht, captchaId, captchaAnswer } = body;
+
+    if (!naam || !email || !bericht) {
+      return c.json({ error: 'Naam, e-mailadres en bericht zijn verplicht' }, 400);
+    }
+
+    const textFields: [string, unknown, number][] = [
+      ['naam', naam, 100], ['email', email, 200],
+      ['onderwerp', onderwerp, 150], ['bericht', bericht, 4000],
+    ];
+    for (const [field, value, max] of textFields) {
+      if (value === undefined || value === null || value === '') continue;
+      if (typeof value !== 'string' || value.length > max) {
+        return c.json({ error: `Ongeldige waarde voor ${field}` }, 400);
+      }
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(email)) {
+      return c.json({ error: 'Ongeldig e-mailadres' }, 400);
+    }
+
+    // Checked after the field validation so a visitor who typed a bad email
+    // does not also lose their captcha and have to answer a new one.
+    if (!(await consumeCaptcha(captchaId, captchaAnswer))) {
+      return c.json({ error: 'captcha', message: 'De controlevraag klopt niet. Probeer het opnieuw.' }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    const subject = (onderwerp || '').trim() || 'Vraag via het contactformulier';
+    const record = {
+      id,
+      naam: naam.trim(),
+      email: email.trim(),
+      onderwerp: subject,
+      bericht: bericht.trim(),
+      receivedAt: new Date().toISOString(),
+    };
+
+    // Stored as well as mailed. A question that only exists in a mailbox is
+    // gone the moment a mail send fails or someone deletes it, and the
+    // superadmin inbox is where messages are already read.
+    await kv.set(`inbox:${id}`, {
+      id,
+      from: `${record.naam} <${record.email}>`,
+      to: [contactInbox()],
+      subject: `Contactformulier: ${subject}`,
+      text: `${record.bericht}\n\n— ${record.naam} (${record.email})`,
+      html: '',
+      attachments: [],
+      read: false,
+      receivedAt: record.receivedAt,
+    });
+    const inboxIds: string[] = await kv.get('inbox_ids') || [];
+    inboxIds.unshift(id);
+    if (inboxIds.length > 1000) inboxIds.length = 1000;
+    await kv.set('inbox_ids', inboxIds);
+
+    const noticeHtml = emailWrapper('Nieuw bericht via het contactformulier', `
+      <p style="color:#374151;line-height:1.6"><strong>Van:</strong> ${escapeHtml(record.naam)} (${escapeHtml(record.email)})</p>
+      <p style="color:#374151;line-height:1.6"><strong>Onderwerp:</strong> ${escapeHtml(subject)}</p>
+      <div style="color:#374151;line-height:1.6;white-space:pre-wrap;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-top:12px">${escapeHtml(record.bericht)}</div>
+      <p style="color:#6b7280;font-size:13px;margin-top:16px">Antwoord op deze e-mail om rechtstreeks aan de afzender te schrijven.</p>
+    `);
+
+    const delivered = await sendEmail(
+      contactInbox(),
+      `Contactformulier: ${subject}`,
+      noticeHtml,
+      undefined,
+      record.email,
+    );
+    if (!delivered) {
+      console.log('Contact notice to', contactInbox(), 'failed — retrying at the fallback inbox');
+      await sendEmail(
+        CONTACT_INBOX_FALLBACK,
+        `Contactformulier: ${subject}`,
+        noticeHtml,
+        undefined,
+        record.email,
+      );
+    }
+
+    await sendEmail(
+      record.email,
+      'Bericht ontvangen | Mesajınız Alındı - Rahman Eğitim',
+      emailWrapper('Bericht ontvangen', `
+        <p style="color:#374151;line-height:1.6">Beste ${escapeHtml(record.naam)},</p>
+        <p style="color:#374151;line-height:1.6">Wij hebben uw bericht in goede orde ontvangen en nemen, in shaa Allah, zo snel mogelijk contact met u op.</p>
+        <div style="color:#374151;line-height:1.6;white-space:pre-wrap;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-top:12px">${escapeHtml(record.bericht)}</div>
+        <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
+        <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+        <p style="color:#374151;line-height:1.6">Sayın ${escapeHtml(record.naam)},</p>
+        <p style="color:#374151;line-height:1.6">Mesajınızı aldık ve inşaallah en kısa sürede sizinle iletişime geçeceğiz.</p>
+      `),
+    );
+
+    console.log('New contact message saved:', id, record.email);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Contact form error:', err);
+    return c.json({ error: 'Failed to send message' }, 500);
   }
 });
 
@@ -7852,22 +8060,22 @@ app.patch("/make-server-6679cacd/inschrijvingen/:id", async (c) => {
     };
     if (status && status !== rec.status && rec.contactEmail) {
       const rejectionBlockNl = status === 'afgewezen' && effectiveReason
-        ? `<p style="color:#374151;line-height:1.6"><strong>Reden:</strong> ${effectiveReason}</p>`
+        ? `<p style="color:#374151;line-height:1.6"><strong>Reden:</strong> ${escapeHtml(effectiveReason)}</p>`
         : '';
       const rejectionBlockTr = status === 'afgewezen' && effectiveReason
-        ? `<p style="color:#374151;line-height:1.6"><strong>Neden:</strong> ${effectiveReason}</p>`
+        ? `<p style="color:#374151;line-height:1.6"><strong>Neden:</strong> ${escapeHtml(effectiveReason)}</p>`
         : '';
       await sendEmail(
         rec.contactEmail,
         `Update inschrijving ${rec.voornaam} ${rec.achternaam} | Kayıt Güncellemesi - Rahman Eğitim`,
         emailWrapper('Status inschrijving bijgewerkt', `
-          <p style="color:#374151;line-height:1.6">Beste ${rec.contactNaam},</p>
-          <p style="color:#374151;line-height:1.6">De status van de inschrijving van <strong>${rec.voornaam} ${rec.achternaam}</strong> is bijgewerkt naar: <strong>${statusLabelsNl[status] || status}</strong>.</p>
+          <p style="color:#374151;line-height:1.6">Beste ${escapeHtml(rec.contactNaam)},</p>
+          <p style="color:#374151;line-height:1.6">De status van de inschrijving van <strong>${escapeHtml(rec.voornaam)} ${escapeHtml(rec.achternaam)}</strong> is bijgewerkt naar: <strong>${statusLabelsNl[status] || status}</strong>.</p>
           ${rejectionBlockNl}
           <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
           <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-          <p style="color:#374151;line-height:1.6">Sayın ${rec.contactNaam},</p>
-          <p style="color:#374151;line-height:1.6"><strong>${rec.voornaam} ${rec.achternaam}</strong> kaydının durumu güncellendi: <strong>${statusLabelsTr[status] || status}</strong>.</p>
+          <p style="color:#374151;line-height:1.6">Sayın ${escapeHtml(rec.contactNaam)},</p>
+          <p style="color:#374151;line-height:1.6"><strong>${escapeHtml(rec.voornaam)} ${escapeHtml(rec.achternaam)}</strong> kaydının durumu güncellendi: <strong>${statusLabelsTr[status] || status}</strong>.</p>
           ${rejectionBlockTr}
         `)
       );

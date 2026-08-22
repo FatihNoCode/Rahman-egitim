@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { Moon, ClipboardList, UsersRound, Award, Check, AlertTriangle, X, Frown, Meh, Smile, FileText, ChevronDown } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import { useApp } from '../App';
@@ -17,7 +17,16 @@ import UserMenu from './UserMenu';
 import RoleSwitchPill from './RoleSwitchPill';
 import Sidebar from './Sidebar';
 import { notify } from './ui/feedback';
+import LoadError from './ui/load-error';
 import { isAppLayout } from '../../lib/native';
+import {
+  loadLessonDraft,
+  saveLessonDraft,
+  clearLessonDraft,
+  pruneLessonDrafts,
+  draftHasContent,
+  type LessonDraft,
+} from '../../lib/lessonDraft';
 import DesktopOnly from './mobile/DesktopOnly';
 import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
@@ -118,6 +127,10 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const { language, setLanguage, apiRequest, user } = useApp();
   const t = translations[language];
   const [classes, setClasses] = useState<Class[]>([]);
+  // "Geen klassen toegewezen" and "we could not reach the server" rendered
+  // the same screen — the first is something to take up with the admin, the
+  // second is something to try again.
+  const [classesFailed, setClassesFailed] = useState(false);
   const [schoolNames, setSchoolNames] = useState<Record<string, string>>({});
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [students, setStudents] = useState<Student[]>([]);
@@ -178,6 +191,15 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState(0);
 
+  // Set when an unsent lesson was found on this device and put back on screen,
+  // so the teacher is told rather than left wondering why the form is already
+  // filled in. Cleared as soon as they touch anything.
+  const [draftRestored, setDraftRestored] = useState(false);
+  // Autosave has to stay quiet while loadAttendance is replacing the whole
+  // form from the server — otherwise the server's values overwrite the very
+  // draft that is about to be restored.
+  const hydrating = useRef(true);
+
   // Which of the three registration steps is unfolded. One at a time: the
   // point of collapsing them was to get the whole form back onto one screen,
   // and two open steps puts it right back where it started.
@@ -192,6 +214,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const attendanceMarked = students.filter((s) => attendanceRecords[s.id] !== undefined).length;
 
   useEffect(() => {
+    pruneLessonDrafts();
     loadData();
     apiRequest('/diploma/settings')
       .then((d) => setDiplomaVisible(!!d.visible))
@@ -200,10 +223,80 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
 
   useEffect(() => {
     if (selectedClass) {
+      hydrating.current = true;
+      setDraftRestored(false);
       loadStudents();
       loadAttendance();
     }
   }, [selectedClass, attendanceDate]);
+
+  // The registration form, as it currently stands. Assembled in one place so
+  // the autosave below and the restore in loadAttendance describe the same
+  // set of fields.
+  const currentDraft = (): LessonDraft => ({
+    attendanceRecords,
+    behaviorRecords,
+    behaviorNeedsInfo,
+    behaviorNotes,
+    lessonSummary,
+    addHomework,
+    homeworkType,
+    selectedStudents,
+    homeworkCategory,
+    homeworkDueDate,
+    customHomeworkTr,
+    customHomeworkNl,
+    selectedSurah,
+    isWholeSurah,
+    ayatFrom,
+    ayatTo,
+    temelPageFrom,
+    temelPageTo,
+  });
+
+  // Autosave. Everything a teacher fills in before the single save at the end
+  // is written to their own device, so closing the tab, losing signal or a
+  // phone reclaiming the browser mid-lesson no longer throws the lesson away.
+  useEffect(() => {
+    if (hydrating.current || !selectedClass || !attendanceDate) return;
+    saveLessonDraft(selectedClass, attendanceDate, currentDraft());
+  }, [
+    selectedClass, attendanceDate,
+    attendanceRecords, behaviorRecords, behaviorNeedsInfo, behaviorNotes, lessonSummary,
+    addHomework, homeworkType, selectedStudents, homeworkCategory, homeworkDueDate,
+    customHomeworkTr, customHomeworkNl, selectedSurah, isWholeSurah, ayatFrom, ayatTo,
+    temelPageFrom, temelPageTo,
+  ]);
+
+  // Puts a stored draft back on screen, over whatever the server just
+  // returned. Called at the end of loadAttendance — a draft only exists
+  // because the lesson was *not* saved, so it is by definition newer than
+  // anything the server has for this class and date.
+  const restoreDraft = (classId: string, date: string) => {
+    const draft = loadLessonDraft(classId, date);
+    hydrating.current = false;
+    if (!draft || !draftHasContent(draft)) return;
+
+    setAttendanceRecords(draft.attendanceRecords);
+    setBehaviorRecords(draft.behaviorRecords);
+    setBehaviorNeedsInfo(draft.behaviorNeedsInfo);
+    setBehaviorNotes(draft.behaviorNotes);
+    setLessonSummary(draft.lessonSummary);
+    setAddHomework(draft.addHomework);
+    setHomeworkType(draft.homeworkType);
+    setSelectedStudents(draft.selectedStudents);
+    setHomeworkCategory(draft.homeworkCategory);
+    setHomeworkDueDate(draft.homeworkDueDate);
+    setCustomHomeworkTr(draft.customHomeworkTr);
+    setCustomHomeworkNl(draft.customHomeworkNl);
+    setSelectedSurah(draft.selectedSurah);
+    setIsWholeSurah(draft.isWholeSurah);
+    setAyatFrom(draft.ayatFrom);
+    setAyatTo(draft.ayatTo);
+    setTemelPageFrom(draft.temelPageFrom);
+    setTemelPageTo(draft.temelPageTo);
+    setDraftRestored(true);
+  };
 
   useEffect(() => {
     if (activeTab === 'beheer' && students.length > 0) {
@@ -215,6 +308,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   }, [activeTab, students]);
 
   const loadData = async () => {
+    setClassesFailed(false);
     try {
       const classesData = await apiRequest('/classes');
       setClasses(classesData.classes || []);
@@ -232,6 +326,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       }
     } catch (error) {
       console.error('Error loading data:', error);
+      setClassesFailed(true);
     }
   };
 
@@ -323,6 +418,8 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       } catch (err) {
         setLessonSummary('');
       }
+
+      restoreDraft(selectedClass, attendanceDate);
     } catch (error) {
       console.error('Error loading attendance:', error);
       setAttendanceRecords({});
@@ -331,6 +428,10 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       setBehaviorNeedsInfo({});
       setLessonSummary('');
       setAbsenceNotifications({});
+      // Losing the connection is exactly when an unsent lesson matters most,
+      // so the draft is restored on the failure path too — over the blanks
+      // just set above.
+      restoreDraft(selectedClass, attendanceDate);
     }
   };
 
@@ -518,6 +619,12 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
         : (language === 'tr' ? 'Yoklama ve davranış kaydedildi!' : 'Aanwezigheid en gedrag opgeslagen!');
       notify.success(successMsg);
 
+      // The lesson is on the server now, so the local copy has done its job.
+      // Cleared before the fields are reset so the autosave effect that fires
+      // on those resets writes nothing back.
+      clearLessonDraft(selectedClass, attendanceDate);
+      setDraftRestored(false);
+
       // Reset all fields
       setAttendanceRecords({});
       setBehaviorRecords({});
@@ -663,7 +770,9 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
         </div>
         )}
 
-        {classes.length === 0 ? (
+        {classesFailed ? (
+          <LoadError language={language} onRetry={loadData} />
+        ) : classes.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 md:p-8 text-center">
             <p className="text-gray-500 text-base sm:text-lg">
               {language === 'tr' ? 'Size atanmış sınıf bulunamadı.' : 'Geen klassen toegewezen.'}
@@ -720,6 +829,35 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                     </div>
                   )}
                 </div>
+
+                {/* An unsent lesson was found on this device and put back.
+                    Said out loud, because a form that fills itself in is
+                    alarming if you do not know why. */}
+                {draftRestored && (
+                  <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                    <FileText className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-amber-900">
+                        {language === 'tr'
+                          ? 'Kaydedilmemiş bir ders geri getirildi'
+                          : 'Een niet-verstuurde les is teruggezet'}
+                      </p>
+                      <p className="text-xs text-amber-800 mt-0.5">
+                        {language === 'tr'
+                          ? 'Bu ders daha önce dolduruldu ama gönderilmedi. Kontrol edip aşağıdan kaydedin.'
+                          : 'Deze les was eerder ingevuld maar niet opgeslagen. Controleer hem en sla hem hieronder alsnog op.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDraftRestored(false)}
+                      aria-label={language === 'tr' ? 'Kapat' : 'Sluiten'}
+                      className="shrink-0 text-amber-400 transition hover:text-amber-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
 
                 {/* ── Step 1: Lesson summary (mandatory, visible to parents) ── */}
                 <RegistrationStep

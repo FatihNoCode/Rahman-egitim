@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Send, Archive, Check, X, FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
+import LoadError from './ui/load-error';
 
 interface CaseRecord {
   id: string;
@@ -136,7 +137,13 @@ export default function CasesView({ language, apiRequest, role, currentUserId }:
   const [fixCommentFor, setFixCommentFor] = useState<string | null>(null);
   const [fixComment, setFixComment] = useState('');
 
+  // Distinguishes "nothing to show" from "we never got an answer" — both
+  // rendered the same empty state before, which is how a load failure came to
+  // look like good news.
+  const [loadFailed, setLoadFailed] = useState(false);
+
   const load = useCallback(async () => {
+    setLoadFailed(false);
     try {
       const [caseData, studentData, classData] = await Promise.all([
         apiRequest('/cases'),
@@ -151,6 +158,7 @@ export default function CasesView({ language, apiRequest, role, currentUserId }:
       })));
     } catch (err) {
       console.error('Load cases error:', err);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -271,7 +279,9 @@ export default function CasesView({ language, apiRequest, role, currentUserId }:
         </div>
       )}
 
-      {visibleCases.length === 0 ? (
+      {loadFailed ? (
+        <LoadError language={language} onRetry={load} />
+      ) : visibleCases.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-8 text-center text-sm text-gray-400">
           <FolderOpen className="h-8 w-8 mx-auto mb-2 text-gray-300" />
           {text.noCases}

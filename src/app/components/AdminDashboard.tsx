@@ -16,6 +16,7 @@ import ImportView from './ImportView';
 import AgendaView from './AgendaView';
 import CommunicationView from './CommunicationView';
 import { notify, confirmDialog } from './ui/feedback';
+import LoadError from './ui/load-error';
 import { isAppLayout } from '../../lib/native';
 import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
@@ -102,6 +103,11 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   ]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [classes, setClasses] = useState<Class[]>([]);
+  // Every tab below reads from the one loadData call. When it fails the
+  // metrics tab renders literally nothing (it is gated on `metrics` being
+  // set) and the rest render as empty lists, so the failure has to be said
+  // out loud at the top of the panel.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
 
   // School year settings
@@ -215,6 +221,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   };
 
   const loadData = async () => {
+    setLoadFailed(false);
     try {
       const [metricsData, classesData, teachersData, studentsData, usersData] = await Promise.all([
         apiRequest('/metrics'),
@@ -236,6 +243,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
       setParentNamesByEmail(nameByEmail);
     } catch (error) {
       console.error('Error loading data:', error);
+      setLoadFailed(true);
     }
   };
 
@@ -383,6 +391,8 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
           )}
 
           <div className={`flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-200 mb-4 sm:mb-6 ${app ? 'p-3' : 'p-3 sm:p-4 md:p-6'}`}>
+
+          {loadFailed && <LoadError language={language} onRetry={loadData} className="mb-4" />}
 
           {activeTab === 'metrics' && metrics && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Send, Paperclip, X, Inbox, Mail, CheckSquare, Square } from 'lucide-react';
 import { matchesAny } from '../../lib/search';
+import LoadError from './ui/load-error';
 
 interface AppUser {
   id: string;
@@ -98,6 +99,9 @@ export default function CommunicationView({ language, apiRequest }: Communicatio
   const [errorMsg, setErrorMsg] = useState('');
   const [sentLogs, setSentLogs] = useState<SentLog[]>([]);
   const [loadingSent, setLoadingSent] = useState(false);
+  // "Nog niets verstuurd" and "we could not fetch the log" are not the same
+  // answer to "did that message go out?".
+  const [sentFailed, setSentFailed] = useState(false);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
 
   useEffect(() => {
@@ -111,11 +115,13 @@ export default function CommunicationView({ language, apiRequest }: Communicatio
 
   const loadSent = async () => {
     setLoadingSent(true);
+    setSentFailed(false);
     try {
       const data = await apiRequest('/communication/sent');
       setSentLogs(data.logs || []);
     } catch (err) {
       console.error('Error loading sent logs:', err);
+      setSentFailed(true);
     } finally {
       setLoadingSent(false);
     }
@@ -297,6 +303,8 @@ export default function CommunicationView({ language, apiRequest }: Communicatio
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           {loadingSent ? (
             <div className="text-center py-12 text-gray-400 text-sm">...</div>
+          ) : sentFailed ? (
+            <LoadError language={language} onRetry={loadSent} />
           ) : sentLogs.length === 0 ? (
             <div className="text-center py-12 text-gray-400 text-sm">{text.noSent}</div>
           ) : (

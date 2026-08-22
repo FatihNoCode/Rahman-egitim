@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Inbox as InboxIcon, RefreshCw, Paperclip } from 'lucide-react';
+import LoadError from './ui/load-error';
 
 interface InboxMessage {
   id: string;
@@ -21,11 +22,16 @@ interface InboxViewProps {
     inboxRefresh: string;
   };
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
+  language: 'nl' | 'tr';
 }
 
-export default function InboxView({ t, apiRequest }: InboxViewProps) {
+export default function InboxView({ t, apiRequest, language }: InboxViewProps) {
   const [messages, setMessages] = useState<InboxMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "nothing to show" from "we never got an answer" — both
+  // rendered the same empty state before, which is how a load failure came to
+  // look like good news.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,11 +40,13 @@ export default function InboxView({ t, apiRequest }: InboxViewProps) {
 
   const load = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const data = await apiRequest('/inbox');
       setMessages(data.messages || []);
     } catch (err) {
       console.error('Error loading inbox:', err);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -78,6 +86,8 @@ export default function InboxView({ t, apiRequest }: InboxViewProps) {
         <div className="text-center py-12 text-gray-400">
           <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
         </div>
+      ) : loadFailed ? (
+        <LoadError language={language} onRetry={load} />
       ) : messages.length === 0 ? (
         <div className="text-center py-12 text-gray-400 text-sm">{t.noInboxMessages}</div>
       ) : (

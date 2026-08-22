@@ -39,6 +39,7 @@ const PrivacyPage = lazy(() => import('./components/PrivacyPage'));
 const DeleteAccountPage = lazy(() => import('./components/DeleteAccountPage'));
 const CompleteProfilePage = lazy(() => import('./components/CompleteProfilePage'));
 const ToetsPage = lazy(() => import('./components/ToetsPage'));
+const ContactPage = lazy(() => import('./components/ContactPage'));
 
 const supabase = getSupabaseClient();
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
@@ -245,6 +246,14 @@ export default function App() {
     pageParam === 'account-verwijderen' ||
     pageParam === 'delete-account';
 
+  // Public contact form. Reachable without an account on purpose: the people
+  // most likely to have a question — a parent who has not enrolled yet, or one
+  // whose account was never created — are exactly the people who cannot log in
+  // to ask it.
+  const isContactPage =
+    pathSegments.includes('contact') ||
+    pageParam === 'contact';
+
   // Public exam-taking page — students join with a code, no login needed.
   const isToetsPage =
     pathSegments.includes('toets') ||
@@ -262,7 +271,7 @@ export default function App() {
   // single-purpose flow. The cold-start greeting is for entering the app
   // itself, not for these, so they're excluded from it below.
   const isStandalonePublicPage =
-    isInschrijvingPage || isElifBaPage || isPrivacyPage || isDeleteAccountPage || isToetsPage;
+    isInschrijvingPage || isElifBaPage || isPrivacyPage || isDeleteAccountPage || isToetsPage || isContactPage;
 
   // The cold-start greeting is written out a character at a time, and session
   // checks usually finish sooner. Hold the splash until the line has actually
@@ -699,6 +708,8 @@ export default function App() {
           >
             {isPrivacyPage ? (
               <PrivacyPage />
+            ) : isContactPage ? (
+              <ContactPage />
             ) : isDeleteAccountPage ? (
               <DeleteAccountPage />
             ) : isToetsPage ? (

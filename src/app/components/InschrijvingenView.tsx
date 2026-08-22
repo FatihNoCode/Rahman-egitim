@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Mail, Phone, User, Calendar, Tag, ChevronDown, ChevronUp, RefreshCw, MessageCircleQuestion, Archive, Undo2 } from 'lucide-react';
 import { notify } from './ui/feedback';
+import LoadError from './ui/load-error';
 
 interface Registration {
   id: string;
@@ -43,6 +44,10 @@ const ARCHIVE_STATUSES = ['geaccepteerd', 'afgewezen'] as const;
 export default function InschrijvingenView({ language, apiRequest, classes }: InschrijvingenViewProps) {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "we asked and there are none" from "we never got an answer".
+  // Both used to render the same empty state, which quietly hid a queue of
+  // registrations behind a network error.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [view, setView] = useState<'actief' | 'archief'>('actief');
@@ -56,6 +61,7 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
 
   const load = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const res = await apiRequest('/inschrijvingen');
       const regs: Registration[] = res.registrations || [];
@@ -69,6 +75,7 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
       });
     } catch (e) {
       console.error('Error loading inschrijvingen:', e);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -182,6 +189,8 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
           <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
           {nl('Laden...', 'Yükleniyor...')}
         </div>
+      ) : loadFailed ? (
+        <LoadError language={language} onRetry={load} />
       ) : visible.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <User className="h-12 w-12 mx-auto mb-3 opacity-30" />

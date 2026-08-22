@@ -26,6 +26,7 @@ import {
 // the whole map bundle stays out of the initial download — same pattern as
 // SuperAdminDashboard.
 const LocationsMap = lazy(() => import('./LocationsMap'));
+import LoadError from './ui/load-error';
 
 interface RegionalAdminDashboardProps {
   onLogout: () => void;
@@ -220,6 +221,9 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
   const [summary, setSummary] = useState<RegionSummary | null>(null);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed load leaves every list empty, which reads as "there is nothing
+  // here" rather than "we never got an answer".
+  const [loadFailed, setLoadFailed] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', phone: '', schoolId: '' });
   const [submitting, setSubmitting] = useState(false);
 
@@ -264,6 +268,7 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
 
   const loadData = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const [summaryData, proposalsData] = await Promise.all([
         apiRequest(`/regions/${region}/summary`),
@@ -273,6 +278,7 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
       setProposals(proposalsData.proposals || []);
     } catch (error) {
       console.error('Error loading region summary:', error);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -393,6 +399,8 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
             <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
             {text.loading}
           </div>
+        ) : loadFailed ? (
+          <LoadError language={language} onRetry={loadData} />
         ) : (
           <div className="space-y-4 sm:space-y-6">
             {show('overview') && (

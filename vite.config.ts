@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite'
 import path from 'path'
+import { readFileSync } from 'node:fs'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
@@ -16,8 +17,20 @@ function figmaAssetResolver(): Plugin {
   }
 }
 
+// The app's version, read from package.json and injected at build time so
+// there is exactly one place it is written down. It used to live in
+// src/lib/version.ts as its own string, which drifted from package.json's the
+// first time only one of the two was bumped — and the number on the phone is
+// only useful for interpreting a bug report if it matches the repo.
+const pkgVersion = JSON.parse(
+  readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'),
+).version as string
+
 export default defineConfig({
   base: '/',
+  define: {
+    __APP_VERSION__: JSON.stringify(pkgVersion),
+  },
   plugins: [
     figmaAssetResolver(),
     // The React and Tailwind plugins are both required for Make, even if

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, Pencil, Calendar, Sun, PartyPopper } from 'lucide-react';
 import AgendaCalendar from './AgendaCalendar';
 import { notify, confirmDialog } from './ui/feedback';
+import LoadError from './ui/load-error';
 
 interface Lesstructuur {
   id: string;
@@ -44,6 +45,10 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
   const [vacations, setVacations] = useState<Vacation[]>([]);
   const [events, setEvents] = useState<AgendaEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "nothing to show" from "we never got an answer" — both
+  // rendered the same empty state before, which is how a load failure came to
+  // look like good news.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Lesstructuur form
@@ -76,6 +81,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
 
   const loadAll = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const [lsRes, vacRes, evtRes] = await Promise.all([
         apiRequest('/agenda/lesstructuren'),
@@ -87,6 +93,7 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
       setEvents((evtRes.events || []).sort((a: AgendaEvent, b: AgendaEvent) => a.date.localeCompare(b.date)));
     } catch (err) {
       console.error('Load agenda error:', err);
+      setLoadFailed(true);
     }
     setLoading(false);
   };
@@ -207,6 +214,9 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
   };
 
   if (loading) return <div className="text-center py-8 text-gray-500">{language === 'tr' ? 'Yükleniyor...' : 'Laden...'}</div>;
+  // All three lists below come from that one load, so a failure takes the
+  // whole tab rather than showing three empty sections.
+  if (loadFailed) return <LoadError language={language} onRetry={loadAll} />;
 
   return (
     <div className="space-y-6">

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import LoadError from './ui/load-error';
 
 interface SeasonSummary {
   yearName: string | null;
@@ -50,6 +51,10 @@ export default function AbsenceOverviewView({ language, apiRequest, classId, cla
   const [notifications, setNotifications] = useState<any[]>([]);
   const [season, setSeason] = useState<SeasonSummary | null>(null);
   const [loading, setLoading] = useState(false);
+  // Distinguishes "nothing to show" from "we never got an answer" — both
+  // rendered the same empty state before, which is how a load failure came to
+  // look like good news.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState(classId || '');
 
   const { from, to } = getWeekBounds(weekOffset);
@@ -61,6 +66,7 @@ export default function AbsenceOverviewView({ language, apiRequest, classId, cla
 
   const load = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const params = new URLSearchParams({ from, to });
       if (selectedClassId) params.set('classId', selectedClassId);
@@ -69,6 +75,7 @@ export default function AbsenceOverviewView({ language, apiRequest, classId, cla
       setSeason(data.season || null);
     } catch (err) {
       console.error('Error loading week notifications:', err);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -175,6 +182,8 @@ export default function AbsenceOverviewView({ language, apiRequest, classId, cla
         <div className="text-center py-10 text-gray-400 text-sm">
           {language === 'nl' ? 'Laden...' : 'Yükleniyor...'}
         </div>
+      ) : loadFailed ? (
+        <LoadError language={language} onRetry={load} />
       ) : notifications.length === 0 ? (
         <div className="text-center py-10">
           <p className="text-gray-400 text-sm">

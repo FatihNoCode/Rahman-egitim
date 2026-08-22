@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Settings, X, Check, Trash2, Plus, Pencil, Mail } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
+import LoadError from './ui/load-error';
 import { matches } from '../../lib/search';
 
 interface Student {
@@ -103,6 +104,10 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
   // Payment log tab
   const [logEntries, setLogEntries] = useState<PaymentLogEntry[]>([]);
   const [loadingLog, setLoadingLog] = useState(false);
+  // The prices and the per-student payment records are what this whole tab
+  // computes from. If either fails to load, every balance on screen is wrong
+  // rather than merely empty — so say so instead of showing confident zeroes.
+  const [loadFailed, setLoadFailed] = useState(false);
   const todayYMD = () => new Date().toISOString().slice(0, 10);
   const [logForm, setLogForm] = useState({ date: todayYMD(), studentId: '', category: 'schoolgeld', amount: '', note: '' });
   const [logStudentSearch, setLogStudentSearch] = useState('');
@@ -233,10 +238,14 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
   };
 
   const loadSettings = async () => {
+    setLoadFailed(false);
     try {
       const res = await apiRequest('/boekhouding/settings');
       if (isMounted.current) { setSettings(res.settings); setEditSettings(res.settings); }
-    } catch (e) { console.error('Error loading boekhouding settings:', e); }
+    } catch (e) {
+      console.error('Error loading boekhouding settings:', e);
+      if (isMounted.current) setLoadFailed(true);
+    }
   };
 
   const loadAllRecords = async () => {
@@ -248,7 +257,10 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
       });
       if (!isMounted.current) return;
       setRecords(res.records || {});
-    } catch (e) { console.error('Error loading boekhouding records:', e); }
+    } catch (e) {
+      console.error('Error loading boekhouding records:', e);
+      if (isMounted.current) setLoadFailed(true);
+    }
   };
 
   const saveSettings = async () => {
@@ -347,6 +359,14 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
           </button>
         </div>
       </div>
+
+      {loadFailed && (
+        <LoadError
+          language={language}
+          onRetry={() => { loadSettings(); loadAllRecords(); }}
+          className="mb-5"
+        />
+      )}
 
       <div>
         {/* New entry form */}

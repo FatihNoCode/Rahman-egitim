@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { useForceLightTheme } from '../../lib/theme';
 import SiteHeader from './SiteHeader';
-import { Mail, MessageSquare, RefreshCw, ShieldCheck, X } from 'lucide-react';
+import { Mail, MessageSquare, X } from 'lucide-react';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
 
@@ -14,7 +14,7 @@ const T = {
     subtitle: 'Wij lezen elk bericht en nemen zo snel mogelijk contact met u op.',
     name: 'Uw naam',
     email: 'E-mailadres',
-    emailHint: 'Hierop ontvangt u onze reactie en een bevestiging.',
+    emailHint: 'Hierop ontvangt u ons antwoord.',
     subject: 'Onderwerp',
     subjectPlaceholder: 'Waar gaat uw vraag over?',
     message: 'Uw bericht',
@@ -22,23 +22,17 @@ const T = {
     optional: 'optioneel',
     required: 'Dit veld is verplicht',
     invalidEmail: 'Vul een geldig e-mailadres in',
-    captchaTitle: 'Even controleren dat u geen robot bent',
-    captchaLabel: 'Uw antwoord',
-    captchaLoading: 'Controlevraag laden...',
-    captchaFailed: 'De controlevraag kon niet worden geladen.',
-    captchaNew: 'Nieuwe vraag',
-    captchaWrong: 'Het antwoord klopt niet. Hieronder staat een nieuwe vraag.',
     send: 'Bericht versturen',
     sending: 'Versturen...',
     error: 'Er ging iets mis bij het versturen. Probeer het later opnieuw.',
     successTitle: 'Bericht ontvangen!',
     successMsg: 'Wij hebben uw bericht in goede orde ontvangen en nemen, in shaa Allah, zo snel mogelijk contact met u op.',
     successSub: 'Bedankt voor uw bericht!',
-    successMail: 'Er is een bevestiging gestuurd naar het e-mailadres dat u heeft ingevuld.',
+    successMail: 'U ontvangt ons antwoord per e-mail op het adres dat u heeft ingevuld.',
     newForm: 'Nieuw bericht',
     close: 'Sluiten',
     directTitle: 'Liever rechtstreeks mailen?',
-    directBody: 'Dat kan ook. Schrijf naar het adres hieronder, dan komt uw bericht op dezelfde plek terecht.',
+    directBody: 'Dat kan ook. Via het formulier hierboven gaat het meestal sneller, omdat uw vraag dan direct in ons portaal komt te staan.',
     enrolTitle: 'Wilt u uw kind inschrijven?',
     enrolBody: 'Gebruik daarvoor het inschrijfformulier, dan hebben wij meteen alle gegevens die wij nodig hebben.',
     enrolLink: 'Naar het inschrijfformulier',
@@ -48,7 +42,7 @@ const T = {
     subtitle: 'Her mesajı okuyoruz ve en kısa sürede sizinle iletişime geçiyoruz.',
     name: 'Adınız',
     email: 'E-posta adresi',
-    emailHint: 'Cevabımızı ve onay mesajını bu adrese göndeririz.',
+    emailHint: 'Cevabımızı bu adrese göndeririz.',
     subject: 'Konu',
     subjectPlaceholder: 'Sorunuz ne hakkında?',
     message: 'Mesajınız',
@@ -56,23 +50,17 @@ const T = {
     optional: 'isteğe bağlı',
     required: 'Bu alan zorunludur',
     invalidEmail: 'Geçerli bir e-posta adresi girin',
-    captchaTitle: 'Robot olmadığınızı kontrol edelim',
-    captchaLabel: 'Cevabınız',
-    captchaLoading: 'Kontrol sorusu yükleniyor...',
-    captchaFailed: 'Kontrol sorusu yüklenemedi.',
-    captchaNew: 'Yeni soru',
-    captchaWrong: 'Cevap doğru değil. Aşağıda yeni bir soru var.',
     send: 'Mesajı gönder',
     sending: 'Gönderiliyor...',
     error: 'Gönderirken bir şeyler ters gitti. Lütfen daha sonra tekrar deneyin.',
     successTitle: 'Mesajınız alındı!',
     successMsg: 'Mesajınızı aldık ve inşaallah en kısa sürede sizinle iletişime geçeceğiz.',
     successSub: 'Mesajınız için teşekkür ederiz!',
-    successMail: 'Girdiğiniz e-posta adresine bir onay mesajı gönderildi.',
+    successMail: 'Cevabımızı girdiğiniz e-posta adresine göndereceğiz.',
     newForm: 'Yeni mesaj',
     close: 'Kapat',
     directTitle: 'Doğrudan e-posta göndermeyi mi tercih edersiniz?',
-    directBody: 'O da mümkün. Aşağıdaki adrese yazın, mesajınız aynı yere ulaşır.',
+    directBody: 'O da mümkün. Yukarıdaki form genellikle daha hızlıdır, çünkü sorunuz doğrudan portalımıza düşer.',
     enrolTitle: 'Çocuğunuzu kaydettirmek mi istiyorsunuz?',
     enrolBody: 'Bunun için kayıt formunu kullanın, böylece gerekli tüm bilgileri hemen almış oluruz.',
     enrolLink: 'Kayıt formuna git',
@@ -81,11 +69,6 @@ const T = {
 
 const CONTACT_EMAIL = 'info@rahmanegitim.com';
 
-interface Captcha {
-  id: string;
-  questionNl: string;
-  questionTr: string;
-}
 
 export default function ContactPage() {
   // Always light, like the enrolment form and the login screen this page sits
@@ -94,47 +77,22 @@ export default function ContactPage() {
   const [language, setLanguage] = useState<Language>('nl');
   const t = T[language];
 
-  const [form, setForm] = useState({ naam: '', email: '', onderwerp: '', bericht: '' });
+  // `website` is the honeypot — rendered but hidden from people and from
+  // screen readers, so anything in it came from a script filling in every
+  // input it found. It replaces the captcha rather than joining it: a real
+  // visitor never sees this field, let alone answers it.
+  const [form, setForm] = useState({ naam: '', email: '', onderwerp: '', bericht: '', website: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState('');
 
-  const [captcha, setCaptcha] = useState<Captcha | null>(null);
-  const [captchaAnswer, setCaptchaAnswer] = useState('');
-  const [captchaError, setCaptchaError] = useState('');
-  // The question could not be fetched at all. Without this the input just
-  // stays disabled with "laden..." over it for ever, and the visitor has a
-  // finished message they cannot send and no idea why.
-  const [captchaFailed, setCaptchaFailed] = useState(false);
 
   const set = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
     setErrors(prev => (prev[field] ? { ...prev, [field]: '' } : prev));
   };
 
-  // Each challenge is single-use on the server, so a fresh one is fetched on
-  // load, after every send (right or wrong) and whenever the visitor asks for
-  // another — an unreadable or half-forgotten question should never be a dead
-  // end in front of the send button.
-  const loadCaptcha = useCallback(async () => {
-    setCaptcha(null);
-    setCaptchaAnswer('');
-    setCaptchaFailed(false);
-    try {
-      const res = await fetch(`${API_BASE}/captcha`, {
-        headers: { Authorization: `Bearer ${publicAnonKey}` },
-      });
-      if (!res.ok) throw new Error('captcha request failed');
-      setCaptcha(await res.json());
-    } catch (err) {
-      console.error('Error loading captcha:', err);
-      setCaptcha(null);
-      setCaptchaFailed(true);
-    }
-  }, []);
-
-  useEffect(() => { loadCaptcha(); }, [loadCaptcha]);
 
   const validate = () => {
     const next: Record<string, string> = {};
@@ -142,7 +100,6 @@ export default function ContactPage() {
     if (!form.email.trim()) next.email = t.required;
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) next.email = t.invalidEmail;
     if (!form.bericht.trim()) next.bericht = t.required;
-    if (!captchaAnswer.trim()) next.captcha = t.required;
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -150,8 +107,7 @@ export default function ContactPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setServerError('');
-    setCaptchaError('');
-    if (!validate() || !captcha) return;
+    if (!validate()) return;
 
     setSubmitting(true);
     try {
@@ -166,23 +122,13 @@ export default function ContactPage() {
           email: form.email.trim(),
           onderwerp: form.onderwerp.trim(),
           bericht: form.bericht.trim(),
-          captchaId: captcha.id,
-          captchaAnswer: captchaAnswer.trim(),
+          website: form.website,
         }),
       });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        // A wrong answer is not a failure of the message — the text the
-        // visitor typed stays exactly where it is and only the question is
-        // replaced.
-        if (data.error === 'captcha') {
-          setCaptchaError(t.captchaWrong);
-          await loadCaptcha();
-        } else {
-          setServerError(data.error === 'Failed to send message' ? t.error : data.error || t.error);
-          await loadCaptcha();
-        }
+        setServerError(data.error === 'Failed to save message' ? t.error : data.error || t.error);
         return;
       }
 
@@ -190,7 +136,6 @@ export default function ContactPage() {
     } catch (err) {
       console.error('Error sending contact message:', err);
       setServerError(t.error);
-      await loadCaptcha();
     } finally {
       setSubmitting(false);
     }
@@ -198,11 +143,9 @@ export default function ContactPage() {
 
   const reset = () => {
     setSubmitted(false);
-    setForm({ naam: '', email: '', onderwerp: '', bericht: '' });
+    setForm({ naam: '', email: '', onderwerp: '', bericht: '', website: '' });
     setErrors({});
     setServerError('');
-    setCaptchaError('');
-    loadCaptcha();
   };
 
   const inputClass = (field: string) =>
@@ -230,7 +173,7 @@ export default function ContactPage() {
               <p className="text-gray-500 text-sm">{t.subtitle}</p>
             </div>
 
-            <form onSubmit={handleSubmit} noValidate className="space-y-5">
+            <form onSubmit={handleSubmit} noValidate className="relative space-y-5">
               <div>
                 <label htmlFor="contact-naam" className="block text-sm font-medium text-gray-700 mb-1">
                   {t.name} <span className="text-red-500">*</span>
@@ -291,56 +234,25 @@ export default function ContactPage() {
                 {errors.bericht && <p className="text-red-500 text-xs mt-1">{errors.bericht}</p>}
               </div>
 
-              {/* The captcha. Our own spelled-out sum rather than a hosted
-                  widget: the site's Content-Security-Policy allows no
-                  third-party scripts, and a question in the visitor's own
-                  language is friendlier than a grid of traffic lights. */}
-              <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-4">
-                <div className="flex items-start gap-2 mb-3">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm font-medium text-emerald-900">{t.captchaTitle}</p>
-                </div>
-
-                <div className="flex flex-wrap items-end gap-3">
-                  <div className="flex-1 min-w-[12rem]">
-                    <label htmlFor="contact-captcha" className="block text-sm text-gray-700 mb-1">
-                      {captcha
-                        ? (language === 'nl' ? captcha.questionNl : captcha.questionTr)
-                        : (
-                          <span className={captchaFailed ? 'text-red-500' : 'text-gray-400'}>
-                            {captchaFailed ? t.captchaFailed : t.captchaLoading}
-                          </span>
-                        )}
-                    </label>
-                    <input
-                      id="contact-captcha"
-                      value={captchaAnswer}
-                      onChange={e => {
-                        setCaptchaAnswer(e.target.value);
-                        setErrors(prev => (prev.captcha ? { ...prev, captcha: '' } : prev));
-                        setCaptchaError('');
-                      }}
-                      disabled={!captcha}
-                      autoComplete="off"
-                      aria-label={t.captchaLabel}
-                      className={`w-full px-4 py-2.5 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition disabled:bg-gray-50 ${
-                        errors.captcha || captchaError ? 'border-red-400 bg-red-50' : 'border-gray-300'
-                      }`}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={loadCaptcha}
-                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm text-emerald-700 hover:bg-emerald-100 transition"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    {t.captchaNew}
-                  </button>
-                </div>
-
-                {(errors.captcha || captchaError) && (
-                  <p className="text-red-500 text-xs mt-2">{captchaError || errors.captcha}</p>
-                )}
+              {/* Honeypot. Hidden from people and from screen readers, and
+                  taken out of the tab order, so only a script that fills in
+                  every input it finds will put anything here. This is what
+                  guards the form now that there is no captcha — along with the
+                  per-IP rate limit on the server. */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0"
+              >
+                <label htmlFor="contact-website">Website</label>
+                <input
+                  id="contact-website"
+                  name="website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={form.website}
+                  onChange={e => set('website', e.target.value)}
+                />
               </div>
 
               {serverError && (

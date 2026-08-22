@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { ArrowLeft, Layers, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Layers, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle, MessageCircleQuestion } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import booksLogo from '../../imports/logo.svg';
 import ManageEntitiesView from './ManageEntitiesView';
 import BoekhoudingView from './BoekhoudingView';
 import InschrijvingenView from './InschrijvingenView';
+import QuestionsView from './QuestionsView';
 import AbsenceOverviewView from './AbsenceOverviewView';
 import OudergesprekkenView from './OudergesprekkenView';
 import UsersView from './UsersView';
@@ -87,7 +88,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
     // The website opens on the class register; the app doesn't have one, so it
     // lands on Start like every other role.
     app ? 'signals' : 'entities',
-    ['signals', 'entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'oudergesprekken', 'agenda', 'communicatie', 'cases', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['signals', 'entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'vragen', 'oudergesprekken', 'agenda', 'communicatie', 'cases', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   const [navOrder, setNavOrder] = useNavOrder('admin', [
     'signals',
@@ -281,6 +282,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
     sharedNavItem('meldingen', language),
     { id: 'boekhouding', label: language === 'tr' ? 'Muhasebe' : 'Boekhouding', icon: Wallet },
     { id: 'inschrijvingen', label: language === 'tr' ? 'Kayıtlar' : 'Inschrijvingen', icon: ClipboardList },
+    { id: 'vragen', label: language === 'tr' ? 'Sorular' : 'Vragen', icon: MessageCircleQuestion },
     sharedNavItem('oudergesprekken', language),
     sharedNavItem('cases', language),
     sharedNavItem('agenda', language),
@@ -663,6 +665,13 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
                 classes={classes}
               />
             )
+          )}
+
+          {/* Not in DESKTOP_ONLY_TABS: answering a question is typing a
+              paragraph into a box, which a phone handles fine — unlike the
+              wide tables behind the tabs that are. */}
+          {activeTab === 'vragen' && (
+            <QuestionsView language={language} apiRequest={apiRequest} />
           )}
 
           {activeTab === 'oudergesprekken' && (

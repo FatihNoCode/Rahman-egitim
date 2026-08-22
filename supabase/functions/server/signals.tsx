@@ -1176,6 +1176,10 @@ export interface AdminFeedInput {
   pendingRegistrations: number;
   /** When the newest of those came in — see the note on the task key below. */
   latestRegistrationAt?: string;
+  /** Questions from the public contact form that nobody has answered yet. */
+  openQuestions?: number;
+  /** When the newest of those came in — keys the task, like registrations. */
+  latestQuestionAt?: string;
   /** Whether the diploma tab is currently switched on for teachers. */
   diplomaVisible: boolean;
   /** Vacation periods already entered in the agenda. */
@@ -1260,6 +1264,22 @@ export function buildAdminFeed(input: AdminFeedInput): FeedItem[] {
       bodyTr: `${input.pendingRegistrations} kayıt karar bekliyor: öğrenciyi bir sınıfa yerleştirin veya başvuruyu reddedin.`,
       link: '#inschrijvingen',
       count: input.pendingRegistrations,
+    });
+  }
+
+  // 3b. Questions from the contact form waiting on an answer. Nothing is
+  // mailed when one arrives, so this is the only thing that says it is there.
+  if ((input.openQuestions || 0) > 0) {
+    const open = input.openQuestions || 0;
+    items.push({
+      key: `vragen_open:${input.latestQuestionAt || today}`,
+      level: 'medium',
+      titleNl: 'Vragen beantwoorden',
+      titleTr: 'Soruları yanıtlayın',
+      bodyNl: `${open} ${open === 1 ? 'vraag wacht' : 'vragen wachten'} op een antwoord. U beantwoordt ze vanuit het portaal; de vragensteller krijgt uw antwoord per e-mail.`,
+      bodyTr: `${open} soru yanıt bekliyor. Portaldan yanıtlayın; soruyu soran kişi cevabınızı e-posta ile alır.`,
+      link: '#vragen',
+      count: open,
     });
   }
 

@@ -7490,103 +7490,52 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
   }
 });
 
-// ============= PUBLIC CONTACT FORM =============
+// ============= PUBLIC CONTACT FORM / VRAGEN =============
 // A question box for people who are not (yet) parents at the mosque, and for
-// parents who have no account. Both endpoints below are unauthenticated, so
-// each one is rate-limited per IP and the send is gated on a captcha the
-// server hands out and remembers.
+// parents who have no account.
 //
-// The captcha is deliberately our own rather than hCaptcha or Turnstile: the
-// site ships a strict Content-Security-Policy with `script-src 'self'`, so a
-// third-party widget would mean punching a hole in it and carrying another
-// key. A spelled-out sum ("Hoeveel is drie plus vier?") stops the scripted
-// form-spam this form will actually attract, reads in the visitor's own
-// language, and needs nothing loaded from anywhere else.
+// Nothing is mailed when a question arrives. It is stored, and it shows up
+// under Vragen in the portal — the same place the beheerder already handles
+// inschrijvingen — with an open/afgehandeld split and a signal on the start
+// screen so an unanswered question cannot sit unnoticed. A notification mail
+// would only be a second copy of something the portal already shows, in an
+// inbox nobody administers.
+//
+// Mail runs in one direction only: the beheerder's answer, typed in the
+// portal, is sent to the address the visitor left. That address is the whole
+// reason the form asks for one.
+//
+// There is deliberately no captcha. A hosted one (hCaptcha, Turnstile,
+// reCAPTCHA) cannot run here — the site ships `script-src 'self'` and no
+// third-party key — and a homegrown sum is a puzzle for every real visitor
+// while barely inconveniencing a script. What guards this endpoint instead is
+// a per-IP rate limit and a honeypot field: both invisible to a person, and
+// neither of them costing a visitor a single keystroke. Submitting no longer
+// sends mail either, so the worst a flood can do is fill a list the beheerder
+// can clear, rather than a mailbox they cannot.
 
-// Written-out numerals, so the question cannot be answered by regex-matching
-// digits out of the page.
-const CAPTCHA_WORDS = {
-  nl: ['nul', 'een', 'twee', 'drie', 'vier', 'vijf', 'zes', 'zeven', 'acht', 'negen', 'tien', 'elf', 'twaalf', 'dertien', 'veertien', 'vijftien', 'zestien', 'zeventien', 'achttien'],
-  tr: ['sıfır', 'bir', 'iki', 'üç', 'dört', 'beş', 'altı', 'yedi', 'sekiz', 'dokuz', 'on', 'on bir', 'on iki', 'on üç', 'on dört', 'on beş', 'on altı', 'on yedi', 'on sekiz'],
-};
-
-const CAPTCHA_TTL_SECONDS = 900; // 15 minutes — long enough to write a message.
-
-// Turkish's dotted capital: "altı" starts with a dotless ı, whose capital is
-// I, but "iki"/"on" start with a dotted i, whose capital is İ. toUpperCase()
-// with the tr locale gets both right; the plain one turns "iki" into "Iki".
-function capitalize(word: string): string {
-  return word.charAt(0).toLocaleUpperCase('tr') + word.slice(1);
-}
-
-app.get("/make-server-6679cacd/captcha", async (c) => {
-  try {
-    if (await rateLimited('captcha-ip', clientIp(c), 60, 3600)) {
-      return c.json({ error: 'Te veel aanvragen. Probeer het later opnieuw.' }, 429);
-    }
-
-    // Kept small and additive: the point is to be trivial for a person and
-    // awkward for a bot that does not read Dutch, not to be a puzzle.
-    const a = 1 + Math.floor(Math.random() * 8);
-    const b = 1 + Math.floor(Math.random() * 8);
-    const id = crypto.randomUUID();
-    await kv.set(`captcha:${id}`, {
-      answer: a + b,
-      expiresAt: Date.now() + CAPTCHA_TTL_SECONDS * 1000,
-    });
-
-    return c.json({
-      id,
-      questionNl: `Hoeveel is ${CAPTCHA_WORDS.nl[a]} plus ${CAPTCHA_WORDS.nl[b]}?`,
-      // Capitalised here rather than in the words list, which is also what
-      // an answer is compared against — "Altı" must still match "altı".
-      questionTr: `${capitalize(CAPTCHA_WORDS.tr[a])} artı ${CAPTCHA_WORDS.tr[b]} kaç eder?`,
-    });
-  } catch (err) {
-    console.log('Captcha issue error:', err);
-    return c.json({ error: 'Failed to issue captcha' }, 500);
-  }
-});
-
-// Single-use: the challenge is deleted whether the answer was right or wrong,
-// so a wrong guess costs a round trip and a fresh question instead of letting
-// one id be brute-forced.
-async function consumeCaptcha(id: unknown, answer: unknown): Promise<boolean> {
-  if (typeof id !== 'string' || !id) return false;
-  const record = await kv.get(`captcha:${id}`);
-  if (!record) return false;
-  await kv.del(`captcha:${id}`);
-  if (typeof record.expiresAt !== 'number' || record.expiresAt < Date.now()) return false;
-
-  // Digits or the written-out word are both accepted — someone answering
-  // "zeven" has plainly read the question.
-  const raw = String(answer ?? '').trim().toLowerCase();
-  if (!raw) return false;
-  const asNumber = Number(raw);
-  if (Number.isFinite(asNumber) && asNumber === record.answer) return true;
-  return raw === CAPTCHA_WORDS.nl[record.answer] || raw === CAPTCHA_WORDS.tr[record.answer];
-}
-
-// Where contact-form questions are delivered. info@rahmanegitim.com is the
-// address the app already sends from; if that mailbox cannot take delivery
-// the send is retried at the mosque's Gmail so a question is never lost
-// because of a mail-routing problem the visitor cannot see. Either can be
-// overridden without a deploy via the CONTACT_INBOX_EMAIL env var.
-const CONTACT_INBOX_FALLBACK = 'onderwijs.rahman@gmail.com';
-function contactInbox(): string {
-  return Deno.env.get('CONTACT_INBOX_EMAIL') || 'info@rahmanegitim.com';
-}
+const QUESTION_STATUSES = ['nieuw', 'beantwoord', 'gesloten'] as const;
+type QuestionStatus = typeof QUESTION_STATUSES[number];
 
 app.post("/make-server-6679cacd/contact", async (c) => {
   try {
-    // Public, unauthenticated and it sends two mails per call — cap it the
-    // same way the public enrollment endpoint is capped.
-    if (await rateLimited('contact-ip', clientIp(c), 5, 3600)) {
+    // Public and unauthenticated, so it is capped per IP.
+    if (await rateLimited('contact-ip', clientIp(c), 8, 3600)) {
       return c.json({ error: 'Te veel berichten vanaf deze verbinding. Probeer het later opnieuw.' }, 429);
     }
 
     const body = await c.req.json();
-    const { naam, email, onderwerp, bericht, captchaId, captchaAnswer } = body;
+    const { naam, email, onderwerp, bericht, website } = body;
+
+    // Honeypot. `website` is a field the form renders but hides from people
+    // and from screen readers; a person cannot fill it in, and the bots that
+    // fill in every input they find give themselves away. Answered with the
+    // same success shape as a real submission so a script learns nothing from
+    // the response.
+    if (typeof website === 'string' && website.trim() !== '') {
+      console.log('Contact honeypot tripped from', clientIp(c));
+      return c.json({ success: true });
+    }
 
     if (!naam || !email || !bericht) {
       return c.json({ error: 'Naam, e-mailadres en bericht zijn verplicht' }, 400);
@@ -7608,86 +7557,160 @@ app.post("/make-server-6679cacd/contact", async (c) => {
       return c.json({ error: 'Ongeldig e-mailadres' }, 400);
     }
 
-    // Checked after the field validation so a visitor who typed a bad email
-    // does not also lose their captcha and have to answer a new one.
-    if (!(await consumeCaptcha(captchaId, captchaAnswer))) {
-      return c.json({ error: 'captcha', message: 'De controlevraag klopt niet. Probeer het opnieuw.' }, 400);
-    }
-
     const id = crypto.randomUUID();
-    const subject = (onderwerp || '').trim() || 'Vraag via het contactformulier';
     const record = {
       id,
-      naam: naam.trim(),
-      email: email.trim(),
-      onderwerp: subject,
-      bericht: bericht.trim(),
-      receivedAt: new Date().toISOString(),
+      naam: String(naam).trim(),
+      email: String(email).trim(),
+      onderwerp: (onderwerp || '').trim(),
+      bericht: String(bericht).trim(),
+      status: 'nieuw' as QuestionStatus,
+      antwoord: '',
+      beantwoordOp: '',
+      beantwoordDoor: '',
+      ingediendOp: new Date().toISOString(),
     };
 
-    // Stored as well as mailed. A question that only exists in a mailbox is
-    // gone the moment a mail send fails or someone deletes it, and the
-    // superadmin inbox is where messages are already read.
-    await kv.set(`inbox:${id}`, {
-      id,
-      from: `${record.naam} <${record.email}>`,
-      to: [contactInbox()],
-      subject: `Contactformulier: ${subject}`,
-      text: `${record.bericht}\n\n— ${record.naam} (${record.email})`,
-      html: '',
-      attachments: [],
-      read: false,
-      receivedAt: record.receivedAt,
-    });
-    const inboxIds: string[] = await kv.get('inbox_ids') || [];
-    inboxIds.unshift(id);
-    if (inboxIds.length > 1000) inboxIds.length = 1000;
-    await kv.set('inbox_ids', inboxIds);
+    await kv.set(`question:${id}`, record);
+    const ids: string[] = await kv.get('question_ids') || [];
+    ids.unshift(id);
+    await kv.set('question_ids', ids);
 
-    const noticeHtml = emailWrapper('Nieuw bericht via het contactformulier', `
-      <p style="color:#374151;line-height:1.6"><strong>Van:</strong> ${escapeHtml(record.naam)} (${escapeHtml(record.email)})</p>
-      <p style="color:#374151;line-height:1.6"><strong>Onderwerp:</strong> ${escapeHtml(subject)}</p>
-      <div style="color:#374151;line-height:1.6;white-space:pre-wrap;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-top:12px">${escapeHtml(record.bericht)}</div>
-      <p style="color:#6b7280;font-size:13px;margin-top:16px">Antwoord op deze e-mail om rechtstreeks aan de afzender te schrijven.</p>
-    `);
-
-    const delivered = await sendEmail(
-      contactInbox(),
-      `Contactformulier: ${subject}`,
-      noticeHtml,
-      undefined,
-      record.email,
-    );
-    if (!delivered) {
-      console.log('Contact notice to', contactInbox(), 'failed — retrying at the fallback inbox');
-      await sendEmail(
-        CONTACT_INBOX_FALLBACK,
-        `Contactformulier: ${subject}`,
-        noticeHtml,
-        undefined,
-        record.email,
-      );
-    }
-
-    await sendEmail(
-      record.email,
-      'Bericht ontvangen | Mesajınız Alındı - Rahman Eğitim',
-      emailWrapper('Bericht ontvangen', `
-        <p style="color:#374151;line-height:1.6">Beste ${escapeHtml(record.naam)},</p>
-        <p style="color:#374151;line-height:1.6">Wij hebben uw bericht in goede orde ontvangen en nemen, in shaa Allah, zo snel mogelijk contact met u op.</p>
-        <div style="color:#374151;line-height:1.6;white-space:pre-wrap;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-top:12px">${escapeHtml(record.bericht)}</div>
-        <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-        <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-        <p style="color:#374151;line-height:1.6">Sayın ${escapeHtml(record.naam)},</p>
-        <p style="color:#374151;line-height:1.6">Mesajınızı aldık ve inşaallah en kısa sürede sizinle iletişime geçeceğiz.</p>
-      `),
-    );
-
-    console.log('New contact message saved:', id, record.email);
+    console.log('New contact question saved:', id);
     return c.json({ success: true });
   } catch (err) {
     console.log('Contact form error:', err);
-    return c.json({ error: 'Failed to send message' }, 500);
+    return c.json({ error: 'Failed to save message' }, 500);
+  }
+});
+
+// Who may read and answer questions. The form does not ask which mosque the
+// question is about — most of them ("wanneer beginnen de lessen?") are not
+// about one — so the list is not school-scoped and every beheerder sees the
+// same one.
+async function canHandleQuestions(req: Request): Promise<{ userData: any } | { error: string; status: 401 | 403 }> {
+  const { user, error } = await verifyUser(req);
+  if (error || !user) return { error: error || 'Unauthorized', status: 401 };
+  const userData = await getUserData(user.id);
+  if (userData?.role !== 'admin' && userData?.role !== 'superadmin') {
+    return { error: 'Only admins can handle questions', status: 403 };
+  }
+  return { userData };
+}
+
+app.get("/make-server-6679cacd/questions", async (c) => {
+  try {
+    const auth = await canHandleQuestions(c.req.raw);
+    if ('error' in auth) return c.json({ error: auth.error }, auth.status);
+
+    const ids: string[] = await kv.get('question_ids') || [];
+    const questions = (await kv.mget(ids.map((id) => `question:${id}`))).filter((q: any) => q);
+    return c.json({ questions });
+  } catch (err) {
+    console.log('Get questions error:', err);
+    return c.json({ error: 'Failed to get questions' }, 500);
+  }
+});
+
+// The one place this feature sends mail: the beheerder's answer, to the
+// address the visitor left.
+app.post("/make-server-6679cacd/questions/:id/reply", async (c) => {
+  try {
+    const auth = await canHandleQuestions(c.req.raw);
+    if ('error' in auth) return c.json({ error: auth.error }, auth.status);
+
+    const id = c.req.param('id');
+    const question = await kv.get(`question:${id}`);
+    if (!question) return c.json({ error: 'Question not found' }, 404);
+
+    const { antwoord } = await c.req.json();
+    if (typeof antwoord !== 'string' || !antwoord.trim()) {
+      return c.json({ error: 'Antwoord is verplicht' }, 400);
+    }
+    if (antwoord.length > 4000) {
+      return c.json({ error: 'Antwoord is te lang' }, 400);
+    }
+
+    const reply = antwoord.trim();
+    const subject = question.onderwerp
+      ? `Antwoord op uw vraag: ${question.onderwerp}`
+      : 'Antwoord op uw vraag';
+
+    // The status only moves once the mail is actually accepted. Marking a
+    // question answered on a send that failed is the one outcome worse than
+    // leaving it open — it takes the question off the list while the person
+    // who asked it is still waiting.
+    const sent = await sendEmail(
+      question.email,
+      `${subject} - Rahman Eğitim`,
+      emailWrapper('Antwoord op uw vraag', `
+        <p style="color:#374151;line-height:1.6">Beste ${escapeHtml(question.naam)},</p>
+        <p style="color:#374151;line-height:1.6">U stelde ons de volgende vraag:</p>
+        <div style="color:#6b7280;line-height:1.6;white-space:pre-wrap;background:#f9fafb;border-left:3px solid #e5e7eb;padding:12px 16px;margin:12px 0">${escapeHtml(question.bericht)}</div>
+        <p style="color:#374151;line-height:1.6">Ons antwoord:</p>
+        <div style="color:#374151;line-height:1.6;white-space:pre-wrap;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:16px;margin-top:8px">${escapeHtml(reply)}</div>
+        <p style="color:#6b7280;font-size:13px;margin-top:16px">Heeft u nog een vraag? U kunt gewoon op deze e-mail antwoorden.</p>
+      `),
+    );
+
+    if (!sent) {
+      return c.json({ error: 'Het antwoord kon niet worden verstuurd. Probeer het opnieuw.' }, 502);
+    }
+
+    const updated = {
+      ...question,
+      status: 'beantwoord' as QuestionStatus,
+      antwoord: reply,
+      beantwoordOp: new Date().toISOString(),
+      beantwoordDoor: auth.userData?.name || auth.userData?.email || '',
+    };
+    await kv.set(`question:${id}`, updated);
+
+    return c.json({ success: true, question: updated });
+  } catch (err) {
+    console.log('Reply to question error:', err);
+    return c.json({ error: 'Failed to send reply' }, 500);
+  }
+});
+
+// Close a question without mailing anybody — spam, a duplicate, or something
+// already handled over the phone.
+app.post("/make-server-6679cacd/questions/:id/status", async (c) => {
+  try {
+    const auth = await canHandleQuestions(c.req.raw);
+    if ('error' in auth) return c.json({ error: auth.error }, auth.status);
+
+    const id = c.req.param('id');
+    const question = await kv.get(`question:${id}`);
+    if (!question) return c.json({ error: 'Question not found' }, 404);
+
+    const { status } = await c.req.json();
+    if (!QUESTION_STATUSES.includes(status)) {
+      return c.json({ error: 'Invalid status' }, 400);
+    }
+
+    const updated = { ...question, status };
+    await kv.set(`question:${id}`, updated);
+    return c.json({ success: true, question: updated });
+  } catch (err) {
+    console.log('Update question status error:', err);
+    return c.json({ error: 'Failed to update question' }, 500);
+  }
+});
+
+app.delete("/make-server-6679cacd/questions/:id", async (c) => {
+  try {
+    const auth = await canHandleQuestions(c.req.raw);
+    if ('error' in auth) return c.json({ error: auth.error }, auth.status);
+
+    const id = c.req.param('id');
+    await kv.del(`question:${id}`);
+    const ids: string[] = await kv.get('question_ids') || [];
+    await kv.set('question_ids', ids.filter((qid) => qid !== id));
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Delete question error:', err);
+    return c.json({ error: 'Failed to delete question' }, 500);
   }
 });
 
@@ -9521,6 +9544,17 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
         .sort()
         .pop() || undefined;
 
+      // Contact-form questions still waiting on an answer. Not school-scoped:
+      // the form does not ask which mosque a question is about, so the list in
+      // the portal is shared and so is the task.
+      const questionIds: string[] = await kv.get('question_ids') || [];
+      const openQuestionRecords = (await kv.mget(questionIds.map((id: string) => `question:${id}`)))
+        .filter((q: any) => q && q.status === 'nieuw');
+      const latestQuestionAt = openQuestionRecords
+        .map((q: any) => String(q.ingediendOp || ''))
+        .sort()
+        .pop() || undefined;
+
       const vacationIds: string[] = schoolId ? (await kv.get(`agenda_vacation_ids:${schoolId}`) || []) : [];
       const vacations = (await kv.mget(vacationIds.map((id: string) => `agenda_vacation:${id}`))).filter(Boolean);
 
@@ -9576,6 +9610,8 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
           openCases,
           pendingRegistrations: pending.length,
           latestRegistrationAt,
+          openQuestions: openQuestionRecords.length,
+          latestQuestionAt,
           diplomaVisible,
           vacations,
           outstandingPayments,

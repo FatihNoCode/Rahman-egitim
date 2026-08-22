@@ -2,10 +2,11 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2, BarChart3, GraduationCap, BookOpen, CalendarCheck, Send, Activity, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2, BarChart3, GraduationCap, BookOpen, CalendarCheck, Send, Activity, AlertTriangle, ExternalLink, MessageCircleQuestion } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import InboxView from './InboxView';
+import QuestionsView from './QuestionsView';
 import type { LocationRecord } from './LocationsMap';
 import booksLogo from '../../imports/logo.svg';
 import { notify, confirmDialog } from './ui/feedback';
@@ -381,7 +382,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   // every other role opens on.
   const [tab, setTab] = useHashTab<string>(
     app ? 'performance' : 'locations',
-    ['locations', 'inbox', 'regional', 'performance', 'monitoring', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['locations', 'inbox', 'vragen', 'regional', 'performance', 'monitoring', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
 
   const [orgSummary, setOrgSummary] = useState<OrgSummary | null>(null);
@@ -651,6 +652,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
     sharedNavItem('home', language, 'performance'),
     { id: 'locations', label: t.locations, icon: MapPin },
     { id: 'inbox', label: t.inbox, icon: InboxIcon },
+    { id: 'vragen', label: language === 'tr' ? 'Sorular' : 'Vragen', icon: MessageCircleQuestion },
     { id: 'regional', label: rtx.regionalTab, shortLabel: language === 'tr' ? 'Bölge' : 'Regio', icon: Users },
     { id: 'monitoring', label: rtx.monitoringTab, icon: Activity },
   ];
@@ -658,6 +660,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
     'performance',
     'locations',
     'inbox',
+    'vragen',
     'regional',
     'monitoring',
     MOBILE_PREFS_ID,
@@ -748,6 +751,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
             items={[
               { id: 'locations', label: t.locations, icon: MapPin },
               { id: 'inbox', label: t.inbox, icon: InboxIcon },
+              { id: 'vragen', label: language === 'tr' ? 'Sorular' : 'Vragen', icon: MessageCircleQuestion },
               { id: 'regional', label: rtx.regionalTab, icon: Users },
               { id: 'performance', label: rtx.performanceTab, icon: BarChart3 },
               { id: 'monitoring', label: rtx.monitoringTab, icon: Activity },
@@ -906,6 +910,10 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
         )}
 
         {tab === 'inbox' && <InboxView t={t} apiRequest={apiRequest} language={language} />}
+
+        {/* The contact form writes here, not to a mailbox — Inbox above is
+            inbound e-mail, this is the website's own question list. */}
+        {tab === 'vragen' && <QuestionsView language={language} apiRequest={apiRequest} />}
 
         {tab === 'regional' && (
           <div className="space-y-4 sm:space-y-6">

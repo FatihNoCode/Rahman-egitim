@@ -7512,6 +7512,13 @@ const CAPTCHA_WORDS = {
 
 const CAPTCHA_TTL_SECONDS = 900; // 15 minutes — long enough to write a message.
 
+// Turkish's dotted capital: "altı" starts with a dotless ı, whose capital is
+// I, but "iki"/"on" start with a dotted i, whose capital is İ. toUpperCase()
+// with the tr locale gets both right; the plain one turns "iki" into "Iki".
+function capitalize(word: string): string {
+  return word.charAt(0).toLocaleUpperCase('tr') + word.slice(1);
+}
+
 app.get("/make-server-6679cacd/captcha", async (c) => {
   try {
     if (await rateLimited('captcha-ip', clientIp(c), 60, 3600)) {
@@ -7531,7 +7538,9 @@ app.get("/make-server-6679cacd/captcha", async (c) => {
     return c.json({
       id,
       questionNl: `Hoeveel is ${CAPTCHA_WORDS.nl[a]} plus ${CAPTCHA_WORDS.nl[b]}?`,
-      questionTr: `${CAPTCHA_WORDS.tr[a]} artı ${CAPTCHA_WORDS.tr[b]} kaç eder?`,
+      // Capitalised here rather than in the words list, which is also what
+      // an answer is compared against — "Altı" must still match "altı".
+      questionTr: `${capitalize(CAPTCHA_WORDS.tr[a])} artı ${CAPTCHA_WORDS.tr[b]} kaç eder?`,
     });
   } catch (err) {
     console.log('Captcha issue error:', err);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  CalendarCheck, MessageCircle, GraduationCap, Bell, Smartphone, Apple,
+  CalendarCheck, MessageCircle, GraduationCap, Bell,
 } from 'lucide-react';
 import type { Language } from '../App';
 import { useForceLightTheme } from '../../lib/theme';
@@ -21,22 +21,22 @@ const t = {
   nl: {
     heroTitle: 'Onderwijs, aanwezigheid en communicatie',
     heroTitleAccent: 'op één plek.',
-    heroSubtitle: 'Voor ouders, leerkrachten en scholen. Op de website en in de app.',
+    heroSubtitle: 'Voor ouders, leerkrachten en moskeeën. Op de website en in de app.',
     heroCtaSecondary: 'Bekijk de app',
     webKicker: 'De website',
-    webTitle: 'Eén beheerportaal voor de hele school',
+    webTitle: 'Eén beheerportaal voor de hele moskee',
     webSubtitle: 'Leerkrachten en beheerders regelen hier het onderwijs; ouders volgen hun kind.',
     webFeatures: [
       { icon: CalendarCheck, title: 'Aanwezigheid', body: 'Aan- en afwezigheid in één overzicht.' },
       { icon: GraduationCap, title: "Cijfers & diploma's", body: 'Voortgang en diploma\'s direct inzichtelijk.' },
-      { icon: MessageCircle, title: 'Communicatie', body: 'Berichten tussen school en ouders.' },
+      { icon: MessageCircle, title: 'Communicatie', body: 'Berichten tussen moskee en ouders.' },
     ],
     appKicker: 'De app',
     appTitle: 'Alles ook in uw zak',
     appBody: 'Dezelfde gegevens, onderweg. Meldingen, aanwezigheid en berichten, waar u ook bent.',
     appFeature: 'Pushmeldingen bij nieuwe berichten en updates.',
-    storeApple: 'Download in de App Store',
-    storeGoogle: 'Download in de Play Store',
+    storeAppleTop: 'Download in de',
+    storeGoogleTop: 'Ontdek het op',
     storeSoon: 'Binnenkort beschikbaar in beide stores.',
     footerPrivacy: 'Privacybeleid',
     footerDelete: 'Account verwijderen',
@@ -44,22 +44,22 @@ const t = {
   tr: {
     heroTitle: 'Eğitim, devam ve iletişim',
     heroTitleAccent: 'tek bir yerde.',
-    heroSubtitle: 'Veliler, öğretmenler ve okullar için. Web sitesinde ve uygulamada.',
+    heroSubtitle: 'Veliler, öğretmenler ve camiler için. Web sitesinde ve uygulamada.',
     heroCtaSecondary: 'Uygulamaya göz atın',
     webKicker: 'Web sitesi',
-    webTitle: 'Tüm okul için tek yönetim paneli',
+    webTitle: 'Caminin tamamı için tek yönetim paneli',
     webSubtitle: 'Öğretmenler ve yöneticiler eğitimi burada yönetir; veliler çocuğunu takip eder.',
     webFeatures: [
       { icon: CalendarCheck, title: 'Devam durumu', body: 'Devam ve devamsızlık tek ekranda.' },
       { icon: GraduationCap, title: 'Notlar & diplomalar', body: 'İlerleme ve diplomalar anında görünür.' },
-      { icon: MessageCircle, title: 'İletişim', body: 'Okul ile veliler arasında mesajlaşma.' },
+      { icon: MessageCircle, title: 'İletişim', body: 'Cami ile veliler arasında mesajlaşma.' },
     ],
     appKicker: 'Uygulama',
     appTitle: 'Her şey cebinizde',
     appBody: 'Aynı veriler, yolda da yanınızda. Bildirimler, devam durumu ve mesajlar, nerede olursanız olun.',
     appFeature: 'Yeni mesaj ve güncellemelerde anlık bildirim.',
-    storeApple: "App Store'dan indirin",
-    storeGoogle: "Play Store'dan indirin",
+    storeAppleTop: 'İndirin',
+    storeGoogleTop: 'İndirin',
     storeSoon: 'Yakında her iki mağazada.',
     footerPrivacy: 'Gizlilik politikası',
     footerDelete: 'Hesabı sil',
@@ -413,31 +413,67 @@ function BrandStatement() {
   );
 }
 
+// The two store marks, drawn rather than imported: at badge size a bitmap of
+// either one is soft on a retina screen, and both are simple enough to be
+// exact as paths. They are approximations of the official artwork — close
+// enough to be recognised, which is the point of a store badge.
+function AppleMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 384 512" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" />
+    </svg>
+  );
+}
+
+// Four panels folded around a common spine — the shape only reads as the Play
+// mark if each keeps its own colour, so this one ignores currentColor.
+function PlayMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 512 512" className={className} aria-hidden="true">
+      <path fill="#00A0FF" d="M47 0C34 6.8 25.3 19.2 25.3 35.3v441.3c0 16.1 8.7 28.5 21.7 35.3l256.6-256L47 0z" />
+      <path fill="#00E676" d="M325.3 234.3 104.6 13l280.8 161.2-60.1 60.1z" />
+      <path fill="#FFC400" d="M429.6 246.7l-58.9-34.1-65.7 65.5 65.7 65.5 60.1-34.1c18-14.3 18-46.5-1.2-62.8z" />
+      <path fill="#FF3D47" d="M104.6 499l280.8-161.2-60.1-60.1L104.6 499z" />
+    </svg>
+  );
+}
+
 function StoreBadge({
   href,
-  icon,
-  label,
+  mark,
+  top,
+  name,
 }: {
   href: string;
-  icon: React.ReactNode;
-  label: string;
+  mark: React.ReactNode;
+  top: string;
+  name: string;
 }) {
-  // Both badges are the same solid button, differing only in icon and label.
-  // `w-full` inside the equal-width grid the caller sets up is what keeps them
-  // exactly the same size whichever language is showing, rather than each one
-  // sizing to its own text.
+  // Laid out like the store badges themselves: mark on the left, a small line
+  // of ordinary words above the brand name set large. Each sizes to its own
+  // text rather than sharing a width — the real badges are not equal width
+  // either, and forcing that here truncated "Google Play" to "Google ...".
   const classes =
-    'w-full inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gray-900 px-3 py-3.5' +
-    ' text-white text-[13px] font-semibold whitespace-nowrap shadow-lg shadow-gray-900/20';
+    'shrink-0 inline-flex items-center gap-2.5 rounded-xl bg-black' +
+    ' border border-white/25 px-3 py-2 text-white shadow-lg shadow-gray-900/20';
 
-  // No live store URL yet. The button still reads as a real one rather than
+  const body = (
+    <>
+      {mark}
+      <span className="text-left leading-none whitespace-nowrap">
+        <span className="block text-[9px] sm:text-[10px] uppercase tracking-wide">{top}</span>
+        <span className="mt-0.5 block text-base sm:text-lg font-semibold tracking-tight">{name}</span>
+      </span>
+    </>
+  );
+
+  // No live store URL yet. The badge still reads as a real one rather than
   // being greyed out, but it is inert instead of linking nowhere, and the
   // caller prints a line underneath saying the stores are still to come.
   if (!href) {
     return (
       <span className={`${classes} cursor-default select-none`} aria-disabled="true">
-        {icon}
-        {label}
+        {body}
       </span>
     );
   }
@@ -446,10 +482,9 @@ function StoreBadge({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className={`${classes} transition hover:-translate-y-0.5 hover:bg-gray-800`}
+      className={`${classes} transition hover:-translate-y-0.5 hover:bg-gray-900`}
     >
-      {icon}
-      {label}
+      {body}
     </a>
   );
 }
@@ -545,22 +580,22 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
                 <Bell className="h-4 w-4 text-emerald-600 shrink-0" />
                 {text.appFeature}
               </p>
-              {/* Equal grid columns are what guarantee the two buttons stay
-                  exactly the same width in both languages, where the labels
-                  differ in length. They only sit side by side from lg up: at
-                  sm this text column is already half the section, and splitting
-                  that again left ~130px per button, far too narrow for
-                  "Download in de Play Store" to fit without being cut off. */}
-              <div className="home-rise grid grid-cols-1 lg:grid-cols-2 gap-3 mt-7 max-w-md mx-auto sm:mx-0 lg:max-w-none">
+              {/* The pair sits side by side at every width, the way store
+                  badges are normally shown. Two lines of short text instead of
+                  one long sentence is what makes that fit: the widest label is
+                  now "Google Play" rather than "Download in de Play Store". */}
+              <div className="home-rise flex items-stretch justify-center sm:justify-start gap-3 mt-7">
                 <StoreBadge
                   href={STORE_LINKS.appStore}
-                  icon={<Apple className="h-5 w-5 shrink-0" />}
-                  label={text.storeApple}
+                  mark={<AppleMark className="h-7 w-7 shrink-0" />}
+                  top={text.storeAppleTop}
+                  name="App Store"
                 />
                 <StoreBadge
                   href={STORE_LINKS.playStore}
-                  icon={<Smartphone className="h-5 w-5 shrink-0" />}
-                  label={text.storeGoogle}
+                  mark={<PlayMark className="h-6 w-6 shrink-0" />}
+                  top={text.storeGoogleTop}
+                  name="Google Play"
                 />
               </div>
               <p className="home-rise text-sm text-gray-400 mt-3">{text.storeSoon}</p>

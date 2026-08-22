@@ -45,7 +45,7 @@ const t = {
           `Voor leerkrachten: een geüploade handtekening (afbeelding), gebruikt op diploma's.`,
           `Inschrijfgegevens van kinderen (via het openbare inschrijfformulier): voornaam, achternaam, geslacht en leeftijd van het kind, plus naam, telefoonnummer en e-mailadres van één of twee contactpersonen, en eventuele opmerkingen.`,
           `Onderwijsgegevens van leerlingen: aanwezigheid, beoordelingen/cijfers, huiswerk, afwezigheidsredenen en diploma's.`,
-          `Schoolgegevens: naam, plaats, adres en locatie (op een kaart) van leslocaties.`,
+          `Moskeegegevens: naam, plaats, adres en locatie (op een kaart) van leslocaties.`,
           `Wij verzamelen geen locatie van uw apparaat, en gebruiken geen advertentie- of trackingtechnologie.`,
         ],
       },
@@ -53,7 +53,7 @@ const t = {
         h: '3. Waarom en op welke grondslag',
         b: [
           `Wij verwerken deze gegevens om het onderwijs te organiseren: inschrijvingen, aanwezigheid, voortgang, communicatie en diploma's. De grondslag is de uitvoering van de onderwijsovereenkomst en het gerechtvaardigd belang van een goede leerlingadministratie.`,
-          `Gegevens van kinderen worden uitsluitend door een ouder/voogd of door de school ingevoerd, ten behoeve van het onderwijs.`,
+          `Gegevens van kinderen worden uitsluitend door een ouder/voogd of door de moskee ingevoerd, ten behoeve van het onderwijs.`,
         ],
       },
       {
@@ -70,14 +70,14 @@ const t = {
       {
         h: '5. Hoe lang wij gegevens bewaren',
         b: [
-          `Wij bewaren gegevens zolang uw account actief is of zolang nodig voor het onderwijs. Onderwijsgegevens van een leerling (aanwezigheid, cijfers, diploma's) horen bij de administratie van de school en blijven bij de school bewaard, ook als een ouderaccount wordt verwijderd; ze worden dan losgekoppeld van dat account.`,
+          `Wij bewaren gegevens zolang uw account actief is of zolang nodig voor het onderwijs. Onderwijsgegevens van een leerling (aanwezigheid, cijfers, diploma's) horen bij de administratie van de moskee en blijven bij de moskee bewaard, ook als een ouderaccount wordt verwijderd; ze worden dan losgekoppeld van dat account.`,
         ],
       },
       {
         h: '6. Uw account verwijderen',
         b: [
           `U kunt uw eigen account zelf verwijderen: in de app via het tabblad Account, op de website via uw naam rechtsboven. Kies daar "Account verwijderen". Uw account en persoonlijke gegevens worden dan definitief verwijderd.`,
-          `Een volledig overzicht van de stappen, en van welke gegevens worden gewist en welke bij de school blijven, staat op rahmanegitim.com/account-verwijderen.`,
+          `Een volledig overzicht van de stappen, en van welke gegevens worden gewist en welke bij de moskee blijven, staat op rahmanegitim.com/account-verwijderen.`,
           `Wilt u dit liever schriftelijk doen, of de gegevens van uw kind laten verwijderen, mail dan ${CONTROLLER.email}. Wij reageren binnen een redelijke termijn.`,
         ],
       },
@@ -128,7 +128,7 @@ const t = {
           `Öğretmenler için: diplomalarda kullanılan, yüklenen bir imza (resim).`,
           `Çocukların kayıt bilgileri (herkese açık kayıt formu ile): çocuğun adı, soyadı, cinsiyeti ve yaşı; bir veya iki irtibat kişisinin adı, telefonu ve e-postası; varsa notlar.`,
           `Öğrencilerin eğitim verileri: devam durumu, değerlendirme/notlar, ödevler, devamsızlık nedenleri ve diplomalar.`,
-          `Okul bilgileri: ders mekânlarının adı, şehri, adresi ve harita konumu.`,
+          `Cami bilgileri: ders mekânlarının adı, şehri, adresi ve harita konumu.`,
           `Cihazınızın konumunu toplamıyoruz ve reklam veya takip teknolojisi kullanmıyoruz.`,
         ],
       },
@@ -136,7 +136,7 @@ const t = {
         h: '3. Neden ve hangi hukuki dayanakla',
         b: [
           `Bu verileri eğitimi düzenlemek için işleriz: kayıtlar, devam, ilerleme, iletişim ve diplomalar. Dayanak, eğitim sözleşmesinin yerine getirilmesi ve düzgün bir öğrenci yönetiminin meşru menfaatidir.`,
-          `Çocuklara ait veriler yalnızca bir veli/vasi veya okul tarafından, eğitim amacıyla girilir.`,
+          `Çocuklara ait veriler yalnızca bir veli/vasi veya cami tarafından, eğitim amacıyla girilir.`,
         ],
       },
       {
@@ -153,14 +153,14 @@ const t = {
       {
         h: '5. Verileri ne kadar saklarız',
         b: [
-          `Verileri, hesabınız etkin olduğu veya eğitim için gerekli olduğu sürece saklarız. Bir öğrencinin eğitim verileri (devam, notlar, diplomalar) okulun kayıtlarına aittir ve bir veli hesabı silinse bile okulda saklanmaya devam eder; bu durumda söz konusu hesapla bağlantısı kesilir.`,
+          `Verileri, hesabınız etkin olduğu veya eğitim için gerekli olduğu sürece saklarız. Bir öğrencinin eğitim verileri (devam, notlar, diplomalar) caminin kayıtlarına aittir ve bir veli hesabı silinse bile camide saklanmaya devam eder; bu durumda söz konusu hesapla bağlantısı kesilir.`,
         ],
       },
       {
         h: '6. Hesabınızı silme',
         b: [
           `Kendi hesabınızı kendiniz silebilirsiniz: uygulamada Hesap sekmesinden, web sitesinde sağ üstteki adınızdan. Orada "Hesabı sil" seçeneğini seçin. Hesabınız ve kişisel verileriniz kalıcı olarak silinir.`,
-          `Adımların tamamı ve hangi verilerin silinip hangilerinin okulda kaldığı rahmanegitim.com/account-verwijderen adresinde açıklanmıştır.`,
+          `Adımların tamamı ve hangi verilerin silinip hangilerinin camide kaldığı rahmanegitim.com/account-verwijderen adresinde açıklanmıştır.`,
           `Bunu yazılı olarak yapmayı veya çocuğunuzun verilerinin silinmesini tercih ederseniz ${CONTROLLER.email} adresine e-posta gönderin. Makul bir süre içinde yanıt veririz.`,
         ],
       },

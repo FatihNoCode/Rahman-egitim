@@ -116,7 +116,7 @@ const FAQS = {
     },
     {
       q: 'Hoe hoog zijn de kosten voor de lessen?',
-      a: `De contributie voor het schooljaar bedraagt:
+      a: `De contributie voor het lesjaar bedraagt:
 <ul class="mt-2 space-y-1 list-none">
   <li class="flex items-center gap-2"><span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span><strong>€ 520</strong> — Geen lid, geen broer/zus bij ons ingeschreven</li>
   <li class="flex items-center gap-2"><span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span><strong>€ 470</strong> — Geen lid, wel een broer of zus ingeschreven</li>

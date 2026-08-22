@@ -20,7 +20,7 @@ import SiteHeader from './SiteHeader';
  * in. What it describes must stay in step with purgeUser() on the server:
  * the account record and the login are destroyed, and a parent's children are
  * unlinked rather than deleted, because a child's attendance and grades belong
- * to the school's own records, not to the parent's account.
+ * to the mosque's own records, not to the parent's account.
  */
 
 const CONTROLLER = {
@@ -44,7 +44,7 @@ const t = {
     back: '← Terug',
     intro:
       'Op deze pagina leest u hoe u uw account voor de app Rahman Eğitim verwijdert, en welke gegevens daarbij ' +
-      'wel en niet worden gewist. U kunt dit zelf doen; er komt geen goedkeuring van de school aan te pas.',
+      'wel en niet worden gewist. U kunt dit zelf doen; er komt geen goedkeuring van de moskee aan te pas.',
     inAppTitle: 'Zelf verwijderen, in de app of op de website',
     inAppSteps: [
       'Log in op rahmanegitim.com of open de app Rahman Eğitim.',
@@ -62,15 +62,15 @@ const t = {
     deletedTitle: 'Wat wordt verwijderd',
     deleted: [
       'Uw inloggegevens: e-mailadres, wachtwoord en een eventuele koppeling met Google. Inloggen is daarna niet meer mogelijk.',
-      'Uw accountgegevens: naam, e-mailadres, telefoonnummer, rol en de koppeling met uw school.',
+      'Uw accountgegevens: naam, e-mailadres, telefoonnummer, rol en de koppeling met uw moskee.',
       'De koppeling tussen u en uw kind(eren), of — bij een leerkracht — tussen u en uw klassen.',
       'Voor leerkrachten: uw geüploade handtekening.',
       'Uw meldingen en voorkeuren in de app.',
     ],
     keptTitle: 'Wat blijft bewaard, en hoelang',
     kept: [
-      'De onderwijsgegevens van uw kind (naam, klas, aanwezigheid, beoordelingen, huiswerk, toetsen, diploma’s en de financiële administratie) horen bij de leerlingadministratie van de school en blijven daar bewaard. Ze worden wel losgekoppeld van uw verwijderde account.',
-      'Wilt u ook de gegevens van uw kind laten verwijderen, dan kan dat: mail dat verzoek naar ' + CONTROLLER.email + '. De school kan wettelijk verplicht zijn een deel van de administratie nog te bewaren en laat u in dat geval weten wat en hoelang.',
+      'De onderwijsgegevens van uw kind (naam, klas, aanwezigheid, beoordelingen, huiswerk, toetsen, diploma’s en de financiële administratie) horen bij de leerlingadministratie van de moskee en blijven daar bewaard. Ze worden wel losgekoppeld van uw verwijderde account.',
+      'Wilt u ook de gegevens van uw kind laten verwijderen, dan kan dat: mail dat verzoek naar ' + CONTROLLER.email + '. De moskee kan wettelijk verplicht zijn een deel van de administratie nog te bewaren en laat u in dat geval weten wat en hoelang.',
       'Verstuurde e-mails (zoals een bevestiging of een herinnering) blijven bij onze e-mailverzender bewaard zolang dat voor de verzendadministratie nodig is.',
       `Versleutelde back-ups van onze hostingprovider kunnen uw gegevens nog maximaal ${BACKUP_DAYS} dagen bevatten. Daarna worden die back-ups overschreven.`,
     ],
@@ -86,7 +86,7 @@ const t = {
     back: '← Geri',
     intro:
       'Bu sayfada, Rahman Eğitim uygulamasındaki hesabınızı nasıl sileceğinizi ve bu sırada hangi verilerin silinip ' +
-      'hangilerinin saklandığını bulacaksınız. Bunu kendiniz yapabilirsiniz; okulun onayı gerekmez.',
+      'hangilerinin saklandığını bulacaksınız. Bunu kendiniz yapabilirsiniz; caminin onayı gerekmez.',
     inAppTitle: 'Uygulamada veya web sitesinde kendiniz silme',
     inAppSteps: [
       'rahmanegitim.com adresine giriş yapın veya Rahman Eğitim uygulamasını açın.',
@@ -104,15 +104,15 @@ const t = {
     deletedTitle: 'Silinen veriler',
     deleted: [
       'Giriş bilgileriniz: e-posta adresi, parola ve varsa Google bağlantısı. Bundan sonra giriş yapılamaz.',
-      'Hesap bilgileriniz: ad, e-posta, telefon numarası, rol ve okul bağlantınız.',
+      'Hesap bilgileriniz: ad, e-posta, telefon numarası, rol ve cami bağlantınız.',
       'Sizinle çocuklarınız arasındaki bağlantı veya — öğretmenseniz — sizinle sınıflarınız arasındaki bağlantı.',
       'Öğretmenler için: yüklediğiniz imza.',
       'Uygulamadaki bildirimleriniz ve tercihleriniz.',
     ],
     keptTitle: 'Saklanan veriler ve süresi',
     kept: [
-      'Çocuğunuzun eğitim verileri (ad, sınıf, devam durumu, değerlendirmeler, ödevler, sınavlar, diplomalar ve mali kayıtlar) okulun öğrenci yönetimine aittir ve orada saklanmaya devam eder. Ancak silinen hesabınızla bağlantısı kesilir.',
-      'Çocuğunuzun verilerinin de silinmesini isterseniz bu mümkündür: talebinizi ' + CONTROLLER.email + ' adresine gönderin. Okul, kayıtların bir kısmını yasal olarak saklamak zorunda olabilir; bu durumda neyin ne kadar süreyle saklanacağını size bildirir.',
+      'Çocuğunuzun eğitim verileri (ad, sınıf, devam durumu, değerlendirmeler, ödevler, sınavlar, diplomalar ve mali kayıtlar) caminin öğrenci yönetimine aittir ve orada saklanmaya devam eder. Ancak silinen hesabınızla bağlantısı kesilir.',
+      'Çocuğunuzun verilerinin de silinmesini isterseniz bu mümkündür: talebinizi ' + CONTROLLER.email + ' adresine gönderin. Cami, kayıtların bir kısmını yasal olarak saklamak zorunda olabilir; bu durumda neyin ne kadar süreyle saklanacağını size bildirir.',
       'Gönderilen e-postalar (onay veya hatırlatma gibi) gönderim kayıtları için gerekli olduğu sürece e-posta sağlayıcımızda saklanır.',
       `Barındırma sağlayıcımızın şifreli yedeklerinde verileriniz en fazla ${BACKUP_DAYS} gün daha bulunabilir. Sonrasında bu yedeklerin üzerine yazılır.`,
     ],

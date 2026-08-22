@@ -494,12 +494,12 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
   useForceLightTheme();
 
   return (
-    <div className="min-h-screen w-full bg-white overflow-x-hidden">
+    <div className="site-pattern pattern-ink min-h-screen w-full bg-white overflow-x-hidden">
       <SiteHeader language={language} setLanguage={setLanguage} current="home" />
 
       <main>
         {/* Hero */}
-        <section className="relative overflow-hidden">
+        <section className="relative">
           <div className="absolute inset-0 -z-10" aria-hidden="true">
             <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[42rem] h-[42rem] rounded-full bg-emerald-200/40 blur-[100px]" />
             <div className="absolute top-40 left-1/4 w-72 h-72 rounded-full bg-teal-200/30 blur-[90px]" />
@@ -535,7 +535,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
         </section>
 
         {/* Website */}
-        <section className="bg-gray-50/70">
+        <section className="band-soft">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-20 sm:py-24">
             <p className="home-rise text-emerald-700 font-semibold text-sm tracking-wide uppercase mb-3 text-center">
               {text.webKicker}

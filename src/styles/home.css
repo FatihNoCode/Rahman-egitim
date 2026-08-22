@@ -72,3 +72,82 @@
     animation: none;
   }
 }
+
+/* Ornament behind the public pages.
+   ---------------------------------
+   One tile of an interlacing Islamic pattern, repeated. It is drawn from
+   src/imports/tiled-pattern.svg, which is a single motif rather than the
+   pre-tiled 3x2 sheet it was exported as — repeating one tile in CSS costs a
+   third of the bytes and, more importantly, keeps the motif the same physical
+   size on a phone and on a 4K monitor instead of stretching to fit.
+
+   The tile's own opaque white backdrop was removed when the asset was cut, so
+   the page keeps supplying its own background and anything layered on top of
+   it (the gray-50/70 bands on the homepage) thins the pattern out as it passes
+   over, which is what stops it reading as wallpaper.
+
+   Strength is a custom property so a page can dial it down without a second
+   class. The default is 0.12. That is high for an ornament of this kind — it
+   is a deliberate choice to have the pattern read as part of the design rather
+   than as a texture you only notice on a good monitor. The tile's ink is not
+   solid, so 0.12 opacity lands at roughly 7% actual contrast against the page;
+   if it ever starts fighting body text, this is the one number to turn down.
+
+   Two classes, because the ornament is wanted in two different shapes: on a
+   page root, where it has to sit behind content that is already there, and on
+   a backdrop element that is itself already positioned. `.pattern-ink` only
+   paints; `.site-pattern` adds the positioning and lifts the children clear. */
+.pattern-ink::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url('../imports/tiled-pattern.svg');
+  background-repeat: repeat;
+  background-position: top center;
+  background-size: 506px auto; /* one tile, 10% up from the 460px it was cut at */
+  opacity: var(--pattern-strength, 0.12);
+}
+
+.site-pattern {
+  position: relative;
+  isolation: isolate;
+}
+
+/* Content sits above the ornament. Without this the pattern would paint over
+   the page rather than behind it — `inset: 0` covers the whole scroll height,
+   not just the strip behind the header. */
+.site-pattern > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* The band between the hero and the app section.
+   A flat background here drew a hard horizontal line across the page. The
+   hero's emerald glow is a 672px blur that reaches ~84px past the hero's own
+   bottom edge, and a solid band starting exactly there sliced it off mid
+   falloff — twice over, because the hero also clipped it with overflow-hidden.
+   The clip is gone (the page root already clips horizontally, which was the
+   only thing that rule was really needed for) and the band now fades in and
+   out over 8rem at each end, so the glow above it and the white below it pass
+   through instead of stopping at a seam.
+
+   It has to be a gradient on the band rather than a fade drawn over the top of
+   it: the blobs are negative-z-index descendants, and CSS paints those *below*
+   the backgrounds of in-flow blocks like this one — so no amount of stacking
+   on the hero's side can push the glow over a solid band. Making the band
+   itself transparent at the edges is the only way the glow gets through. */
+.band-soft {
+  /* The end stops are the band's own colour at zero alpha, not the `transparent`
+     keyword. `transparent` is transparent *black*, and a gradient running to it
+     can grey the falloff on browsers that interpolate without premultiplying —
+     naming the colour costs nothing and removes the question. */
+  background-image: linear-gradient(
+    to bottom,
+    rgb(249 250 251 / 0) 0,
+    rgb(249 250 251 / 0.7) 8rem,
+    rgb(249 250 251 / 0.7) calc(100% - 8rem),
+    rgb(249 250 251 / 0) 100%
+  );
+}

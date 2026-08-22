@@ -26,8 +26,11 @@ interface LoginPageProps {
   setMfaChallenge: (v: boolean) => void;
 }
 
-// Shared plain background for both screens.
-const Backdrop = () => <div className="absolute inset-0 bg-gray-50 pointer-events-none" />;
+// Shared background for both screens. It used to be a flat gray fill that just
+// restated the shell's own background; it now carries the ornament instead, so
+// the pattern lands behind the sign-in card rather than being painted over by
+// the very element that was supposed to be the backdrop.
+const Backdrop = () => <div className="pattern-ink absolute inset-0 pointer-events-none" />;
 
 function LanguageToggle({ language, setLanguage }: { language: Language; setLanguage: (l: Language) => void }) {
   return (

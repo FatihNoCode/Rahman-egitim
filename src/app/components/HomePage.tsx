@@ -494,7 +494,7 @@ export default function HomePage({ language, setLanguage }: HomePageProps) {
   useForceLightTheme();
 
   return (
-    <div className="site-pattern pattern-ink min-h-screen w-full bg-white overflow-x-hidden">
+    <div className="site-pattern pattern-ink min-h-screen w-full bg-white overflow-x-hidden" style={{ '--pattern-top': 'calc(4rem + 1px)' } as React.CSSProperties}>
       <SiteHeader language={language} setLanguage={setLanguage} current="home" />
 
       <main>

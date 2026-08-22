@@ -100,13 +100,34 @@
 .pattern-ink::before {
   content: '';
   position: absolute;
-  inset: 0;
+  /* Starts below the header rather than running up behind it. The header is
+     bg-white/80 with a blur, so a pattern underneath it showed through as a
+     muddied version of itself — the ornament and the chrome reading as one
+     layer. --pattern-top is the header's height where there is a header, and
+     0 where the element is already below one (the sign-in backdrop). */
+  top: var(--pattern-top, 0);
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 0;
   pointer-events: none;
   background-image: url('../imports/tiled-pattern.svg');
   background-repeat: repeat;
   background-position: top center;
-  background-size: 506px auto; /* one tile, 10% up from the 460px it was cut at */
+  /* One tile. The viewBox (see tiled-pattern.svg) is cropped 3% horizontally,
+     which magnifies everything by ~3% at a fixed width; 491px takes that back
+     out so the motif stays the size it was approved at.
+
+     Vertically the crop is the artwork's exact ink bounds, read off getBBox
+     rather than estimated: the topmost stroke starts at y=245.00 and the run
+     of ink is 1540.70 tall. So the rows meet with no gap at all — but nothing
+     is sliced, because the cut lands on the strokes' own extremities rather
+     than through them. That distinction is the whole point: an earlier crop
+     that took a flat 8% off the top and bottom ran *into* the ink, and rows
+     ending in chopped curves read as two bands cutting each other. Touching is
+     fine; amputated is not. Anything tighter than this viewBox starts cutting
+     again, so treat these two numbers as a floor. */
+  background-size: 491px auto;
   opacity: var(--pattern-strength, 0.12);
 }
 

@@ -409,7 +409,10 @@ export default function InschrijvingPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div
+      className="site-pattern pattern-ink min-h-screen bg-gray-50 flex flex-col"
+      style={{ '--pattern-top': 'calc(4rem + 1px)' } as React.CSSProperties}
+    >
       <SiteHeader language={language} setLanguage={setLanguage} current="enroll" />
 
       <div className="flex-1 flex items-start justify-center px-4 py-10">

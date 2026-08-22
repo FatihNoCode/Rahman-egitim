@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, MessageCircleQuestion, RefreshCw, Send, Check, Trash2, Clock } from 'lucide-react';
+import { Mail, MessageCircleQuestion, RefreshCw, Send, Check, Trash2, Clock, CornerDownLeft } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
 import LoadError from './ui/load-error';
 
@@ -12,12 +12,26 @@ import LoadError from './ui/load-error';
  * carries a task ("Vragen beantwoorden") for as long as anything is open, so
  * a question cannot sit here unseen.
  *
- * Mail goes in one direction only: the answer typed below is sent to the
- * address the visitor left, which is the entire reason the form asks for one.
- * The status only moves to "beantwoord" once that send is accepted — marking
- * a question answered on a failed send would take it off the list while the
- * person who asked is still waiting.
+ * The answer typed below is sent to the address the visitor left, which is the
+ * entire reason the form asks for one. The status only moves to "beantwoord"
+ * once that send is accepted — marking a question answered on a failed send
+ * would take it off the list while the person who asked is still waiting.
+ *
+ * And it runs both ways. Our answer goes out from info@rahmanegitim.com, so
+ * when someone hits Reply their mail lands on the address the inbound webhook
+ * already receives, and it is appended to this thread rather than dropped in a
+ * separate mailbox. A question someone has written back on goes to the top of
+ * the list and reopens, because it needs answering again.
  */
+
+interface QuestionMessage {
+  id: string;
+  /** 'inkomend' = written by the person who asked; 'uitgaand' = our answer. */
+  richting: 'inkomend' | 'uitgaand';
+  tekst: string;
+  auteur: string;
+  op: string;
+}
 
 interface Question {
   id: string;
@@ -26,9 +40,8 @@ interface Question {
   onderwerp: string;
   bericht: string;
   status: 'nieuw' | 'beantwoord' | 'gesloten';
-  antwoord: string;
-  beantwoordOp: string;
-  beantwoordDoor: string;
+  berichten: QuestionMessage[];
+  laatsteActiviteitOp: string;
   ingediendOp: string;
 }
 
@@ -138,6 +151,14 @@ export default function QuestionsView({ language, apiRequest }: QuestionsViewPro
     }
   };
 
+  const lastMessage = (q: Question) => (q.berichten || [])[(q.berichten || []).length - 1];
+
+  // They replied to an answer we had already sent — the thread is open again
+  // and the newest word is theirs.
+  const hasReplyBack = (q: Question) =>
+    (q.berichten || []).some(m => m.richting === 'uitgaand') &&
+    lastMessage(q)?.richting === 'inkomend';
+
   const openCount = questions.filter(q => q.status === 'nieuw').length;
   const handledCount = questions.length - openCount;
   const visible = questions.filter(q =>
@@ -160,8 +181,8 @@ export default function QuestionsView({ language, apiRequest }: QuestionsViewPro
           </h3>
           <p className="text-xs sm:text-sm text-gray-500 mt-0.5 max-w-xl">
             {nl(
-              'Vragen die via het contactformulier op de website binnenkomen. U beantwoordt ze hier; de vragensteller krijgt uw antwoord per e-mail.',
-              'Web sitesindeki iletişim formundan gelen sorular. Buradan yanıtlarsınız; soruyu soran kişi cevabınızı e-posta ile alır.',
+              'Vragen die via het contactformulier op de website binnenkomen. U beantwoordt ze hier; de vragensteller krijgt uw antwoord per e-mail. Schrijft diegene terug, dan komt dat antwoord onder dezelfde vraag te staan.',
+              'Web sitesindeki iletişim formundan gelen sorular. Buradan yanıtlarsınız; soruyu soran kişi cevabınızı e-posta ile alır. Kişi tekrar yazarsa, o mesaj aynı sorunun altına eklenir.',
             )}
           </p>
         </div>
@@ -237,7 +258,18 @@ export default function QuestionsView({ language, apiRequest }: QuestionsViewPro
                       {q.naam} · {q.email}
                     </p>
                     {!expanded && (
-                      <p className="text-sm text-gray-500 mt-1.5 line-clamp-2">{q.bericht}</p>
+                      <p className="text-sm text-gray-500 mt-1.5 line-clamp-2">
+                        {lastMessage(q)?.tekst || q.bericht}
+                      </p>
+                    )}
+                    {/* Said explicitly, because a thread that has been answered
+                        and then written back on looks exactly like an
+                        unanswered one in the list otherwise. */}
+                    {hasReplyBack(q) && (
+                      <p className="text-xs font-medium text-amber-700 mt-1.5 flex items-center gap-1">
+                        <CornerDownLeft className="h-3 w-3 flex-shrink-0" />
+                        {nl(`${q.naam} heeft teruggeschreven`, `${q.naam} tekrar yazdı`)}
+                      </p>
                     )}
                   </div>
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
@@ -246,43 +278,50 @@ export default function QuestionsView({ language, apiRequest }: QuestionsViewPro
                     </span>
                     <span className="text-[11px] text-gray-400 flex items-center gap-1">
                       <Clock className="h-3 w-3" />
-                      {formatDate(q.ingediendOp)}
+                      {formatDate(q.laatsteActiviteitOp || q.ingediendOp)}
                     </span>
                   </div>
                 </button>
 
                 {expanded && (
                   <div className="border-t border-gray-100 px-4 py-4 space-y-4">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
-                        {nl('De vraag', 'Soru')}
-                      </p>
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 border border-gray-100 rounded-lg p-3">
-                        {q.bericht}
-                      </p>
+                    {/* The exchange, oldest first: what they asked, what we
+                        answered, and anything they wrote back. Theirs sit left
+                        in grey, ours right in green, so who said what is
+                        readable at a glance without labelling every bubble. */}
+                    <div className="space-y-2.5">
+                      {(q.berichten || []).map(msg => {
+                        const ours = msg.richting === 'uitgaand';
+                        return (
+                          <div key={msg.id} className={`flex ${ours ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[85%] min-w-0 ${ours ? 'text-right' : ''}`}>
+                              <div
+                                className={`inline-block text-left rounded-lg border px-3 py-2.5 ${
+                                  ours
+                                    ? 'bg-emerald-50 border-emerald-100 text-emerald-900'
+                                    : 'bg-gray-50 border-gray-100 text-gray-700'
+                                }`}
+                              >
+                                <p className="text-sm whitespace-pre-wrap break-words">{msg.tekst}</p>
+                              </div>
+                              <p className="text-[11px] text-gray-400 mt-1">
+                                {ours
+                                  ? `${nl('Verstuurd', 'Gönderildi')}${msg.auteur ? ` · ${msg.auteur}` : ''}`
+                                  : q.naam}
+                                {msg.op ? ` · ${formatDate(msg.op)}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-
-                    {q.antwoord && (
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
-                          {nl('Verstuurd antwoord', 'Gönderilen yanıt')}
-                        </p>
-                        <p className="text-sm text-emerald-900 whitespace-pre-wrap bg-emerald-50 border border-emerald-100 rounded-lg p-3">
-                          {q.antwoord}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1.5">
-                          {formatDate(q.beantwoordOp)}
-                          {q.beantwoordDoor ? ` · ${q.beantwoordDoor}` : ''}
-                        </p>
-                      </div>
-                    )}
 
                     <div>
                       <label
                         htmlFor={`reply-${q.id}`}
                         className="block text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5"
                       >
-                        {q.antwoord
+                        {(q.berichten || []).some(m => m.richting === 'uitgaand')
                           ? nl('Nog een antwoord sturen', 'Bir yanıt daha gönder')
                           : nl('Uw antwoord', 'Yanıtınız')}
                       </label>

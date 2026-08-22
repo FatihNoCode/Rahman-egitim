@@ -7517,6 +7517,78 @@ app.post("/make-server-6679cacd/inschrijvingen", async (c) => {
 const QUESTION_STATUSES = ['nieuw', 'beantwoord', 'gesloten'] as const;
 type QuestionStatus = typeof QUESTION_STATUSES[number];
 
+// A question is a conversation, not a single message: what the visitor asked,
+// what we answered, and anything they wrote back after that. Replies arrive
+// because the answer is sent from info@rahmanegitim.com, so hitting Reply in
+// their mail client lands on the address the Resend inbound webhook below
+// already receives.
+interface QuestionMessage {
+  id: string;
+  /** 'inkomend' = from the person who asked; 'uitgaand' = our answer. */
+  richting: 'inkomend' | 'uitgaand';
+  tekst: string;
+  /** Who wrote it — the beheerder's name on ours, empty on theirs. */
+  auteur: string;
+  op: string;
+}
+
+// Records written before the thread existed carry a flat antwoord/beantwoordOp
+// pair. Rebuild the thread from those on read rather than migrating the store,
+// so an old question and a new one render identically.
+function questionThread(q: any): QuestionMessage[] {
+  if (Array.isArray(q?.berichten) && q.berichten.length > 0) return q.berichten;
+  const thread: QuestionMessage[] = [{
+    id: `${q.id}-vraag`,
+    richting: 'inkomend',
+    tekst: q.bericht || '',
+    auteur: '',
+    op: q.ingediendOp || '',
+  }];
+  if (q?.antwoord) {
+    thread.push({
+      id: `${q.id}-antwoord`,
+      richting: 'uitgaand',
+      tekst: q.antwoord,
+      auteur: q.beantwoordDoor || '',
+      op: q.beantwoordOp || '',
+    });
+  }
+  return thread;
+}
+
+// How long after the last word in a thread an incoming mail from that address
+// is still treated as a reply to it. Past this it goes to the inbox instead:
+// a mail arriving a year later is a new subject, whatever it is replying to.
+const REPLY_THREADING_WINDOW_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+// Pulls the address out of "Naam <adres@example.com>" as well as a bare
+// address, lowercased for comparison.
+function parseEmailAddress(value: string): string {
+  const match = String(value || '').match(/<([^>]+)>/);
+  return (match ? match[1] : String(value || '')).trim().toLowerCase();
+}
+
+// Strips the quoted history a mail client appends when someone hits Reply.
+// Without this every reply carries the entire conversation so far, and the
+// thread in the portal becomes unreadable after two exchanges.
+function stripQuotedReply(text: string): string {
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  const cut = lines.findIndex((line) => {
+    const trimmed = line.trim();
+    return (
+      trimmed.startsWith('>') ||
+      /^-{2,}\s*(original message|oorspronkelijk bericht|forwarded message)/i.test(trimmed) ||
+      /^(op|on)\b.*\b(schreef|wrote)\s*:?$/i.test(trimmed) ||
+      /^van\s*:/i.test(trimmed) ||
+      /^from\s*:/i.test(trimmed)
+    );
+  });
+  const body = (cut === -1 ? lines : lines.slice(0, cut)).join('\n').trim();
+  // If the trim ate everything the quote detection was wrong — better a
+  // message with its history attached than an empty one.
+  return body || String(text || '').trim();
+}
+
 app.post("/make-server-6679cacd/contact", async (c) => {
   try {
     // Public and unauthenticated, so it is capped per IP.
@@ -7558,17 +7630,26 @@ app.post("/make-server-6679cacd/contact", async (c) => {
     }
 
     const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const text = String(bericht).trim();
     const record = {
       id,
       naam: String(naam).trim(),
       email: String(email).trim(),
       onderwerp: (onderwerp || '').trim(),
-      bericht: String(bericht).trim(),
+      // Kept alongside the thread: it is what the list preview shows, and it
+      // is the one message that can never be edited away.
+      bericht: text,
       status: 'nieuw' as QuestionStatus,
-      antwoord: '',
-      beantwoordOp: '',
-      beantwoordDoor: '',
-      ingediendOp: new Date().toISOString(),
+      berichten: [{
+        id: crypto.randomUUID(),
+        richting: 'inkomend',
+        tekst: text,
+        auteur: '',
+        op: now,
+      }] as QuestionMessage[],
+      laatsteActiviteitOp: now,
+      ingediendOp: now,
     };
 
     await kv.set(`question:${id}`, record);
@@ -7604,7 +7685,16 @@ app.get("/make-server-6679cacd/questions", async (c) => {
     if ('error' in auth) return c.json({ error: auth.error }, auth.status);
 
     const ids: string[] = await kv.get('question_ids') || [];
-    const questions = (await kv.mget(ids.map((id) => `question:${id}`))).filter((q: any) => q);
+    const questions = (await kv.mget(ids.map((id) => `question:${id}`)))
+      .filter((q: any) => q)
+      .map((q: any) => ({
+        ...q,
+        berichten: questionThread(q),
+        laatsteActiviteitOp: q.laatsteActiviteitOp || q.beantwoordOp || q.ingediendOp || '',
+      }))
+      // Newest activity first, so a question someone has just written back on
+      // rises to the top instead of staying where it was first filed.
+      .sort((a: any, b: any) => String(b.laatsteActiviteitOp).localeCompare(String(a.laatsteActiviteitOp)));
     return c.json({ questions });
   } catch (err) {
     console.log('Get questions error:', err);
@@ -7657,12 +7747,21 @@ app.post("/make-server-6679cacd/questions/:id/reply", async (c) => {
       return c.json({ error: 'Het antwoord kon niet worden verstuurd. Probeer het opnieuw.' }, 502);
     }
 
+    const now = new Date().toISOString();
+    const author = auth.userData?.name || auth.userData?.email || '';
     const updated = {
       ...question,
       status: 'beantwoord' as QuestionStatus,
+      berichten: [
+        ...questionThread(question),
+        { id: crypto.randomUUID(), richting: 'uitgaand', tekst: reply, auteur: author, op: now },
+      ] as QuestionMessage[],
+      laatsteActiviteitOp: now,
+      // Still written so a portal running older code, and the list preview,
+      // keep showing the most recent answer.
       antwoord: reply,
-      beantwoordOp: new Date().toISOString(),
-      beantwoordDoor: auth.userData?.name || auth.userData?.email || '',
+      beantwoordOp: now,
+      beantwoordDoor: author,
     };
     await kv.set(`question:${id}`, updated);
 
@@ -7689,7 +7788,7 @@ app.post("/make-server-6679cacd/questions/:id/status", async (c) => {
       return c.json({ error: 'Invalid status' }, 400);
     }
 
-    const updated = { ...question, status };
+    const updated = { ...question, status, berichten: questionThread(question) };
     await kv.set(`question:${id}`, updated);
     return c.json({ success: true, question: updated });
   } catch (err) {
@@ -7841,6 +7940,62 @@ app.post("/make-server-6679cacd/webhooks/inbound-email", async (c) => {
     }
 
     const data = event.data || {};
+    const receivedAt = new Date().toISOString();
+
+    // A reply to an answer we sent belongs on the question it answers, not in
+    // a flat mailbox — the beheerder should be able to read the whole exchange
+    // in one place. The answer goes out from info@rahmanegitim.com, so the
+    // reply arrives here, and the sender's address is what ties it back.
+    const senderAddress = parseEmailAddress(data.from || '');
+    if (senderAddress) {
+      const questionIds: string[] = await kv.get('question_ids') || [];
+      const candidates = (await kv.mget(questionIds.map((qid: string) => `question:${qid}`)))
+        .filter((q: any) => {
+          if (!q || String(q.email || '').trim().toLowerCase() !== senderAddress) return false;
+
+          // Only a thread we have actually written to can receive a reply. If
+          // we never answered, mail from this address is a new message, not a
+          // continuation, and belongs in the inbox.
+          const answered = questionThread(q).some((m) => m.richting === 'uitgaand');
+          if (!answered) return false;
+
+          // And only a thread that is still live. Without this, someone who
+          // asked a question two years ago would have every later mail they
+          // ever send buried at the bottom of it.
+          const last = Date.parse(q.laatsteActiviteitOp || q.ingediendOp || '');
+          if (!Number.isFinite(last)) return false;
+          return Date.now() - last <= REPLY_THREADING_WINDOW_MS;
+        });
+
+      // Someone with more than one live thread gets the reply on the most
+      // recent. Nothing in a plain reply says which one it belongs to, and the
+      // newest is the one they were just corresponding about.
+      const target = candidates
+        .sort((a: any, b: any) =>
+          String(a.laatsteActiviteitOp || a.ingediendOp || '')
+            .localeCompare(String(b.laatsteActiviteitOp || b.ingediendOp || '')))
+        .pop();
+
+      if (target) {
+        const body = stripQuotedReply(data.text || '') || '(leeg bericht)';
+        const updated = {
+          ...target,
+          // Back to open: they wrote again, so it needs an answer again.
+          status: 'nieuw' as QuestionStatus,
+          berichten: [
+            ...questionThread(target),
+            { id: crypto.randomUUID(), richting: 'inkomend', tekst: body, auteur: '', op: receivedAt },
+          ] as QuestionMessage[],
+          laatsteActiviteitOp: receivedAt,
+        };
+        await kv.set(`question:${target.id}`, updated);
+        console.log('Inbound mail threaded onto question', target.id);
+        return c.json({ success: true, threadedOnto: target.id });
+      }
+    }
+
+    // Everything else — mail to info@ that answers no question we asked — goes
+    // to the superadmin inbox exactly as before.
     const id = crypto.randomUUID();
     const message = {
       id,
@@ -7851,7 +8006,7 @@ app.post("/make-server-6679cacd/webhooks/inbound-email", async (c) => {
       html: data.html || '',
       attachments: (data.attachments || []).map((a: any) => ({ filename: a.filename, contentType: a.content_type })),
       read: false,
-      receivedAt: new Date().toISOString(),
+      receivedAt,
     };
     await kv.set(`inbox:${id}`, message);
     const ids: string[] = await kv.get('inbox_ids') || [];

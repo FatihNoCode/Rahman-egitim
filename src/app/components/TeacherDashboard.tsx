@@ -139,6 +139,11 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const [schoolNames, setSchoolNames] = useState<Record<string, string>>({});
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [students, setStudents] = useState<Student[]>([]);
+  // The roster arrives a moment after the class does. Without this the
+  // attendance step announced "deze klas heeft nog geen leerlingen" — a
+  // statement about the class, not about the fetch — for as long as the
+  // request took, so a full class looked empty every time the tab opened.
+  const [studentsLoading, setStudentsLoading] = useState(true);
   const [studentsWithStats, setStudentsWithStats] = useState<any[]>([]);
   const app = isAppLayout();
   const [activeTab, setActiveTab] = useHashTab<string>(
@@ -335,6 +340,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   };
 
   const loadStudents = async () => {
+    setStudentsLoading(true);
     try {
       const data = await apiRequest('/students');
       const classStudents = (data.students || []).filter(
@@ -343,6 +349,8 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       setStudents(classStudents);
     } catch (error) {
       console.error('Error loading students:', error);
+    } finally {
+      setStudentsLoading(false);
     }
   };
 
@@ -793,7 +801,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             </p>
           </div>
         ) : (
-        <div className={app ? '' : 'flex gap-4 sm:gap-6 items-start'}>
+        <div className={app ? '' : 'flex flex-col sm:flex-row gap-3 sm:gap-6 sm:items-start'}>
           {!app && (
           <Sidebar
             items={navItems}
@@ -909,15 +917,23 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                   title={language === 'tr' ? 'Yoklama ve Davranış' : 'Aanwezigheid & Gedrag'}
                   done={students.length > 0 && attendanceMarked === students.length}
                   status={
-                    students.length === 0
-                      ? (language === 'tr' ? 'Bu sınıfta öğrenci yok' : 'Deze klas heeft nog geen leerlingen')
-                      : `${attendanceMarked}/${students.length} ${language === 'tr' ? 'işaretlendi' : 'ingevuld'}`
+                    studentsLoading
+                      ? (language === 'tr' ? 'Yükleniyor…' : 'Laden…')
+                      : students.length === 0
+                        ? (language === 'tr' ? 'Bu sınıfta öğrenci yok' : 'Deze klas heeft nog geen leerlingen')
+                        : `${attendanceMarked}/${students.length} ${language === 'tr' ? 'işaretlendi' : 'ingevuld'}`
                   }
                   open={openStep === 2}
                   onToggle={() => toggleStep(2)}
                 >
                   <div className="space-y-2 sm:space-y-3">
-                    {students.map((student) => {
+                    {studentsLoading && (
+                      <div className="flex items-center gap-2 py-4 text-sm text-gray-400">
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-emerald-600" />
+                        {language === 'tr' ? 'Yükleniyor…' : 'Laden…'}
+                      </div>
+                    )}
+                    {!studentsLoading && students.map((student) => {
                       const isPresent = attendanceRecords[student.id];
                       const isAbsent = attendanceRecords[student.id] === false;
                       const isLate = attendanceRecords[student.id] === 'late';

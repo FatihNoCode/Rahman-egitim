@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { ArrowLeft, Layers, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle, MessageCircleQuestion } from 'lucide-react';
+import { ArrowLeft, Layers, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle, MessageCircleQuestion, Moon } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import booksLogo from '../../imports/logo.svg';
@@ -363,7 +363,13 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
             <img src={booksLogo} alt="Rahman Eğitim" className="h-[52px] w-[52px] sm:h-[64px] sm:w-[64px] object-contain" />
             <div>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 leading-tight">{t.adminDashboard}</h1>
-              <p className="text-xs text-gray-400 hidden sm:block">Rahman Eğitim</p>
+              {/* The same greeting the parent and teacher dashboards open
+                  with. It was the one panel that skipped it, so switching
+                  role changed how the app addressed you. */}
+              <p className="flex items-center gap-1 text-xs sm:text-sm text-emerald-700 font-medium">
+                <Moon className="h-3 w-3 sm:h-3.5 sm:w-3.5 fill-emerald-700" />
+                {language === 'tr' ? 'Selamün aleyküm' : 'Assalamu alaikum'}{currentUser?.name ? `, ${currentUser.name}` : ''}
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -397,7 +403,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
           </button>
         )}
 
-        <div className={app ? '' : 'flex gap-4 sm:gap-6 items-start'}>
+        <div className={app ? '' : 'flex flex-col sm:flex-row gap-3 sm:gap-6 sm:items-start'}>
           {!app && (
           <Sidebar
             items={navItems}

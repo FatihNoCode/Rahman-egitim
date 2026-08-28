@@ -795,7 +795,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
             RoleSwitchPill in the header above covers both layouts, so a
             superadmin who switched in can always switch back out. */}
 
-        <div className="flex gap-4 sm:gap-6 items-start">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-6 sm:items-start">
           {!app && (
           <Sidebar
             items={[

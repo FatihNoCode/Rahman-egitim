@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useApp, isTestAccount } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, AlertTriangle, Check, Receipt, Sparkles, ArrowLeft, GraduationCap } from 'lucide-react';
+import { Euro, Moon, AlertTriangle, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
@@ -10,6 +10,9 @@ import ChildSwitcher from './ChildSwitcher';
 import RoleSwitchPill from './RoleSwitchPill';
 import ActionCenter from './ActionCenter';
 import MomentsFeed from './MomentsFeed';
+import HomeworkView from './HomeworkView';
+import LessonReportsPanel from './LessonReportsPanel';
+import Modal from './ui/modal';
 import { notify } from './ui/feedback';
 import LoadError from './ui/load-error';
 import { isAppLayout } from '../../lib/native';
@@ -127,12 +130,13 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   // though it no longer appears on the bar.
   const [activeTab, setActiveTab] = useHashTab<string>(
     'overview',
-    ['overview', 'billing', 'grades', 'oudergesprekken', 'alifba', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['overview', 'huiswerk', 'billing', 'grades', 'oudergesprekken', 'alifba', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   // MOBILE_ACCOUNT_ID is deliberately absent: account is reached from the
   // avatar in the top-right corner, not from the tab bar.
   const [navOrder, setNavOrder] = useNavOrder('parent', [
     'overview',
+    'huiswerk',
     'billing',
     'grades',
     'oudergesprekken',
@@ -155,6 +159,14 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   // On the website the profile form lives inside the UserMenu dropdown, so the
   // "vul uw telefoonnummer aan" task opens it through this signal.
   const [profileSignal, setProfileSignal] = useState(0);
+  // Forces the agenda (and the homework list) to refetch. The calendar's own
+  // background poll is deliberately slow — see AgendaCalendar — so the
+  // "Vernieuwen" button on the start page is what a parent uses when they want
+  // an answer *now*.
+  const [agendaRefresh, setAgendaRefresh] = useState(0);
+  // Where the avatar came from, so tapping it a second time goes back there
+  // rather than doing nothing. See openAccount below.
+  const [tabBeforeAccount, setTabBeforeAccount] = useState<string>('overview');
 
   useEffect(() => {
     loadData();
@@ -342,19 +354,23 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     const items: { id: string; date: string; start: string; end: string; studentName?: string }[] = [];
     for (const session of conferSessions) {
       (session.slots || []).forEach((slot: any, i: number) => {
+        // Only the child currently being viewed. A booking for their sibling
+        // on the same calendar made the agenda answer for a child the page
+        // above it says it is not about.
+        if (selectedChildId && slot.studentId !== selectedChildId) return;
         if (slot.studentId && childById.has(slot.studentId)) {
           items.push({
             id: `${session.id}:${i}`,
             date: session.date,
             start: slot.start,
             end: slot.end,
-            studentName: students.length > 1 ? childById.get(slot.studentId) : undefined,
+            studentName: undefined,
           });
         }
       });
     }
     return items;
-  }, [conferSessions, students]);
+  }, [conferSessions, students, selectedChildId]);
 
   const toggleHomeworkCompletion = async (studentId: string, homeworkId: string) => {
     const key = `${studentId}:${homeworkId}`;
@@ -401,6 +417,23 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
    * that lives in different places on the app and on the website. Handling
    * those here keeps the server's feed free of client routing knowledge.
    */
+  /**
+   * The avatar in the corner, tapped.
+   *
+   * It used to be one-way: tapping it opened "Mijn gegevens", and tapping it
+   * again — the obvious way to undo that — did nothing at all, leaving the
+   * only way back a guess at which tab you had come from. It is a toggle now,
+   * and it returns you to the tab you were actually on.
+   */
+  const openAccount = () => {
+    if (activeTab === MOBILE_ACCOUNT_ID) {
+      setActiveTab(tabBeforeAccount === MOBILE_ACCOUNT_ID ? 'overview' : tabBeforeAccount);
+      return;
+    }
+    setTabBeforeAccount(activeTab);
+    setActiveTab(MOBILE_ACCOUNT_ID);
+  };
+
   const handleActionNavigate = (link: string) => {
     const [target, arg] = link.replace(/^#/, '').split(':');
 
@@ -409,7 +442,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       return;
     }
     if (target === 'account') {
-      if (app) setActiveTab(MOBILE_ACCOUNT_ID);
+      if (app) openAccount();
       else setProfileSignal((n) => n + 1);
       return;
     }
@@ -546,15 +579,23 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   }
 
   const selectedChild = students.find((s) => s.id === selectedChildId);
+  // A session filed under a class the selected child is not in belongs to
+  // their sibling. It stays reachable — switch child — but it does not sit
+  // under this child's name, and it must not make the tab claim there is
+  // something to book when there is not.
+  const childConferSessions = selectedChild
+    ? conferSessions.filter((s: any) => !s.classId || s.classId === selectedChild.classId)
+    : [];
 
   const allNavItems: MobileNavItem[] = [
     // Start / Ana Sayfa — the shared landing tab; here it's the children.
     sharedNavItem('home', language, 'overview'),
+    { id: 'huiswerk', label: language === 'tr' ? 'Ödevler' : 'Huiswerk', shortLabel: language === 'tr' ? 'Ödev' : 'Huiswerk', icon: BookOpen },
     { id: 'billing', label: language === 'tr' ? 'Ödemeler' : 'Facturatie', icon: Receipt },
     { id: 'grades', label: language === 'tr' ? 'Notlar' : 'Cijfers', icon: GraduationCap },
     sharedNavItem('oudergesprekken', language),
     { id: 'alifba', label: 'Elif-Ba', icon: Sparkles },
-    ...mobileExtraNavItems(language),
+    ...mobileExtraNavItems(language, true),
   ];
   const byId = Object.fromEntries(allNavItems.map((i) => [i.id, i]));
   const orderedIds = navOrder.filter((id) => byId[id]);
@@ -567,6 +608,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       items={navItems}
       active={activeTab}
       onChange={selectTab}
+      onReorder={setNavOrder}
       language={language}
       floating={floating}
     />
@@ -625,15 +667,12 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     return (
       <div className="size-full overflow-auto bg-gray-50 px-4 pt-6" style={{ paddingBottom: 'calc(5.5rem + var(--safe-bottom))' }}>
         <div className="mx-auto mb-2 flex max-w-lg justify-end">
-          <AccountAvatarButton
-            onOpen={() => setActiveTab(MOBILE_ACCOUNT_ID)}
-            active={activeTab === MOBILE_ACCOUNT_ID}
-          />
+          <AccountAvatarButton onOpen={openAccount} active={activeTab === MOBILE_ACCOUNT_ID} />
         </div>
         {activeTab === MOBILE_ACCOUNT_ID ? (
           <AccountPanel onLogout={onLogout} />
         ) : (
-          <SettingsPanel navItems={navItems} onReorder={setNavOrder} />
+          <SettingsPanel navItems={navItems} onReorder={setNavOrder} settingsLabel onLogout={onLogout} />
         )}
         {mobileNav()}
       </div>
@@ -669,7 +708,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             </div>
             {/* Only renders for accounts that hold more than one role. */}
             <RoleSwitchPill language={language} />
-            <AccountAvatarButton onOpen={() => setActiveTab(MOBILE_ACCOUNT_ID)} />
+            <AccountAvatarButton onOpen={openAccount} />
           </div>
         )}
         {!app && (
@@ -778,6 +817,14 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               {language === 'tr' ? 'Genel bakış' : 'Overzicht'}
             </button>
             <button
+              onClick={() => setActiveTab('huiswerk')}
+              className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm ${
+                activeTab === 'huiswerk' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {language === 'tr' ? 'Ödevler' : 'Huiswerk'}
+            </button>
+            <button
               onClick={() => setActiveTab('billing')}
               className={`px-3 sm:px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-xs sm:text-sm ${
                 activeTab === 'billing' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
@@ -808,6 +855,20 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               <Sparkles className="h-3.5 w-3.5" />
               Elif-Ba
             </button>
+          </div>
+        )}
+
+        {selectedChild && activeTab === 'huiswerk' && (
+          <div className="mb-4 sm:mb-6">
+            <HomeworkView
+              language={language}
+              apiRequest={apiRequest}
+              childId={selectedChild.id}
+              childClassId={selectedChild.classId}
+              completion={homeworkCompletion}
+              onToggle={toggleHomeworkCompletion}
+              refreshKey={agendaRefresh}
+            />
           </div>
         )}
 
@@ -984,162 +1045,173 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
         {selectedChild && activeTab === 'overview' && (
         <>
         {/* What needs this family, before anything the school merely wants to
-            show them. Spans every child, not just the selected one — a parent
-            should never have to flip through the switcher to discover that
-            something was waiting on the other child. */}
+            show them — scoped to the child the switcher above names, so the
+            page never mixes two children together. The lesverslag list rides
+            along in the footer: it is the other thing the school is waiting
+            for someone to read. */}
         <ActionCenter
           language={language}
           apiRequest={apiRequest}
           onNavigate={handleActionNavigate}
           refreshKey={actionRefresh}
           showAllClear
+          alwaysShow
           childrenList={students}
+          filterChildId={selectedChildId}
+          onRefresh={() => setAgendaRefresh((n) => n + 1)}
+          footer={
+            <LessonReportsPanel
+              language={language}
+              apiRequest={apiRequest}
+              lessons={lessons}
+            />
+          }
         />
 
-        {showStats && stats && (
-          <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
-            <div className="flex justify-between items-center mb-3 sm:mb-4">
-              <h2 className="text-xl sm:text-2xl font-semibold text-emerald-800">
-                {t.statistics} - {students.find(s => s.id === showStats)?.name}
-              </h2>
+        <Modal
+          open={!!(showStats && stats)}
+          onClose={() => setShowStats(null)}
+          title={t.statistics}
+          subtitle={students.find((s) => s.id === showStats)?.name}
+          closeLabel={t.cancel}
+        >
+          {/* No "Annuleren" here: there is nothing to cancel — the dialog only
+              reports numbers, so the X (and a tap outside) is the whole exit. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg bg-blue-50 p-3 sm:p-4">
+              <p className="text-xs text-gray-600 sm:text-sm">{t.totalLessons}</p>
+              <p className="text-2xl font-bold text-blue-600 sm:text-3xl">{stats?.totalLessons}</p>
+            </div>
+            <div className="rounded-lg bg-red-50 p-3 sm:p-4">
+              <p className="text-xs text-gray-600 sm:text-sm">{t.totalAbsences}</p>
+              <p className="text-2xl font-bold text-red-600 sm:text-3xl">{stats?.absences}</p>
+            </div>
+            <div className="rounded-lg bg-orange-50 p-3 sm:p-4">
+              <p className="text-xs text-gray-600 sm:text-sm">{t.lateOrMissingNotifications}</p>
+              <p className="text-2xl font-bold text-orange-600 sm:text-3xl">{stats?.lateOrMissingNotifications}</p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-gray-600 sm:text-sm">{t.schoolYear}: {stats?.schoolYear}</p>
+        </Modal>
+
+        <Modal
+          open={showAbsenceModal}
+          onClose={() => { if (!submittingAbsence) setShowAbsenceModal(false); }}
+          title={t.reportAbsence}
+          // The deadline is set per school, so state it rather than assuming
+          // everyone knows it is nine o'clock.
+          subtitle={
+            language === 'tr'
+              ? `Ders günü saat ${notificationDeadlineTime} öncesinde bildiriniz.`
+              : `Graag melden vóór ${notificationDeadlineTime} op de lesdag.`
+          }
+          closeLabel={t.cancel}
+          footer={
+            <div className="flex gap-2 sm:gap-3">
               <button
-                onClick={() => setShowStats(null)}
-                className="px-3 py-1 bg-gray-300 rounded hover:bg-gray-400 text-sm"
+                onClick={submitAbsenceNotification}
+                disabled={submittingAbsence}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submittingAbsence && (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                )}
+                {submittingAbsence
+                  ? (language === 'tr' ? 'Gönderiliyor...' : 'Versturen...')
+                  : t.submitNotification}
+              </button>
+              {/* Kept here, unlike on the statistics dialog: this one is a form
+                  that will send something, and backing out of it deserves a
+                  control you can read, not only an X. */}
+              <button
+                onClick={() => setShowAbsenceModal(false)}
+                disabled={submittingAbsence}
+                className="flex-1 rounded-lg bg-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-300 disabled:opacity-60"
               >
                 {t.cancel}
               </button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-              <div className="bg-blue-50 p-3 sm:p-4 rounded-lg">
-                <p className="text-xs sm:text-sm text-gray-600">{t.totalLessons}</p>
-                <p className="text-2xl sm:text-3xl font-bold text-blue-600">{stats.totalLessons}</p>
-              </div>
-              <div className="bg-red-50 p-3 sm:p-4 rounded-lg">
-                <p className="text-xs sm:text-sm text-gray-600">{t.totalAbsences}</p>
-                <p className="text-2xl sm:text-3xl font-bold text-red-600">{stats.absences}</p>
-              </div>
-              <div className="bg-orange-50 p-3 sm:p-4 rounded-lg">
-                <p className="text-xs sm:text-sm text-gray-600">{t.lateOrMissingNotifications}</p>
-                <p className="text-2xl sm:text-3xl font-bold text-orange-600">{stats.lateOrMissingNotifications}</p>
-              </div>
+          }
+        >
+          <div className="space-y-3 sm:space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">{t.selectStudent}</label>
+              <select
+                value={selectedStudent}
+                onChange={(e) => setSelectedStudent(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              >
+                <option value="">{t.selectStudent}</option>
+                {students.map((student) => (
+                  <option key={student.id} value={student.id}>
+                    {student.name}
+                  </option>
+                ))}
+              </select>
             </div>
-            <p className="mt-3 text-xs sm:text-sm text-gray-600">{t.schoolYear}: {stats.schoolYear}</p>
-          </div>
-        )}
-
-        {showAbsenceModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl p-4 sm:p-6 max-w-md w-full">
-              <h3 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-1">{t.reportAbsence}</h3>
-              {/* The deadline is set per school, so state it rather than
-                  assuming everyone knows it is nine o'clock. */}
-              <p className="text-xs text-gray-500 mb-3 sm:mb-4">
-                {language === 'tr'
-                  ? `Ders günü saat ${notificationDeadlineTime} öncesinde bildiriniz.`
-                  : `Graag melden vóór ${notificationDeadlineTime} op de lesdag.`}
-              </p>
-              <div className="space-y-3 sm:space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t.selectStudent}</label>
-                  <select
-                    value={selectedStudent}
-                    onChange={(e) => setSelectedStudent(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                  >
-                    <option value="">{t.selectStudent}</option>
-                    {students.map((student) => (
-                      <option key={student.id} value={student.id}>
-                        {student.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t.lessonDate}</label>
-                  {/* Today and tomorrow cover almost every ziekmelding there
-                      is; the picker stays for the rest. `min` stops a mistyped
-                      year filing a report against a date that has long gone. */}
-                  <div className="flex gap-2 mb-2">
-                    {([0, 1] as const).map((offset) => {
-                      const day = localDay(offset);
-                      const label = offset === 0
-                        ? (language === 'tr' ? 'Bugün' : 'Vandaag')
-                        : (language === 'tr' ? 'Yarın' : 'Morgen');
-                      const active = absenceDate === day;
-                      return (
-                        <button
-                          key={offset}
-                          type="button"
-                          onClick={() => setAbsenceDate(day)}
-                          aria-pressed={active}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition border ${
-                            active
-                              ? 'bg-emerald-600 border-emerald-600 text-white'
-                              : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <input
-                    type="date"
-                    value={absenceDate}
-                    min={localDay()}
-                    onChange={(e) => setAbsenceDate(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t.absenceReason}</label>
-                  <textarea
-                    value={absenceReason}
-                    onChange={(e) => setAbsenceReason(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                    rows={3}
-                  />
-                </div>
-                {deadlinePassed && absenceDate && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    <p className="flex items-center gap-1.5 text-sm text-amber-900 font-semibold">
-                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                      {language === 'tr'
-                        ? `Bildirim saati geçti (${notificationDeadlineTime})`
-                        : `Na de meldingstijd (${notificationDeadlineTime})`}
-                    </p>
-                    <p className="text-xs text-amber-800 mt-1">
-                      {language === 'tr'
-                        ? `Bildiriminizi yine de gönderebilirsiniz; geç bildirim olarak kaydedilir. Bir dahaki sefere ders günü saat ${notificationDeadlineTime} öncesinde bildirmenizi rica ederiz.`
-                        : `U kunt de melding gewoon versturen; hij wordt als late melding genoteerd. Wilt u de volgende keer vóór ${notificationDeadlineTime} op de lesdag melden?`}
-                    </p>
-                  </div>
-                )}
-                <div className="flex gap-2 sm:gap-3">
-                  <button
-                    onClick={submitAbsenceNotification}
-                    disabled={submittingAbsence}
-                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
-                  >
-                    {submittingAbsence && (
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                    )}
-                    {submittingAbsence
-                      ? (language === 'tr' ? 'Gönderiliyor...' : 'Versturen...')
-                      : t.submitNotification}
-                  </button>
-                  <button
-                    onClick={() => setShowAbsenceModal(false)}
-                    disabled={submittingAbsence}
-                    className="flex-1 px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400 disabled:opacity-60 text-sm"
-                  >
-                    {t.cancel}
-                  </button>
-                </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t.lessonDate}</label>
+              {/* Today and tomorrow cover almost every ziekmelding there is;
+                  the picker stays for the rest. `min` stops a mistyped year
+                  filing a report against a date that has long gone. */}
+              <div className="flex gap-2 mb-2">
+                {([0, 1] as const).map((offset) => {
+                  const day = localDay(offset);
+                  const label = offset === 0
+                    ? (language === 'tr' ? 'Bugün' : 'Vandaag')
+                    : (language === 'tr' ? 'Yarın' : 'Morgen');
+                  const active = absenceDate === day;
+                  return (
+                    <button
+                      key={offset}
+                      type="button"
+                      onClick={() => setAbsenceDate(day)}
+                      aria-pressed={active}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition border ${
+                        active
+                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
+              <input
+                type="date"
+                value={absenceDate}
+                min={localDay()}
+                onChange={(e) => setAbsenceDate(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              />
             </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t.absenceReason}</label>
+              <textarea
+                value={absenceReason}
+                onChange={(e) => setAbsenceReason(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                rows={3}
+              />
+            </div>
+            {deadlinePassed && absenceDate && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="flex items-center gap-1.5 text-sm text-amber-900 font-semibold">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  {language === 'tr'
+                    ? `Bildirim saati geçti (${notificationDeadlineTime})`
+                    : `Na de meldingstijd (${notificationDeadlineTime})`}
+                </p>
+                <p className="text-xs text-amber-800 mt-1">
+                  {language === 'tr'
+                    ? `Bildiriminizi yine de gönderebilirsiniz; geç bildirim olarak kaydedilir. Bir dahaki sefere ders günü saat ${notificationDeadlineTime} öncesinde bildirmenizi rica ederiz.`
+                    : `U kunt de melding gewoon versturen; hij wordt als late melding genoteerd. Wilt u de volgende keer vóór ${notificationDeadlineTime} op de lesdag melden?`}
+                </p>
+              </div>
+            )}
           </div>
-        )}
+        </Modal>
 
 
         {/* The good news, above the calendar. Scoped to the selected child so
@@ -1153,7 +1225,10 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           hideWhenEmpty
         />
 
-        {/* Agenda: lesson days, vacations, events, lesson reports & homework */}
+        {/* Agenda: lesson days, vacations, events, behaviour and booked
+            oudergesprekken. Homework and lesverslagen used to be here too;
+            both now have a place where they can be seen without first
+            guessing the right day — see HomeworkView and LessonReportsPanel. */}
         <div className="mb-4 sm:mb-6">
           <h2 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-3">
             {language === 'tr' ? 'Ajanda' : 'Agenda'}
@@ -1164,12 +1239,9 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             <AgendaCalendar
               language={language}
               apiRequest={apiRequest}
+              refreshKey={agendaRefresh}
               role="parent"
-              selectedChildId={selectedChild?.id}
-              lessons={lessons}
               behaviorList={behaviorList}
-              homeworkCompletion={homeworkCompletion}
-              onToggleHomeworkCompletion={toggleHomeworkCompletion}
               conferences={myBookedConferences}
             />
           )}
@@ -1179,17 +1251,17 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
         {/* Oudergesprekken — conferences now span every class. Its own
             destination rather than a card on the home screen. */}
-        {selectedChild && activeTab === 'oudergesprekken' && conferSessions.length === 0 && (
+        {selectedChild && activeTab === 'oudergesprekken' && childConferSessions.length === 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center text-sm text-gray-500">
             {language === 'tr'
               ? 'Şu anda planlanmış veli görüşmesi yok.'
               : 'Er zijn op dit moment geen oudergesprekken gepland.'}
           </div>
         )}
-        {selectedChild && activeTab === 'oudergesprekken' && conferSessions.length > 0 && (
+        {selectedChild && activeTab === 'oudergesprekken' && childConferSessions.length > 0 && (
           <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
             <div className="space-y-4">
-              {conferSessions
+              {childConferSessions
                 .map((session: any) => {
                   const myBookingIndex = session.slots.findIndex((s: any) => s.studentId === selectedChild.id);
                   const myBooking = myBookingIndex >= 0 ? session.slots[myBookingIndex] : null;

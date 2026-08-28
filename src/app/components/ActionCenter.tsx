@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { CheckCircle2, ChevronRight, RefreshCw } from 'lucide-react';
 import { childAccent, childInitial } from './childIdentity';
 
@@ -64,6 +64,23 @@ interface ActionCenterProps {
    * a single child, and the badges are left off entirely.
    */
   childrenList?: { id: string; name: string }[];
+  /**
+   * Show only the entries about this child (plus the account-level ones, which
+   * are about the reader rather than about a pupil).
+   *
+   * The list used to span every child on purpose. In a family with two
+   * children that meant the home screen mixed both of them together while the
+   * switcher above said one name — so the page contradicted its own heading.
+   * Scoping it to the selected child makes every screen in the app answer for
+   * exactly one child; the switcher is one tap away for the other.
+   */
+  filterChildId?: string;
+  /** Also refresh whatever else the caller shows, when "Vernieuwen" is tapped. */
+  onRefresh?: () => void;
+  /** Rendered inside the section, after the feed entries. */
+  footer?: ReactNode;
+  /** Keep the section on screen even with no feed entries (a footer needs it). */
+  alwaysShow?: boolean;
 }
 
 const LEVEL_STYLES: Record<Level, { border: string; dot: string }> = {
@@ -79,6 +96,10 @@ export default function ActionCenter({
   refreshKey = 0,
   showAllClear = false,
   childrenList = [],
+  filterChildId,
+  onRefresh,
+  footer,
+  alwaysShow = false,
 }: ActionCenterProps) {
   const tr = language === 'tr';
   const text = tr
@@ -95,7 +116,7 @@ export default function ActionCenter({
         open: 'Openen',
       };
 
-  const [items, setItems] = useState<ActionItem[]>([]);
+  const [rawItems, setRawItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   // A parent has one job on this screen and it is not diagnosing our server.
   // A failed load renders as nothing at all rather than as an error card that
@@ -106,11 +127,11 @@ export default function ActionCenter({
     setLoading(true);
     try {
       const res = await apiRequest('/signals/today');
-      setItems(res?.feed || []);
+      setRawItems(res?.feed || []);
       setFailed(false);
     } catch {
       setFailed(true);
-      setItems([]);
+      setRawItems([]);
     } finally {
       setLoading(false);
     }
@@ -120,17 +141,28 @@ export default function ActionCenter({
     load();
   }, [load, refreshKey]);
 
+  const refresh = () => {
+    load();
+    onRefresh?.();
+  };
+
+  // Every per-child entry the server builds carries the student id in its key
+  // and its link (`parent_billing:<id>`, `#billing:<id>`). An entry that names
+  // *another* child is dropped; one that names no child at all — "vul uw
+  // telefoonnummer aan" — is about the account and always stays.
+  const otherChildIds = filterChildId
+    ? childrenList.map((c) => c.id).filter((id) => id !== filterChildId)
+    : [];
+  const items = otherChildIds.length
+    ? rawItems.filter((item) => {
+        const haystack = `${item.key}:${item.link || ''}`;
+        return !otherChildIds.some((id) => haystack.includes(id));
+      })
+    : rawItems;
+
   // Nothing to say, or nothing to say *yet* — either way, take up no room.
-  if (loading || failed) return null;
-  if (items.length === 0) {
-    if (!showAllClear) return null;
-    return (
-      <div className="mb-4 sm:mb-6 flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-        <CheckCircle2 className="w-5 h-5 shrink-0" />
-        {text.allClear}
-      </div>
-    );
-  }
+  if ((loading || failed) && !alwaysShow) return null;
+  if (items.length === 0 && !alwaysShow && !showAllClear) return null;
 
   const label = (item: ActionItem) => (tr ? item.titleTr : item.titleNl);
   const body = (item: ActionItem) => (tr ? item.bodyTr : item.bodyNl);
@@ -139,7 +171,7 @@ export default function ActionCenter({
   // builds carries the student id (`parent_billing:<id>`, `#billing:<id>`);
   // account-level entries such as the missing phone number carry neither, and
   // correctly get no badge.
-  const showBadges = childrenList.length > 1;
+  const showBadges = childrenList.length > 1 && !filterChildId;
   const childFor = (item: ActionItem) => {
     if (!showBadges) return null;
     const haystack = `${item.key}:${item.link || ''}`;
@@ -152,13 +184,20 @@ export default function ActionCenter({
       <div className="flex items-center justify-between gap-3 mb-3">
         <h2 className="text-lg sm:text-xl font-semibold text-emerald-800">{text.title}</h2>
         <button
-          onClick={load}
+          onClick={refresh}
           className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 transition"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           {text.refresh}
         </button>
       </div>
+
+      {items.length === 0 && !loading && !failed && showAllClear && (
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          <CheckCircle2 className="w-5 h-5 shrink-0" />
+          {text.allClear}
+        </div>
+      )}
 
       <div className="space-y-2">
         {items.map((item) => {
@@ -204,6 +243,7 @@ export default function ActionCenter({
             </div>
           );
         })}
+        {footer}
       </div>
     </div>
   );

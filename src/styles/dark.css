@@ -124,6 +124,19 @@
 .dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.10); }
 .dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.16); }
 .dark .bg-emerald-50\/60 { background-color: rgba(16, 185, 129, 0.08); }
+/* Fractional-opacity tints. Tailwind emits these as their own classes, so a
+   rule for `.bg-emerald-50` never reaches `.bg-emerald-50/50` — which is what
+   left the unread rows in the notifications sheet painted with a near-white
+   wash that white text disappeared into. */
+.dark .bg-emerald-50\/50 { background-color: rgba(16, 185, 129, 0.12); }
+.dark .bg-emerald-50\/40 { background-color: rgba(16, 185, 129, 0.09); }
+.dark .bg-emerald-50\/30 { background-color: rgba(16, 185, 129, 0.07); }
+.dark .bg-white\/70 { background-color: rgba(255, 255, 255, 0.07); }
+.dark .bg-white\/80 { background-color: rgba(255, 255, 255, 0.08); }
+.dark .bg-white\/90 { background-color: rgba(255, 255, 255, 0.09); }
+.dark .bg-white\/95 { background-color: var(--d-surface); }
+.dark .hover\:bg-emerald-100:hover { background-color: rgba(16, 185, 129, 0.22); }
+.dark .bg-red-50\/50 { background-color: rgba(239, 68, 68, 0.12); }
 .dark .bg-green-50 { background-color: rgba(34, 197, 94, 0.10); }
 .dark .bg-green-100 { background-color: rgba(34, 197, 94, 0.16); }
 .dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.10); }

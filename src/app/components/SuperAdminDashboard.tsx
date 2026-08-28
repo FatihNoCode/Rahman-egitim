@@ -12,13 +12,13 @@ import booksLogo from '../../imports/logo.svg';
 import { notify, confirmDialog } from './ui/feedback';
 import MetricsDrilldown from './MetricsDrilldown';
 import MonitoringBarChart from './MonitoringCharts';
-import TestRoleSwitcher from './TestRoleSwitcher';
 import LoadError from './ui/load-error';
-import { isNative, isAppLayout } from '../../lib/native';
+import { isAppLayout } from '../../lib/native';
 import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
 import AccountAvatarButton from './mobile/AccountAvatarButton';
 import SettingsPanel from './mobile/SettingsPanel';
+import RoleSwitchPill from './RoleSwitchPill';
 import LocationsList from './mobile/LocationsList';
 import {
   useNavOrder,
@@ -379,7 +379,7 @@ function ToggleSwitch({ checked, disabled, onChange, label, title }: { checked: 
 }
 
 export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAdminDashboardProps) {
-  const { language, setLanguage, apiRequest, user } = useApp();
+  const { language, setLanguage, apiRequest } = useApp();
   const t = translations[language];
   const rtx = rt[language];
 
@@ -707,7 +707,20 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   const allMobileItems: MobileNavItem[] = [...navItems, ...mobileExtraNavItems(language)];
   const mobileById = Object.fromEntries(allMobileItems.map((i) => [i.id, i]));
   const mobileItems = navOrder.map((id) => mobileById[id]).filter(Boolean) as MobileNavItem[];
-  const mobileNav = <MobileNav items={mobileItems} active={tab} onChange={setTab} language={language} />;
+  const mobileNav = <MobileNav items={mobileItems} active={tab} onChange={setTab} language={language} onReorder={setNavOrder} />;
+
+
+  // The avatar is a toggle: tapping it again returns to the tab it was opened
+  // from, rather than leaving the account screen with no obvious way back.
+  const [tabBeforeAccount, setTabBeforeAccount] = useState<string>('locations');
+  const openAccount = () => {
+    if (tab === MOBILE_ACCOUNT_ID) {
+      setTab(tabBeforeAccount === MOBILE_ACCOUNT_ID ? 'locations' : tabBeforeAccount);
+      return;
+    }
+    setTabBeforeAccount(tab);
+    setTab(MOBILE_ACCOUNT_ID);
+  };
 
   if (app && (tab === MOBILE_ACCOUNT_ID || tab === MOBILE_PREFS_ID)) {
     return (
@@ -716,15 +729,12 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
         style={{ paddingBottom: 'calc(5.5rem + var(--safe-bottom))' }}
       >
         <div className="mx-auto mb-2 flex max-w-lg justify-end">
-          <AccountAvatarButton
-            onOpen={() => setTab(MOBILE_ACCOUNT_ID)}
-            active={tab === MOBILE_ACCOUNT_ID}
-          />
+          <AccountAvatarButton onOpen={openAccount} active={tab === MOBILE_ACCOUNT_ID} />
         </div>
         {tab === MOBILE_ACCOUNT_ID ? (
           <AccountPanel onLogout={onLogout} />
         ) : (
-          <SettingsPanel navItems={mobileItems} onReorder={setNavOrder} />
+          <SettingsPanel navItems={mobileItems} onReorder={setNavOrder} onLogout={onLogout} />
         )}
         {mobileNav}
       </div>
@@ -743,7 +753,12 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
             <h1 className="min-w-0 flex-1 text-2xl font-bold leading-tight text-gray-800">
               {mobileById[tab]?.label ?? t.superAdminDashboard}
             </h1>
-            <AccountAvatarButton onOpen={() => setTab(MOBILE_ACCOUNT_ID)} />
+            {/* Renders nothing unless this account genuinely holds more
+                than one role. It was previously only on the parent and teacher
+                dashboards, so switching *into* an admin role stranded you
+                there — the control you had just used was gone. */}
+            <RoleSwitchPill language={language} />
+            <AccountAvatarButton onOpen={openAccount} />
           </div>
         )}
         {!app && (
@@ -770,19 +785,15 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                 NL
               </button>
             </div>
+            <RoleSwitchPill language={language} />
             <UserMenu onLogout={onLogout} />
           </div>
         </div>
         )}
 
-        {/* The dropdown version of this lives inside UserMenu, but on the native
-            shell it's been unreliable to reach, so multi-role accounts also
-            get it inline where a tap can't miss it. */}
-        {isNative() && (user?.roles?.length ?? 0) > 1 && (
-          <div className="mb-4 sm:mb-6">
-            <TestRoleSwitcher language={language} />
-          </div>
-        )}
+        {/* The inline copy of the role switcher that used to sit here is gone:
+            RoleSwitchPill in the header above covers both layouts, so a
+            superadmin who switched in can always switch back out. */}
 
         <div className="flex gap-4 sm:gap-6 items-start">
           {!app && (

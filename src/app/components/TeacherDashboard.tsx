@@ -63,7 +63,12 @@ interface TeacherDashboardProps {
 // ever opened a card pointing at a computer, so the app doesn't carry them at
 // all any more. (The tab ids stay valid for a deep link — see the fallbacks
 // further down — they just aren't destinations on the bar.)
-const DESKTOP_ONLY_TABS = ['beheer', 'diploma'];
+// Building an exam is a keyboard job — a question bank, long answer text,
+// print layout — and it was never usable on a phone. It is not offered there
+// at all rather than offered and then apologised for: a tab that opens a "do
+// this on a computer" card still costs a slot on a bar that has none to
+// spare.
+const DESKTOP_ONLY_TABS = ['beheer', 'diploma', 'toets'];
 
 /**
  * One collapsible step of the lesson registration.
@@ -148,8 +153,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     'meldingen',
     'oudergesprekken',
     'cases',
-    'toets',
-    ...(app ? [] : [...(diplomaVisible ? ['diploma'] : []), 'beheer']),
+    ...(app ? [] : ['toets', ...(diplomaVisible ? ['diploma'] : []), 'beheer']),
     MOBILE_PREFS_ID,
   ]);
   const [conferSessions, setConferSessions] = useState<any[]>([]);
@@ -687,12 +691,25 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const allMobileItems: MobileNavItem[] = [
     // Minus the sections that stay on the website — see DESKTOP_ONLY_TABS.
     ...navItems.filter((i) => !app || !DESKTOP_ONLY_TABS.includes(i.id)),
-    ...mobileExtraNavItems(language),
+    ...mobileExtraNavItems(language, true),
   ];
   const mobileById = Object.fromEntries(allMobileItems.map((i) => [i.id, i]));
   const mobileItems = navOrder.map((id) => mobileById[id]).filter(Boolean) as MobileNavItem[];
-  const mobileNav = <MobileNav items={mobileItems} active={activeTab} onChange={setActiveTab} language={language} />;
+  const mobileNav = <MobileNav items={mobileItems} active={activeTab} onChange={setActiveTab} language={language} onReorder={setNavOrder} />;
   const onExtraTab = activeTab === MOBILE_ACCOUNT_ID || activeTab === MOBILE_PREFS_ID;
+
+
+  // The avatar is a toggle: tapping it again returns to the tab it was opened
+  // from, rather than leaving the account screen with no obvious way back.
+  const [tabBeforeAccount, setTabBeforeAccount] = useState<string>('signals');
+  const openAccount = () => {
+    if (activeTab === MOBILE_ACCOUNT_ID) {
+      setActiveTab(tabBeforeAccount === MOBILE_ACCOUNT_ID ? 'signals' : tabBeforeAccount);
+      return;
+    }
+    setTabBeforeAccount(activeTab);
+    setActiveTab(MOBILE_ACCOUNT_ID);
+  };
 
   if (app && onExtraTab) {
     return (
@@ -701,15 +718,12 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
         style={{ paddingBottom: 'calc(5.5rem + var(--safe-bottom))' }}
       >
         <div className="mx-auto mb-2 flex max-w-lg justify-end">
-          <AccountAvatarButton
-            onOpen={() => setActiveTab(MOBILE_ACCOUNT_ID)}
-            active={activeTab === MOBILE_ACCOUNT_ID}
-          />
+          <AccountAvatarButton onOpen={openAccount} active={activeTab === MOBILE_ACCOUNT_ID} />
         </div>
         {activeTab === MOBILE_ACCOUNT_ID ? (
           <AccountPanel onLogout={onLogout} />
         ) : (
-          <SettingsPanel navItems={mobileItems} onReorder={setNavOrder} />
+          <SettingsPanel navItems={mobileItems} onReorder={setNavOrder} settingsLabel onLogout={onLogout} />
         )}
         {mobileNav}
       </div>
@@ -734,7 +748,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                 rather than from the bottom of the settings screen. Renders
                 nothing for the single-role majority. */}
             <RoleSwitchPill language={language} />
-            <AccountAvatarButton onOpen={() => setActiveTab(MOBILE_ACCOUNT_ID)} />
+            <AccountAvatarButton onOpen={openAccount} />
           </div>
         )}
         {!app && (
@@ -1451,8 +1465,8 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
               </div>
             )}
 
-            {/* ─── TOETS TAB ─── */}
-            {activeTab === 'toets' && (
+            {/* ─── TOETS TAB ─── website only, see DESKTOP_ONLY_TABS ─── */}
+            {activeTab === 'toets' && !app && (
               <ExamListView language={language} apiRequest={apiRequest} classes={classes} />
             )}
 

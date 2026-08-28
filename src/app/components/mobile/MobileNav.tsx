@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import type { Language } from '../../App';
 import { type MobileNavItem, VISIBLE_SLOTS } from './navPrefs';
@@ -10,6 +10,15 @@ interface MobileNavProps {
   active: string;
   onChange: (id: string) => void;
   language: Language;
+  /**
+   * Persist a new destination order. Given this, a tab can be picked up off
+   * the bar itself — press and hold, then slide — instead of only in the
+   * settings screen, which is where nobody looks for it.
+   *
+   * The first destination is pinned (see homeNavId in navPrefs) and neither
+   * moves nor makes room.
+   */
+  onReorder?: (orderedIds: string[]) => void;
   // When false the bar sits in normal flow (a flex child) instead of floating
   // over the page. Used by full-height destinations like Elif-Ba where the
   // content must be bounded to the space above the bar, not run underneath it.
@@ -36,8 +45,18 @@ type Slot =
 //     selection follows your finger with a tick of haptic feedback at each
 //     destination, exactly like dragging across a UISegmentedControl. Tapping
 //     still works unchanged.
-export default function MobileNav({ items, active, onChange, language, floating = true }: MobileNavProps) {
+export default function MobileNav({ items, active, onChange, language, floating = true, onReorder }: MobileNavProps) {
   const [moreOpen, setMoreOpen] = useState(false);
+  // How far the More sheet has been dragged down, and whether that drag is
+  // live. The sheet has exactly one resting height, so the bar on it is a
+  // dismiss control and nothing else — dragging up does not open it further.
+  const [sheetDrag, setSheetDrag] = useState(0);
+  const sheetDragging = useRef(false);
+  const sheetStartY = useRef(0);
+  // Which tab is being carried, once a press has been held long enough to
+  // mean "pick this up" rather than "open this".
+  const [reorderIndex, setReorderIndex] = useState<number | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pressed, setPressed] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -53,6 +72,15 @@ export default function MobileNav({ items, active, onChange, language, floating 
   // which is why More looked completely dead to a tap while a drag-and-release
   // onto it worked (a drag suppresses the click entirely).
   const openedAt = useRef(0);
+
+  const cancelHold = () => {
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  };
+
+  useEffect(() => cancelHold, []);
 
   const openMore = () => {
     openedAt.current = Date.now();
@@ -129,13 +157,49 @@ export default function MobileNav({ items, active, onChange, language, floating 
     setPressed(i);
     selectionStart();
     selectAt(i);
+
+    // Held still on a movable tab: pick it up. 450ms is long enough that a
+    // normal tap never trips it and short enough that someone deliberately
+    // holding a tab does not conclude nothing is going to happen. Slot 0 is
+    // the pinned home tab, and the More button is not a destination, so
+    // neither can be carried.
+    cancelHold();
+    if (onReorder && i > 0 && slots[i]?.kind === 'tab') {
+      holdTimer.current = setTimeout(() => {
+        if (!dragging.current || moved.current) return;
+        e.currentTarget?.setPointerCapture?.(e.pointerId);
+        setReorderIndex(i);
+        selectionStart();
+      }, 450);
+    }
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging.current) return;
     const i = slotAt(e.clientX);
+
+    // Carrying a tab: the finger moves the destination itself, not the
+    // selection. The list is rewritten a slot at a time as it crosses each
+    // boundary, so the bar under the finger always shows the order that will
+    // be saved.
+    if (reorderIndex !== null) {
+      moved.current = true;
+      const target = Math.max(1, Math.min(items.length - 1, i));
+      if (target !== reorderIndex && slots[target]?.kind === 'tab') {
+        const ids = items.map((it) => it.id);
+        const [carried] = ids.splice(reorderIndex, 1);
+        ids.splice(target, 0, carried);
+        onReorder?.(ids);
+        setReorderIndex(target);
+        selectionChanged();
+      }
+      setPressed(target);
+      return;
+    }
+
     if (i !== downSlot.current) {
       moved.current = true;
+      cancelHold();
       // First movement past the starting slot: this is now a drag, so start
       // capturing to keep receiving events even if the finger leaves the bar.
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -147,9 +211,14 @@ export default function MobileNav({ items, active, onChange, language, floating 
   const onPointerUp = (e: React.PointerEvent) => {
     if (!dragging.current) return;
     dragging.current = false;
+    cancelHold();
     const i = slotAt(e.clientX);
     setPressed(null);
     selectionEnd();
+    if (reorderIndex !== null) {
+      setReorderIndex(null);
+      return;
+    }
     // Only a *drag* that ended on More opens it from here. A plain tap is left
     // to the button's own onClick, which fires after this handler returns — by
     // then there is no backdrop under the finger to swallow it.
@@ -171,9 +240,42 @@ export default function MobileNav({ items, active, onChange, language, floating 
   const onPointerCancel = () => {
     if (!dragging.current) return;
     dragging.current = false;
+    cancelHold();
     setPressed(null);
     selectionEnd();
+    if (reorderIndex !== null) {
+      setReorderIndex(null);
+      return;
+    }
     if (!moved.current && slots[downSlot.current]?.kind === 'more') openMore();
+  };
+
+  // The More sheet's grabber. One resting height, so the only thing it does is
+  // let go of the sheet — dragging up is resisted rather than opening it
+  // further, because there is nothing further to open onto.
+  const onSheetDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    sheetDragging.current = true;
+    sheetStartY.current = e.clientY;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const onSheetMove = (e: React.PointerEvent) => {
+    if (!sheetDragging.current) return;
+    const dy = e.clientY - sheetStartY.current;
+    setSheetDrag(dy > 0 ? dy : dy / 5);
+  };
+
+  const onSheetUp = () => {
+    if (!sheetDragging.current) return;
+    sheetDragging.current = false;
+    const travelled = sheetDrag;
+    setSheetDrag(0);
+    // Past a thumb's worth of travel it was a dismissal, not a fidget.
+    if (travelled > 60) {
+      openedAt.current = 0;
+      setMoreOpen(false);
+    }
   };
 
   return (
@@ -236,8 +338,14 @@ export default function MobileNav({ items, active, onChange, language, floating 
                   // below, which assumes every slot is exactly 1/n of the track.
                   className="relative z-10 flex min-w-0 flex-1 flex-col items-center gap-1 rounded-[20px] py-2"
                   style={{
-                    transform: isPressed ? 'scale(0.92)' : 'scale(1)',
+                    transform:
+                      reorderIndex === index
+                        ? 'scale(1.12) translateY(-3px)'
+                        : isPressed
+                          ? 'scale(0.92)'
+                          : 'scale(1)',
                     transition: `transform 220ms ${APPLE_EASE}`,
+                    zIndex: reorderIndex === index ? 20 : undefined,
                   }}
                 >
                   <Icon
@@ -271,13 +379,26 @@ export default function MobileNav({ items, active, onChange, language, floating 
             onClick={(e) => e.stopPropagation()}
             style={{
               paddingBottom: 'calc(var(--safe-bottom) + 0.5rem)',
-              animation: `mobilenav-sheet 380ms ${APPLE_EASE}`,
+              transform: `translateY(${sheetDrag}px)`,
+              transition: sheetDragging.current ? 'none' : `transform 320ms ${APPLE_EASE}`,
+              animation: sheetDrag === 0 ? `mobilenav-sheet 380ms ${APPLE_EASE}` : undefined,
             }}
           >
-            {/* Grabber. iOS puts one on every sheet — it reads as "this is a
-                surface you can dismiss" without needing a close button. */}
-            <div className="flex justify-center pb-1 pt-2.5">
-              <span className="h-1.5 w-9 rounded-full bg-black/15" />
+            {/* Grabber. Wide enough to be aimed at without looking, and it
+                actually drags: pull it down and the sheet goes away. Up does
+                nothing — there is no taller position for this sheet to go to,
+                so pretending otherwise would just be a gesture that fails. */}
+            <div
+              role="separator"
+              aria-label={MORE_LABEL[language]}
+              onPointerDown={onSheetDown}
+              onPointerMove={onSheetMove}
+              onPointerUp={onSheetUp}
+              onPointerCancel={onSheetUp}
+              style={{ touchAction: 'none' }}
+              className="flex cursor-grab justify-center pb-1.5 pt-3 active:cursor-grabbing"
+            >
+              <span className="h-1.5 w-[30%] rounded-full bg-black/15" />
             </div>
             <h3 className="px-5 pb-1 pt-1 text-[13px] font-semibold uppercase tracking-wide text-gray-400">
               {MORE_LABEL[language]}

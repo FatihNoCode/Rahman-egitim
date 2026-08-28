@@ -23,6 +23,7 @@ import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
 import AccountAvatarButton from './mobile/AccountAvatarButton';
 import SettingsPanel from './mobile/SettingsPanel';
+import RoleSwitchPill from './RoleSwitchPill';
 import DesktopOnly from './mobile/DesktopOnly';
 import CasesView from './CasesView';
 import SignalsView from './SignalsView';
@@ -301,8 +302,21 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   ];
   const mobileById = Object.fromEntries(allMobileItems.map((i) => [i.id, i]));
   const mobileItems = navOrder.map((id) => mobileById[id]).filter(Boolean) as MobileNavItem[];
-  const mobileNav = <MobileNav items={mobileItems} active={activeTab} onChange={setActiveTab} language={language} />;
+  const mobileNav = <MobileNav items={mobileItems} active={activeTab} onChange={setActiveTab} language={language} onReorder={setNavOrder} />;
   const onExtraTab = activeTab === MOBILE_ACCOUNT_ID || activeTab === MOBILE_PREFS_ID;
+
+
+  // The avatar is a toggle: tapping it again returns to the tab it was opened
+  // from, rather than leaving the account screen with no obvious way back.
+  const [tabBeforeAccount, setTabBeforeAccount] = useState<string>('signals');
+  const openAccount = () => {
+    if (activeTab === MOBILE_ACCOUNT_ID) {
+      setActiveTab(tabBeforeAccount === MOBILE_ACCOUNT_ID ? 'signals' : tabBeforeAccount);
+      return;
+    }
+    setTabBeforeAccount(activeTab);
+    setActiveTab(MOBILE_ACCOUNT_ID);
+  };
 
   if (app && onExtraTab) {
     return (
@@ -311,15 +325,12 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
         style={{ paddingBottom: 'calc(5.5rem + var(--safe-bottom))' }}
       >
         <div className="mx-auto mb-2 flex max-w-lg justify-end">
-          <AccountAvatarButton
-            onOpen={() => setActiveTab(MOBILE_ACCOUNT_ID)}
-            active={activeTab === MOBILE_ACCOUNT_ID}
-          />
+          <AccountAvatarButton onOpen={openAccount} active={activeTab === MOBILE_ACCOUNT_ID} />
         </div>
         {activeTab === MOBILE_ACCOUNT_ID ? (
           <AccountPanel onLogout={onLogout} />
         ) : (
-          <SettingsPanel navItems={mobileItems} onReorder={setNavOrder} />
+          <SettingsPanel navItems={mobileItems} onReorder={setNavOrder} onLogout={onLogout} />
         )}
         {mobileNav}
       </div>
@@ -338,7 +349,12 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
             <h1 className="min-w-0 flex-1 text-2xl font-bold leading-tight text-gray-800">
               {mobileById[activeTab]?.label ?? t.adminDashboard}
             </h1>
-            <AccountAvatarButton onOpen={() => setActiveTab(MOBILE_ACCOUNT_ID)} />
+            {/* Renders nothing unless this account genuinely holds more
+                than one role. It was previously only on the parent and teacher
+                dashboards, so switching *into* an admin role stranded you
+                there — the control you had just used was gone. */}
+            <RoleSwitchPill language={language} />
+            <AccountAvatarButton onOpen={openAccount} />
           </div>
         )}
         {!app && (
@@ -365,6 +381,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
                 NL
               </button>
             </div>
+            <RoleSwitchPill language={language} />
             <UserMenu onLogout={onLogout} />
           </div>
         </div>

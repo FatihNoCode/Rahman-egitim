@@ -2,6 +2,7 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import * as kv from "./kv_store.tsx";
+import { provisionDemoSandbox, resetDemoSandbox, discardDemoSandbox, sandboxContext } from "./demo_sandbox.tsx";
 import { createClient } from "npm:@supabase/supabase-js";
 import {
   computeStudentSignals,
@@ -1480,8 +1481,9 @@ app.post("/make-server-6679cacd/switch-role", async (c) => {
 //
 // Lets a superadmin hand any email address a throwaway account for testing,
 // with one or more of parent/teacher/admin, without exposing any real
-// school's data. Every tester is pinned to the single seeded demo school
-// (DEMO_SCHOOL_ID, "Darul Furkan (Demo)") regardless of role — the same
+// school's data. Every tester works in their own sandbox copy of the demo
+// school (see demo_sandbox.tsx); DEMO_SCHOOL_ID below is the template those
+// copies are cut from, and is no longer a workspace itself — the same
 // ownership checks every other admin/teacher/parent route already enforces
 // (schoolId / class / child ownership, keyed off the caller's own record, not
 // anything client-supplied) then keep them contained to it, the same way they
@@ -1510,30 +1512,15 @@ function isPortalRole(v: unknown): v is PortalRole {
   return v === 'parent' || v === 'teacher' || v === 'admin';
 }
 
-function buildDemoRoleContext(roles: PortalRole[]) {
+// A tester's roles all point at their own sandbox, never at the template.
+// See demo_sandbox.tsx for why the shared school stopped being a workspace.
+async function buildDemoRoleContext(roles: PortalRole[], testerId: string) {
+  const box = await sandboxContext(testerId);
   const ctx: Record<string, any> = {};
-  if (roles.includes('admin')) ctx.admin = { schoolId: DEMO_SCHOOL_ID };
-  if (roles.includes('teacher')) ctx.teacher = { schoolId: DEMO_SCHOOL_ID, classId: DEMO_TEACHER_CLASS_ID };
-  if (roles.includes('parent')) ctx.parent = { schoolId: DEMO_SCHOOL_ID };
+  if (roles.includes('admin')) ctx.admin = { schoolId: box.schoolId };
+  if (roles.includes('teacher')) ctx.teacher = { schoolId: box.schoolId, classId: box.teacherClassId };
+  if (roles.includes('parent')) ctx.parent = { schoolId: box.schoolId };
   return ctx;
-}
-
-// Adds the tester to the shared demo class's roster alongside the existing
-// demo teacher, rather than creating a class per tester — it's synthetic
-// data, sharing it is fine.
-async function ensureTesterTeacherClass(testerId: string) {
-  const classIds: string[] = await kv.get(`teacher_classes:${testerId}`) || [];
-  if (!classIds.includes(DEMO_TEACHER_CLASS_ID)) {
-    await kv.set(`teacher_classes:${testerId}`, [...classIds, DEMO_TEACHER_CLASS_ID]);
-  }
-}
-
-async function ensureTesterParentChild(testerId: string) {
-  const existing = await kv.get(`parent_children:${testerId}`);
-  const current: string[] = Array.isArray(existing) ? existing : [];
-  const missing = DEMO_CHILD_STUDENT_IDS.filter((id) => !current.includes(id));
-  if (missing.length === 0) return;
-  await kv.set(`parent_children:${testerId}`, [...current, ...missing]);
 }
 
 app.post("/make-server-6679cacd/demo-testers", async (c) => {
@@ -1590,7 +1577,12 @@ app.post("/make-server-6679cacd/demo-testers", async (c) => {
       userId = data.user.id;
     }
 
-    const roleContext = buildDemoRoleContext(roles as PortalRole[]);
+    // Give the tester their own copy of the demo school before their session
+    // can point at it. Deterministic and additive, so re-adding an existing
+    // tester repairs their sandbox rather than building a second one.
+    await provisionDemoSandbox(userId);
+
+    const roleContext = await buildDemoRoleContext(roles as PortalRole[], userId);
     const activeRole = roles[0];
     const ctx = roleContext[activeRole] || {};
     const record = {
@@ -1611,9 +1603,6 @@ app.post("/make-server-6679cacd/demo-testers", async (c) => {
       updatedAt: new Date().toISOString(),
     };
     await kv.set(`user:${userId}`, record);
-
-    if (roles.includes('teacher')) await ensureTesterTeacherClass(userId);
-    if (roles.includes('parent')) await ensureTesterParentChild(userId);
 
     const ROLE_LABELS_NL: Record<PortalRole, string> = { parent: 'Ouder', teacher: 'Leraar', admin: 'Lokale beheerder' };
     const roleLabelsNl = roles.map((r: PortalRole) => ROLE_LABELS_NL[r]).join(', ');
@@ -1757,7 +1746,8 @@ app.patch("/make-server-6679cacd/demo-testers/:id", async (c) => {
     const roles = Array.isArray(rawRoles) ? rawRoles.filter(isPortalRole) : [];
     if (roles.length === 0) return c.json({ error: 'At least one role is required' }, 400);
 
-    const roleContext = buildDemoRoleContext(roles as PortalRole[]);
+    await provisionDemoSandbox(id);
+    const roleContext = await buildDemoRoleContext(roles as PortalRole[], id);
     const activeRole = roles.includes(existing.role) ? existing.role : roles[0];
     const ctx = roleContext[activeRole] || {};
     const updated = {
@@ -1770,9 +1760,6 @@ app.patch("/make-server-6679cacd/demo-testers/:id", async (c) => {
       updatedAt: new Date().toISOString(),
     };
     await kv.set(`user:${id}`, updated);
-
-    if (roles.includes('teacher')) await ensureTesterTeacherClass(id);
-    if (roles.includes('parent')) await ensureTesterParentChild(id);
 
     return c.json({ success: true, tester: { id, email: updated.email, roles } });
   } catch (err) {
@@ -1802,11 +1789,39 @@ app.delete("/make-server-6679cacd/demo-testers/:id", async (c) => {
     await kv.del(`user:${id}`);
     await kv.del(`teacher_classes:${id}`);
     await kv.del(`parent_children:${id}`);
+    // Their sandbox goes with them; leaving it behind orphans ~900 rows per
+    // deleted tester, and the store is the only place that would show it.
+    await discardDemoSandbox(id);
 
     return c.json({ success: true });
   } catch (err) {
     console.log('Remove demo tester error:', err);
     return c.json({ error: 'Failed to remove demo tester' }, 500);
+  }
+});
+
+// Put a tester's sandbox back to the pristine demo. Before sandboxes existed
+// there was no way to undo testing damage except hand-written SQL, so a demo
+// that had been poked at stayed poked at — which is exactly the state you do
+// not want an App Store reviewer, or a room of colleagues, to open it in.
+app.post("/make-server-6679cacd/demo-testers/:id/reset", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error || !user) return c.json({ error: 'Unauthorized' }, 401);
+    const requester = await getUserData(user.id);
+    if (requester?.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmins can manage demo testers' }, 403);
+    }
+
+    const id = c.req.param('id');
+    const existing = await getUserData(id);
+    if (!existing?.isDemoTester) return c.json({ error: 'Not a demo tester' }, 404);
+
+    const box = await resetDemoSandbox(id);
+    return c.json({ success: true, recordCount: box.recordCount });
+  } catch (err) {
+    console.log('Reset demo sandbox error:', err);
+    return c.json({ error: 'Failed to reset the demo environment' }, 500);
   }
 });
 

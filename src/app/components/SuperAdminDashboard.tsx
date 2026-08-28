@@ -223,6 +223,10 @@ const rt = {
     addTester: 'Toevoegen',
     noDemoTesters: 'Nog geen test-accounts',
     testerAdded: 'Test-account toegevoegd, inlogmail verstuurd',
+    resetSandbox: 'Testomgeving herstellen',
+    confirmResetSandbox: 'De testomgeving van deze tester wordt teruggezet naar de oorspronkelijke demo. Alles wat zij hebben ingevoerd of gewijzigd gaat verloren. Andere testers merken hier niets van.',
+    sandboxReset: 'Testomgeving hersteld',
+    sandboxResetFailed: 'Kon de testomgeving niet herstellen',
     testerCredentialsTitle: 'Inloggegevens, eenmalig zichtbaar',
     testerCredentialsHint: 'Noteer het wachtwoord nu. Het is versleuteld opgeslagen en kan hierna niet meer getoond worden — alleen opnieuw ingesteld. Voor App Store Connect vult u dit in bij Gebruikersnaam en Wachtwoord onder Aanmelden vereist.',
     testerPassword: 'Wachtwoord',
@@ -308,6 +312,10 @@ const rt = {
     addTester: 'Ekle',
     noDemoTesters: 'Henüz test hesabı yok',
     testerAdded: 'Test hesabı eklendi, giriş e-postası gönderildi',
+    resetSandbox: 'Test ortamını sıfırla',
+    confirmResetSandbox: 'Bu test kullanıcısının ortamı özgün demo haline döndürülecek. Girdikleri veya değiştirdikleri her şey kaybolacak. Diğer test kullanıcıları bundan etkilenmez.',
+    sandboxReset: 'Test ortamı sıfırlandı',
+    sandboxResetFailed: 'Test ortamı sıfırlanamadı',
     testerCredentialsTitle: 'Giriş bilgileri, yalnızca bir kez görünür',
     testerCredentialsHint: 'Şifreyi şimdi not edin. Şifrelenmiş olarak saklanır ve bundan sonra gösterilemez, yalnızca sıfırlanabilir. App Store Connect için bunu Giriş gerekli bölümündeki Kullanıcı adı ve Şifre alanlarına girin.',
     testerPassword: 'Şifre',
@@ -483,6 +491,21 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
       notify.error(error.message || rtx.testerAddFailed);
     } finally {
       setCreatingTester(false);
+    }
+  };
+
+  const [resettingTesterId, setResettingTesterId] = useState<string | null>(null);
+
+  const resetTesterSandbox = async (id: string) => {
+    if (!(await confirmDialog({ description: rtx.confirmResetSandbox, destructive: true }))) return;
+    setResettingTesterId(id);
+    try {
+      await apiRequest(`/demo-testers/${id}/reset`, { method: 'POST' });
+      notify.success(rtx.sandboxReset);
+    } catch (error: any) {
+      notify.error(error.message || rtx.sandboxResetFailed);
+    } finally {
+      setResettingTesterId(null);
     }
   };
 
@@ -1198,14 +1221,24 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                           ))}
                         </div>
                       </div>
-                      <button
-                        onClick={() => removeDemoTester(tester.id)}
-                        disabled={removingTesterId === tester.id}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-50"
-                        title={rtx.revokeAccess}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => resetTesterSandbox(tester.id)}
+                          disabled={resettingTesterId === tester.id}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition disabled:opacity-50"
+                          title={rtx.resetSandbox}
+                        >
+                          <RefreshCw className={`h-4 w-4 ${resettingTesterId === tester.id ? 'animate-spin' : ''}`} />
+                        </button>
+                        <button
+                          onClick={() => removeDemoTester(tester.id)}
+                          disabled={removingTesterId === tester.id}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-50"
+                          title={rtx.revokeAccess}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

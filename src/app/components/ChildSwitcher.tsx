@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Check, ChevronDown, ArrowLeftRight } from 'lucide-react';
 import { childAccent, childInitial } from './childIdentity';
-import { isAppLayout } from '../../lib/native';
 import type { Language } from '../App';
 
 interface SwitchableChild {
@@ -39,11 +38,11 @@ const T = {
 // you had to notice which pill was filled in. This states it in words, and the
 // action it offers is the one thing you'd want next: switch to the other child.
 //
-// It is also sticky. Every tab below it — facturatie, cijfers, de agenda — is a
-// long scroll, and the answer to "whose money is this, whose grades are these"
-// used to scroll off the top on the first flick. Pinned to the top of the
-// scroller it is the one thing on the screen that never leaves, which is what
-// lets every tab underneath stay free of the child's name.
+// It sits at the top of the page and stays there in the layout — it is not
+// sticky. Pinned to the scroller it detached from the content and appeared to
+// slide down the screen on every flick, which read as a bug rather than as a
+// convenience. Each tab now names the child it is about in its own header
+// instead (see ParentDashboard).
 export default function ChildSwitcher({
   children,
   selectedId,
@@ -67,19 +66,8 @@ export default function ChildSwitcher({
   const subtitle = (c: SwitchableChild) =>
     [c.className, c.schoolId ? schoolNames[c.schoolId] : null].filter(Boolean).join(' · ');
 
-  // The negative margins let the sticky bar's own background run to the edge of
-  // the padded page while its content stays aligned with everything else, so
-  // nothing appears to slide *under* a floating card as you scroll. They have
-  // to cancel the scroller's padding exactly, and the app shell keeps a flat
-  // 12px at every width where the website steps 12 → 16 → 24; being off by a
-  // few pixels here shows up as a horizontal scrollbar, not as a rounding
-  // error, so the two cases are spelled out separately.
-  const bleed = isAppLayout()
-    ? '-mx-3 px-3'
-    : '-mx-3 px-3 sm:-mx-4 sm:px-4 md:-mx-6 md:px-6';
-
   return (
-    <div className={`sticky top-0 z-30 mb-4 bg-gray-50/95 pb-2 pt-1 backdrop-blur ${bleed}`}>
+    <div className="relative z-30 mb-4 pb-1 pt-0.5">
       <button
         type="button"
         onClick={() => (isToggle ? onSelect(others[0].id) : setOpen((v) => !v))}

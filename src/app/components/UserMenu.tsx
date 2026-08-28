@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, ShieldCheck, FlaskConical, Sun, Moon, SunMoon } from 'lucide-react';
+import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, ShieldCheck, Sun, Moon, SunMoon } from 'lucide-react';
 import { useApp, supabase } from '../App';
 import { getThemePref, setThemePref, subscribeTheme, type ThemePref } from '../../lib/theme';
-import TestRoleSwitcher from './TestRoleSwitcher';
 import { startTotpEnroll, confirmTotpEnroll } from '../../lib/mfaEnroll';
 import { notify, confirmDialog } from './ui/feedback';
 
@@ -152,8 +151,11 @@ export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuPr
   const { language, user, setUser, apiRequest } = useApp();
   const text = t[language];
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<'menu' | 'profile' | 'notifications' | 'delete' | 'security' | 'testrole'>('menu');
-  const showTestRoles = (user?.roles?.length ?? 0) > 1;
+  // 'testrole' is gone: switching roles is the pill in the dashboard header
+  // now (RoleSwitchPill), where the current role is already stated. Having it
+  // here as well meant two controls for one job, and this was the one three
+  // clicks deep that nobody found.
+  const [view, setView] = useState<'menu' | 'profile' | 'notifications' | 'delete' | 'security'>('menu');
   // Appearance is applied to <html> before React boots, so the menu mirrors the
   // stored preference rather than owning it.
   const [theme, setTheme] = useState<ThemePref>(getThemePref);
@@ -455,16 +457,6 @@ export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuPr
                   </span>
                 )}
               </button>
-              {showTestRoles && (
-                <button
-                  onClick={() => setView('testrole')}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition"
-                >
-                  <FlaskConical className="h-4 w-4 text-amber-500" />
-                  {language === 'tr' ? 'Test rolü' : 'Testrol'}
-                  <span className="ml-auto text-[11px] font-medium text-gray-400 capitalize">{user?.role?.replace('_', ' ')}</span>
-                </button>
-              )}
               {/* Appearance. A segmented control rather than a sub-page: it is
                   one setting with three values, and burying it behind another
                   click would make it harder to find than it is to use. */}
@@ -513,20 +505,6 @@ export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuPr
                   </button>
                 )}
               </div>
-            </div>
-          )}
-
-          {view === 'testrole' && (
-            <div className="p-3">
-              <div className="flex items-center justify-between mb-2 px-1">
-                <button onClick={() => setView('menu')} className="text-gray-400 hover:text-gray-600 text-xs font-medium">
-                  ← {text.back}
-                </button>
-                <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <TestRoleSwitcher language={language} />
             </div>
           )}
 

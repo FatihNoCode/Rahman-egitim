@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Globe, PlayCircle, Shield, Info, ChevronRight, ChevronDown, GripVertical, LayoutGrid, Lock, LifeBuoy, Share2, Copy, Trash2, Sun, Moon, SunMoon } from 'lucide-react';
+import { Globe, PlayCircle, Shield, Info, ChevronRight, ChevronDown, GripVertical, LayoutGrid, Lock, LifeBuoy, Share2, Copy, Trash2, Sun, Moon, SunMoon, Bell, Check } from 'lucide-react';
 import { useApp } from '../../App';
 import { getThemePref, setThemePref, subscribeTheme, type ThemePref } from '../../../lib/theme';
-import TestRoleSwitcher from '../TestRoleSwitcher';
 import { type MobileNavItem, VISIBLE_SLOTS } from './navPrefs';
 import { selectionStart, selectionChanged, selectionEnd } from '../../../lib/haptics';
 import { APP_VERSION } from '../../../lib/version';
+import { notify } from '../ui/feedback';
 import {
   clearDeviceLog,
   formatDeviceLog,
@@ -19,6 +19,12 @@ interface SettingsPanelProps {
   // tabs sit on the bar versus under "More".
   navItems?: MobileNavItem[];
   onReorder?: (orderedIds: string[]) => void;
+  /** Head the screen "Instellingen" rather than "Voorkeuren" — see
+   *  mobileExtraNavItems, which decides the same thing for the tab bar. */
+  settingsLabel?: boolean;
+  /** Needed to sign out after the account has been deleted. Without it the
+   *  delete card is left off entirely. */
+  onLogout?: () => void;
 }
 
 const T = {
@@ -52,6 +58,24 @@ const T = {
     logCopied: 'Gekopieerd!',
     logClear: 'Wissen',
     logHint: 'Het logboek blijft op je toestel en verdwijnt vanzelf als er geen fouten waren.',
+    settingsAlt: 'Instellingen',
+    notifTitle: 'Meldingen',
+    notifHint: 'Hoe wij u op de hoogte brengen',
+    notifEmail: 'E-mail (standaard)',
+    notifInapp: 'In de app',
+    notifBoth: 'Beide',
+    notifSaved: 'Opgeslagen',
+    notifFailed: 'Opslaan mislukt',
+    account: 'Account',
+    deleteAccount: 'Account verwijderen',
+    deleteTitle: 'Account definitief verwijderen',
+    deleteBody: 'Uw account en persoonlijke gegevens worden definitief verwijderd. U kunt niet meer inloggen. Dit kan niet ongedaan worden gemaakt.',
+    deleteKeepsNote: 'De gegevens van uw kinderen blijven bij de school en worden losgekoppeld van uw account.',
+    deleteConfirmHint: 'Typ VERWIJDER om te bevestigen.',
+    deleteConfirmWord: 'VERWIJDER',
+    deleting: 'Bezig met verwijderen…',
+    deleteFailed: 'Verwijderen mislukt. Probeer het opnieuw.',
+    cancel: 'Annuleren',
   },
   tr: {
     settings: 'Tercihler',
@@ -83,6 +107,24 @@ const T = {
     logCopied: 'Kopyalandı!',
     logClear: 'Temizle',
     logHint: 'Günlük cihazınızda kalır ve hata yoksa kendiliğinden silinir.',
+    settingsAlt: 'Ayarlar',
+    notifTitle: 'Bildirimler',
+    notifHint: 'Sizi nasıl haberdar edelim',
+    notifEmail: 'E-posta (varsayılan)',
+    notifInapp: 'Uygulama içi',
+    notifBoth: 'Her ikisi',
+    notifSaved: 'Kaydedildi',
+    notifFailed: 'Kaydedilemedi',
+    account: 'Hesap',
+    deleteAccount: 'Hesabı sil',
+    deleteTitle: 'Hesabı kalıcı olarak sil',
+    deleteBody: 'Hesabınız ve kişisel bilgileriniz kalıcı olarak silinecek. Bir daha giriş yapamayacaksınız. Bu işlem geri alınamaz.',
+    deleteKeepsNote: 'Çocuklarınızın kayıtları okulda kalır ve hesabınızla bağlantısı kesilir.',
+    deleteConfirmHint: 'Onaylamak için SİL yazın.',
+    deleteConfirmWord: 'SİL',
+    deleting: 'Siliniyor…',
+    deleteFailed: 'Silme başarısız. Lütfen tekrar deneyin.',
+    cancel: 'İptal',
   },
 };
 
@@ -180,10 +222,62 @@ function DeviceLogCard({ text }: { text: (typeof T)['nl'] }) {
   );
 }
 
-export default function SettingsPanel({ onShowDemo, navItems, onReorder }: SettingsPanelProps) {
-  const { language, setLanguage, user } = useApp();
+export default function SettingsPanel({
+  onShowDemo,
+  navItems,
+  onReorder,
+  settingsLabel = false,
+  onLogout,
+}: SettingsPanelProps) {
+  const { language, setLanguage, user, setUser, apiRequest } = useApp();
   const text = T[language];
-  const showTestRoles = (user?.roles?.length ?? 0) > 1;
+
+  // How this account wants to hear from the school, and the door out of it.
+  // Both used to sit behind the avatar next to "Mijn gegevens", which is the
+  // screen for *who you are* — a delivery preference and a permanent deletion
+  // are settings, and this is the settings screen.
+  const [notifPref, setNotifPref] = useState<'email' | 'inapp' | 'both'>(
+    ((user as any)?.notificationPref as any) || 'email',
+  );
+  const [notifSaved, setNotifSaved] = useState(false);
+  const showNotifPref = user?.role === 'parent' || user?.role === 'teacher';
+
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const pickNotifPref = async (value: 'email' | 'inapp' | 'both') => {
+    const previous = notifPref;
+    // Saved on the tap rather than behind an "Opslaan" button: it is one
+    // choice out of three, and a preference you have to remember to confirm
+    // is a preference that silently does not apply.
+    setNotifPref(value);
+    try {
+      const res = await apiRequest('/me', {
+        method: 'PUT',
+        body: JSON.stringify({ notificationPref: value }),
+      });
+      if (res?.user && user) setUser({ ...user, ...res.user });
+      setNotifSaved(true);
+      setTimeout(() => setNotifSaved(false), 1500);
+    } catch {
+      setNotifPref(previous);
+      notify.error(text.notifFailed);
+    }
+  };
+
+  const deleteAccount = async () => {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await apiRequest('/me', { method: 'DELETE' });
+      onLogout?.();
+    } catch {
+      setDeleteError(text.deleteFailed);
+      setDeleting(false);
+    }
+  };
 
   // The chosen appearance lives outside React (it has to be applied before the
   // first render), so mirror it into state to keep the buttons in step.
@@ -258,7 +352,9 @@ export default function SettingsPanel({ onShowDemo, navItems, onReorder }: Setti
 
   return (
     <div className="mx-auto max-w-lg space-y-4">
-      <h1 className="px-1 text-2xl font-bold text-gray-800">{text.settings}</h1>
+      <h1 className="px-1 text-2xl font-bold text-gray-800">
+        {settingsLabel ? text.settingsAlt : text.settings}
+      </h1>
 
       {/* Language */}
       <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
@@ -318,8 +414,10 @@ export default function SettingsPanel({ onShowDemo, navItems, onReorder }: Setti
         </div>
       </div>
 
-      {/* Demo-only: switch the account you're testing as */}
-      {showTestRoles && <TestRoleSwitcher language={language} />}
+      {/* The role switcher used to live here as its own card. It is now the
+          pill in the dashboard header (RoleSwitchPill) — the header is where
+          "which hat am I wearing" is actually asked, and having it in two
+          places meant one of them was always the stale one. */}
 
       {/* Navigation order — collapsed until tapped */}
       {showReorder && (
@@ -407,6 +505,45 @@ export default function SettingsPanel({ onShowDemo, navItems, onReorder }: Setti
         </div>
       )}
 
+      {/* How we reach you */}
+      {showNotifPref && (
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+          <div className="mb-3 flex items-center gap-2">
+            <Bell className="h-4 w-4 text-emerald-600" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-700">{text.notifTitle}</p>
+              <p className="text-xs text-gray-400">{text.notifHint}</p>
+            </div>
+            {notifSaved && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                <Check className="h-3.5 w-3.5" />
+                {text.notifSaved}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              ['email', text.notifEmail],
+              ['inapp', text.notifInapp],
+              ['both', text.notifBoth],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => pickNotifPref(value)}
+                aria-pressed={notifPref === value}
+                className={`rounded-xl px-2 py-2.5 text-xs font-semibold transition ${
+                  notifPref === value
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* General */}
       <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
         {onShowDemo && (
@@ -434,6 +571,63 @@ export default function SettingsPanel({ onShowDemo, navItems, onReorder }: Setti
 
       {/* Problem log — only worth showing once something actually went wrong */}
       <DeviceLogCard text={text} />
+
+      {/* Account. Last on the screen and quiet on purpose: it is the one
+          control here that cannot be undone. */}
+      {onLogout && (
+        <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+          <button
+            onClick={() => {
+              setShowDelete(true);
+              setDeleteConfirm('');
+              setDeleteError('');
+            }}
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition active:bg-red-50"
+          >
+            <Trash2 className="h-5 w-5 text-gray-400" />
+            <span className="flex-1 text-sm font-medium text-gray-500">{text.deleteAccount}</span>
+            <ChevronRight className="h-4 w-4 text-gray-300" />
+          </button>
+        </div>
+      )}
+
+      {showDelete && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={() => setShowDelete(false)}>
+          <div
+            className="w-full rounded-t-3xl bg-white p-5"
+            onClick={(e) => e.stopPropagation()}
+            style={{ paddingBottom: 'calc(1.25rem + var(--safe-bottom))' }}
+          >
+            <p className="mb-2 text-base font-semibold text-gray-800">{text.deleteTitle}</p>
+            <p className="mb-2 text-sm text-gray-500">{text.deleteBody}</p>
+            <p className="mb-3 text-xs text-gray-400">{text.deleteKeepsNote}</p>
+            <label className="mb-1 block text-xs font-medium text-gray-500">{text.deleteConfirmHint}</label>
+            <input
+              type="text"
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              className="mb-3 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
+            {deleteError && <p className="mb-2 text-xs text-red-600">{deleteError}</p>}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDelete(false)}
+                className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600"
+              >
+                {text.cancel}
+              </button>
+              <button
+                onClick={deleteAccount}
+                disabled={deleting || deleteConfirm.trim() !== text.deleteConfirmWord}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-40"
+              >
+                <Trash2 className="h-4 w-4" />
+                {deleting ? text.deleting : text.deleteAccount}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* About */}
       <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">

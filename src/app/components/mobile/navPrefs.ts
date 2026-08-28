@@ -31,9 +31,22 @@ export interface MobileNavItem {
 export const MOBILE_ACCOUNT_ID = 'mobile-account';
 export const MOBILE_PREFS_ID = 'mobile-prefs';
 
-export function mobileExtraNavItems(language: 'nl' | 'tr'): MobileNavItem[] {
+/**
+ * @param settingsLabel  Call the destination "Instellingen" rather than
+ *   "Voorkeuren". True for parents and teachers, where it is the only settings
+ *   screen there is and "Voorkeuren" undersold it — it holds language,
+ *   appearance, notifications and account deletion. Left off for the admin
+ *   roles, which already own a dashboard tab called Instellingen; two entries
+ *   with the same name on one bar would be worse than an unfashionable one.
+ */
+export function mobileExtraNavItems(language: 'nl' | 'tr', settingsLabel = false): MobileNavItem[] {
+  const tr = language === 'tr';
   return [
-    { id: MOBILE_PREFS_ID, label: language === 'tr' ? 'Tercihler' : 'Voorkeuren', icon: SlidersHorizontal },
+    {
+      id: MOBILE_PREFS_ID,
+      label: settingsLabel ? (tr ? 'Ayarlar' : 'Instellingen') : (tr ? 'Tercihler' : 'Voorkeuren'),
+      icon: SlidersHorizontal,
+    },
   ];
 }
 

@@ -4488,12 +4488,76 @@ app.get("/make-server-6679cacd/lessons/:classId", async (c) => {
     const lessons = await kv.getByPrefix(`lesson:${classId}:`);
     const valid = lessons
       .filter((l: any) => l && l.date && l.summary)
+      // A lesson report is stored under `lesson:<classId>:<date>` and carries
+      // no id of its own — there is at most one per class per day, so the key
+      // *is* the identity. The clients need something stable to key a read
+      // mark on, so hand back the identity the storage already implies rather
+      // than making every caller reassemble it.
+      .map((l: any) => ({ ...l, id: `${l.classId || classId}:${l.date}` }))
       .sort((a: any, b: any) => b.date.localeCompare(a.date));
 
     return c.json({ lessons: valid });
   } catch (err) {
     console.log('Get lessons error:', err);
     return c.json({ error: 'Failed to get lessons' }, 500);
+  }
+});
+
+/**
+ * Lesson reports a parent has read.
+ *
+ * A lesverslag is written to the class, not to one parent, so there is nothing
+ * on the record itself to flip when somebody reads it — the mark belongs to
+ * the reader. Keyed by account rather than by child on purpose: two children
+ * in the same class share one lesson report, and being asked to read the same
+ * paragraph twice under two names is not a feature.
+ *
+ * This lived in the phone's localStorage first, which meant reading on the
+ * phone left the tablet still showing it as new. It is per account and
+ * server-side now, so every device the parent uses agrees.
+ */
+app.get("/make-server-6679cacd/lesson-reports/read", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const marks = await kv.getByPrefix(`lesson_read:${user.id}:`);
+    const read = marks
+      .filter((m: any) => m && m.lessonId)
+      .map((m: any) => String(m.lessonId));
+
+    return c.json({ read });
+  } catch (err) {
+    console.log('Get lesson report read marks error:', err);
+    return c.json({ error: 'Failed to get lesson report read marks' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/lesson-reports/read", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const { lessonId, read = true } = await c.req.json();
+    // The id is `<classId>:<date>`; anything else is a client bug, and an
+    // unbounded string here would let one account write unbounded keys.
+    if (typeof lessonId !== 'string' || !/^[\w-]+:\d{4}-\d{2}-\d{2}$/.test(lessonId)) {
+      return c.json({ error: 'Invalid lessonId' }, 400);
+    }
+
+    // No class-access check: the key is scoped to the caller's own id, so the
+    // worst a wrong id can do is hide a report from the person who sent it.
+    const key = `lesson_read:${user.id}:${lessonId}`;
+    if (read) {
+      await kv.set(key, { lessonId, userId: user.id, readAt: new Date().toISOString() });
+    } else {
+      await kv.del(key);
+    }
+
+    return c.json({ ok: true });
+  } catch (err) {
+    console.log('Mark lesson report read error:', err);
+    return c.json({ error: 'Failed to mark lesson report read' }, 500);
   }
 });
 

@@ -1,18 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Archive, Check, ChevronRight, FileText } from 'lucide-react';
 import Modal from './ui/modal';
-import { getReadIds, setRead } from '../../lib/readState';
 
 export interface LessonReport {
-  id: string;
+  /** `<classId>:<date>` — see the /lessons route, which derives it. */
+  id?: string;
+  classId?: string;
   date: string;
   summary: string;
 }
 
+// The server derives the id, but a phone can be running against a backend
+// that has not been redeployed yet — and a lesverslag list that renders empty
+// because of a deploy ordering is worse than one that reassembles the same id
+// the storage key already implies.
+const idOf = (l: LessonReport) => l.id || `${l.classId || ''}:${l.date}`;
+
 interface LessonReportsPanelProps {
   language: 'tr' | 'nl';
-  /** Whose lessons these are — read marks are kept per child. */
-  childId: string;
+  apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
   lessons: LessonReport[];
 }
 
@@ -39,8 +45,6 @@ const T = {
   },
 };
 
-const SCOPE = 'lesverslag';
-
 /**
  * Lesson reports, moved out of the agenda.
  *
@@ -51,27 +55,43 @@ const SCOPE = 'lesverslag';
  * is read in a dialog, and leaves the list the moment it has been read.
  *
  * "Gelezen" archives rather than deletes: a parent who wants to check what was
- * covered three weeks ago still can (see readState for where the mark lives).
+ * covered three weeks ago still can.
+ *
+ * The mark is held per account on the server, not per device — a parent who
+ * reads a report on their phone should not be told it is new again by the
+ * tablet. It is per account rather than per child because one lesson report
+ * belongs to a class: two siblings in the same class share it, and asking
+ * someone to read the same paragraph twice under two names is not a feature.
  */
-export default function LessonReportsPanel({ language, childId, lessons }: LessonReportsPanelProps) {
+export default function LessonReportsPanel({ language, apiRequest, lessons }: LessonReportsPanelProps) {
   const text = T[language];
-  const [readIds, setReadIds] = useState<Set<string>>(() => getReadIds(SCOPE, childId));
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
   const [showArchive, setShowArchive] = useState(false);
 
-  // Switching child switches which marks apply.
   useEffect(() => {
-    setReadIds(getReadIds(SCOPE, childId));
-    setOpenId(null);
-    setShowArchive(false);
-  }, [childId]);
+    let cancelled = false;
+    apiRequest('/lesson-reports/read')
+      .then((res) => {
+        if (!cancelled) setReadIds(new Set<string>((res?.read || []).map(String)));
+      })
+      // A failed load leaves everything unread, which shows the parent too
+      // much rather than too little — the safe direction for something the
+      // school wants read.
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [apiRequest]);
 
   const sorted = useMemo(
-    () => (lessons || []).filter((l) => l && l.id).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')),
+    () =>
+      (lessons || [])
+        .filter((l) => l && l.date && l.summary)
+        .map((l) => ({ ...l, id: idOf(l) }))
+        .sort((a, b) => (b.date || '').localeCompare(a.date || '')),
     [lessons],
   );
-  const unread = sorted.filter((l) => !readIds.has(l.id));
-  const archived = sorted.filter((l) => readIds.has(l.id));
+  const unread = sorted.filter((l) => !readIds.has(l.id!));
+  const archived = sorted.filter((l) => readIds.has(l.id!));
 
   const opened = sorted.find((l) => l.id === openId) || null;
 
@@ -88,13 +108,26 @@ export default function LessonReportsPanel({ language, childId, lessons }: Lesso
   };
 
   const markRead = (id: string) => {
-    setReadIds(new Set(setRead(SCOPE, childId, id, true)));
+    // Optimistic: the dialog closes and the entry moves to the archive on the
+    // tap. A failed write puts it back rather than leaving the list claiming
+    // something was filed that was not.
+    setReadIds((prev) => new Set(prev).add(id));
     setOpenId(null);
+    apiRequest('/lesson-reports/read', {
+      method: 'POST',
+      body: JSON.stringify({ lessonId: id, read: true }),
+    }).catch(() => {
+      setReadIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    });
   };
 
   if (sorted.length === 0) return null;
 
-  const row = (lesson: LessonReport, isRead: boolean) => (
+  const row = (lesson: LessonReport & { id: string }, isRead: boolean) => (
     <div
       key={lesson.id}
       className={`flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 ${
@@ -157,10 +190,10 @@ export default function LessonReportsPanel({ language, childId, lessons }: Lesso
         subtitle={opened ? formatDate(opened.date) : undefined}
         closeLabel={language === 'tr' ? 'Kapat' : 'Sluiten'}
         footer={
-          opened && !readIds.has(opened.id) ? (
+          opened && !readIds.has(opened.id!) ? (
             <button
               type="button"
-              onClick={() => markRead(opened.id)}
+              onClick={() => markRead(opened.id!)}
               className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
             >
               <Check className="h-4 w-4" />

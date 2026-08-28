@@ -1062,7 +1062,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           footer={
             <LessonReportsPanel
               language={language}
-              childId={selectedChild.id}
+              apiRequest={apiRequest}
               lessons={lessons}
             />
           }

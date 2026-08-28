@@ -16,8 +16,8 @@
 # You then drag that one file into Transporter. That is the whole update flow.
 #
 # Usage:
-#   npm run release            # auto-increments the build number
-#   MARKETING_VERSION=3.1 npm run release   # also set the user-visible version
+#   npm run release            # build number +1, store version from package.json
+#   MARKETING_VERSION=3.1 npm run release   # override the store version
 #
 set -euo pipefail
 
@@ -50,11 +50,18 @@ NEXT_BUILD=$((CURRENT_BUILD + 1))
 sed -i '' "s/CURRENT_PROJECT_VERSION = ${CURRENT_BUILD};/CURRENT_PROJECT_VERSION = ${NEXT_BUILD};/g" "$PBXPROJ"
 say "Build number: ${CURRENT_BUILD} -> ${NEXT_BUILD}"
 
-# Optional user-visible version bump (the "3.0" App Store shows), only when asked.
-if [ -n "${MARKETING_VERSION:-}" ]; then
-  sed -i '' "s/MARKETING_VERSION = [0-9][0-9.]*;/MARKETING_VERSION = ${MARKETING_VERSION};/g" "$PBXPROJ"
-  say "Marketing version set to ${MARKETING_VERSION}"
-fi
+# --- 1b. Marketing version follows package.json ------------------------------
+# The user-visible version (the "3.0" the App Store shows) used to be bumped
+# only when you remembered to pass MARKETING_VERSION, while the version the app
+# prints on its own login screen comes from package.json via Vite. Predictably
+# they drifted: the store said 3.33 while the phone said 3.39, so neither
+# number identified a build any more. package.json is now the one source, and
+# the env var remains as a deliberate override.
+PKG_VERSION="$(node -p "require('./package.json').version")"
+[ -n "$PKG_VERSION" ] || die "could not read the version from package.json"
+MARKETING_VERSION="${MARKETING_VERSION:-${PKG_VERSION%.0}}"
+sed -i '' "s/MARKETING_VERSION = [0-9][0-9.]*;/MARKETING_VERSION = ${MARKETING_VERSION};/g" "$PBXPROJ"
+say "Marketing version: ${MARKETING_VERSION} (package.json says ${PKG_VERSION})"
 
 # --- 2. Build the web app and sync it into the native project ---------------
 say "Building web app (npm run build)"

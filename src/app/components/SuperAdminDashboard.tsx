@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2, BarChart3, GraduationCap, BookOpen, CalendarCheck, Send, Activity, AlertTriangle, ExternalLink, MessageCircleQuestion } from 'lucide-react';
+import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2, BarChart3, GraduationCap, BookOpen, CalendarCheck, Send, Activity, AlertTriangle, ExternalLink, MessageCircleQuestion, Copy, KeyRound } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import InboxView from './InboxView';
@@ -223,6 +223,11 @@ const rt = {
     addTester: 'Toevoegen',
     noDemoTesters: 'Nog geen test-accounts',
     testerAdded: 'Test-account toegevoegd, inlogmail verstuurd',
+    testerCredentialsTitle: 'Inloggegevens, eenmalig zichtbaar',
+    testerCredentialsHint: 'Noteer het wachtwoord nu. Het is versleuteld opgeslagen en kan hierna niet meer getoond worden — alleen opnieuw ingesteld. Voor App Store Connect vult u dit in bij Gebruikersnaam en Wachtwoord onder Aanmelden vereist.',
+    testerPassword: 'Wachtwoord',
+    copied: 'Gekopieerd',
+    dismiss: 'Sluiten',
     testerAddFailed: 'Kon test-account niet toevoegen',
     testerRemoveFailed: 'Kon toegang niet intrekken',
     confirmRemoveTester: 'Toegang van dit test-account intrekken?',
@@ -303,6 +308,11 @@ const rt = {
     addTester: 'Ekle',
     noDemoTesters: 'Henüz test hesabı yok',
     testerAdded: 'Test hesabı eklendi, giriş e-postası gönderildi',
+    testerCredentialsTitle: 'Giriş bilgileri, yalnızca bir kez görünür',
+    testerCredentialsHint: 'Şifreyi şimdi not edin. Şifrelenmiş olarak saklanır ve bundan sonra gösterilemez, yalnızca sıfırlanabilir. App Store Connect için bunu Giriş gerekli bölümündeki Kullanıcı adı ve Şifre alanlarına girin.',
+    testerPassword: 'Şifre',
+    copied: 'Kopyalandı',
+    dismiss: 'Kapat',
     testerAddFailed: 'Test hesabı eklenemedi',
     testerRemoveFailed: 'Erişim iptal edilemedi',
     confirmRemoveTester: 'Bu test hesabının erişimi iptal edilsin mi?',
@@ -401,6 +411,9 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
   const [demoTesters, setDemoTesters] = useState<DemoTesterRecord[]>([]);
   const [loadingDemoTesters, setLoadingDemoTesters] = useState(false);
   const [newTesterEmail, setNewTesterEmail] = useState('');
+  // Shown once, straight after creation: the generated password exists
+  // nowhere else in readable form (see the server's demo-testers route).
+  const [newTesterCredentials, setNewTesterCredentials] = useState<{ email: string; password: string } | null>(null);
   const [newTesterRoles, setNewTesterRoles] = useState<PortalRole[]>([]);
   const [creatingTester, setCreatingTester] = useState(false);
   const [removingTesterId, setRemovingTesterId] = useState<string | null>(null);
@@ -455,10 +468,13 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
     if (!newTesterEmail.trim() || newTesterRoles.length === 0) return;
     setCreatingTester(true);
     try {
-      await apiRequest('/demo-testers', {
+      const created = await apiRequest('/demo-testers', {
         method: 'POST',
         body: JSON.stringify({ email: newTesterEmail.trim(), roles: newTesterRoles }),
       });
+      if (created?.password) {
+        setNewTesterCredentials({ email: newTesterEmail.trim(), password: created.password });
+      }
       setNewTesterEmail('');
       setNewTesterRoles([]);
       notify.success(rtx.testerAdded);
@@ -1116,6 +1132,50 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                   ))}
                 </div>
               </div>
+
+              {newTesterCredentials && (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 sm:p-4">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-900">
+                      <KeyRound className="h-4 w-4 shrink-0" />
+                      {rtx.testerCredentialsTitle}
+                    </p>
+                    <button
+                      onClick={() => setNewTesterCredentials(null)}
+                      aria-label={rtx.dismiss}
+                      className="shrink-0 text-amber-700 hover:text-amber-900 transition"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-amber-800 mb-3">{rtx.testerCredentialsHint}</p>
+                  <div className="space-y-2">
+                    {([
+                      [rtx.email, newTesterCredentials.email],
+                      [rtx.testerPassword, newTesterCredentials.password],
+                    ] as [string, string][]).map(([label, value]) => (
+                      <div key={label} className="flex items-center gap-2">
+                        <span className="w-24 shrink-0 text-xs font-medium text-amber-800">{label}</span>
+                        <code className="flex-1 min-w-0 overflow-x-auto rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-sm text-gray-800 select-all">
+                          {value}
+                        </code>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard?.writeText(value).then(
+                              () => notify.success(rtx.copied),
+                              () => {},
+                            );
+                          }}
+                          aria-label={label}
+                          className="shrink-0 rounded-lg p-1.5 text-amber-700 hover:bg-amber-100 transition"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {loadingDemoTesters ? (
                 <div className="text-center py-8 text-gray-400">

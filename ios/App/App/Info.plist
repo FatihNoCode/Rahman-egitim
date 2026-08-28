@@ -26,9 +26,12 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<!-- arm64. The armv7 that Capacitor scaffolds here is a 32-bit capability
+	     no App Store device has had since iOS 11, and the deployment target is
+	     15.0 — leaving it in claims a requirement the binary does not have. -->
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<!-- Portrait only. The app shell is built around a bottom tab bar and
 	     single-column cards; landscape has no design and just stretches them.

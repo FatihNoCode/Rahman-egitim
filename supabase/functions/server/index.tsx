@@ -1705,7 +1705,14 @@ app.post("/make-server-6679cacd/demo-testers", async (c) => {
       `),
     );
 
-    return c.json({ success: true, tester: { id: userId, email, roles } });
+    // The password goes back to the superadmin who asked for it, not just to
+    // the tester's inbox. Two reasons: the App Store review team needs a
+    // working demo login typed into App Store Connect rather than mailed to a
+    // reviewer, and when the mail silently fails there is otherwise no way to
+    // recover the password at all — it is generated here and never stored in
+    // readable form. This response is superadmin-only, over TLS, and describes
+    // a throwaway account in an environment holding no real pupil data.
+    return c.json({ success: true, tester: { id: userId, email, roles }, password });
   } catch (err) {
     console.log('Create demo tester error:', err);
     return c.json({ error: 'Failed to create demo tester' }, 500);

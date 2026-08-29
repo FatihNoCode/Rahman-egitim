@@ -1,4 +1,4 @@
-require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
+require_relative '../../node_modules/.deno/@capacitor+ios@8.5.0/node_modules/@capacitor/ios/scripts/pods_helpers'
 
 # Capacitor 8's podspec sets a 15.0 minimum. The Capacitor CLI pinned in this
 # repo is v7 (v8's CLI needs Node >= 22) and its template still emits 14.0, so
@@ -14,13 +14,13 @@ use_frameworks!
 install! 'cocoapods', :disable_input_output_paths => true
 
 def capacitor_pods
-  pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
-  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-  pod 'CapacitorApp', :path => '../../node_modules/@capacitor/app'
-  pod 'CapacitorBrowser', :path => '../../node_modules/@capacitor/browser'
-  pod 'CapacitorHaptics', :path => '../../node_modules/@capacitor/haptics'
-  pod 'CapacitorPushNotifications', :path => '../../node_modules/@capacitor/push-notifications'
-  pod 'SentryCapacitor', :path => '../../node_modules/@sentry/capacitor'
+  pod 'Capacitor', :path => '../../node_modules/.deno/@capacitor+ios@8.5.0/node_modules/@capacitor/ios'
+  pod 'CapacitorCordova', :path => '../../node_modules/.deno/@capacitor+ios@8.5.0/node_modules/@capacitor/ios'
+  pod 'CapacitorApp', :path => '../../node_modules/.deno/@capacitor+app@8.1.1/node_modules/@capacitor/app'
+  pod 'CapacitorBrowser', :path => '../../node_modules/.deno/@capacitor+browser@8.0.4/node_modules/@capacitor/browser'
+  pod 'CapacitorHaptics', :path => '../../node_modules/.deno/@capacitor+haptics@8.0.2/node_modules/@capacitor/haptics'
+  pod 'CapacitorPushNotifications', :path => '../../node_modules/.deno/@capacitor+push-notifications@8.1.2/node_modules/@capacitor/push-notifications'
+  pod 'SentryCapacitor', :path => '../../node_modules/.deno/@sentry+capacitor@4.3.0/node_modules/@sentry/capacitor'
 end
 
 target 'App' do

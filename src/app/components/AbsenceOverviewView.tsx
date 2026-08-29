@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import LoadError from './ui/load-error';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
+import { toLocalYmd } from '../../lib/localDate';
 
 interface SeasonSummary {
   yearName: string | null;
@@ -16,6 +19,10 @@ interface Props {
   classes?: { id: string; name: string }[];
 }
 
+// How far ahead the navigator will go. Ziekmeldingen are filed days, not
+// months, in advance; an endless forward arrow is just a way to get lost.
+const MAX_WEEKS_AHEAD = 4;
+
 function getWeekBounds(offsetWeeks = 0) {
   const now = new Date();
   const day = now.getDay(); // 0=Sun, 1=Mon...
@@ -25,9 +32,13 @@ function getWeekBounds(offsetWeeks = 0) {
   monday.setHours(0, 0, 0, 0);
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
+  // Local calendar days, not toISOString(): Amsterdam is an hour or two ahead
+  // of UTC, so local midnight is still the previous day in UTC and the whole
+  // window slid a day earlier — which put the school's own Sunday lessons
+  // outside "deze week" and made their ziekmeldingen impossible to find.
   return {
-    from: monday.toISOString().split('T')[0],
-    to: sunday.toISOString().split('T')[0],
+    from: toLocalYmd(monday),
+    to: toLocalYmd(sunday),
   };
 }
 
@@ -51,6 +62,7 @@ export default function AbsenceOverviewView({ language, apiRequest, classId, cla
   const [notifications, setNotifications] = useState<any[]>([]);
   const [season, setSeason] = useState<SeasonSummary | null>(null);
   const [loading, setLoading] = useState(false);
+  const showLoading = useMinimumLoading(loading);
   // Distinguishes "nothing to show" from "we never got an answer" — both
   // rendered the same empty state before, which is how a load failure came to
   // look like good news.
@@ -59,6 +71,7 @@ export default function AbsenceOverviewView({ language, apiRequest, classId, cla
 
   const { from, to } = getWeekBounds(weekOffset);
   const isCurrentWeek = weekOffset === 0;
+  const isNextWeek = weekOffset === 1;
 
   useEffect(() => {
     load();
@@ -121,13 +134,20 @@ export default function AbsenceOverviewView({ language, apiRequest, classId, cla
               ? (language === 'nl' ? 'Deze week' : 'Bu hafta')
               : weekOffset === -1
               ? (language === 'nl' ? 'Vorige week' : 'Geçen hafta')
+              : isNextWeek
+              ? (language === 'nl' ? 'Volgende week' : 'Gelecek hafta')
               : formatWeekLabel(from, to, language)}
           </p>
           <p className="text-xs text-gray-400 mt-0.5">{formatWeekLabel(from, to, language)}</p>
         </div>
+        {/* Forward used to stop at this week, on the assumption that a
+            ziekmelding can only be about a day that has happened. It cannot:
+            the parent's form accepts any future date, and a family that knows
+            about next Saturday reports it now. Those meldingen were being
+            filed into a week nobody could open. */}
         <button
           onClick={() => setWeekOffset(w => w + 1)}
-          disabled={isCurrentWeek}
+          disabled={weekOffset >= MAX_WEEKS_AHEAD}
           className="p-2 rounded-lg hover:bg-gray-100 transition disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <ChevronRight className="w-5 h-5 text-gray-600" />
@@ -178,18 +198,20 @@ export default function AbsenceOverviewView({ language, apiRequest, classId, cla
         </div>
       )}
 
-      {loading ? (
-        <div className="text-center py-10 text-gray-400 text-sm">
-          {language === 'nl' ? 'Laden...' : 'Yükleniyor...'}
-        </div>
+      {showLoading ? (
+        <LoadingState compact label={language === 'nl' ? 'Laden...' : 'Yükleniyor...'} />
       ) : loadFailed ? (
         <LoadError language={language} onRetry={load} />
       ) : notifications.length === 0 ? (
         <div className="text-center py-10">
           <p className="text-gray-400 text-sm">
-            {language === 'nl'
-              ? 'Geen afwezigheidsmeldingen deze week.'
-              : 'Bu hafta devamsızlık bildirimi yok.'}
+            {isCurrentWeek
+              ? (language === 'nl'
+                ? 'Geen afwezigheidsmeldingen deze week.'
+                : 'Bu hafta devamsızlık bildirimi yok.')
+              : (language === 'nl'
+                ? 'Geen afwezigheidsmeldingen in deze week.'
+                : 'Bu haftada devamsızlık bildirimi yok.')}
           </p>
         </div>
       ) : (

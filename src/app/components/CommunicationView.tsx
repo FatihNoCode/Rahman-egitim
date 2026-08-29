@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Send, Paperclip, X, Inbox, Mail, CheckSquare, Square } from 'lucide-react';
 import { matchesAny } from '../../lib/search';
 import LoadError from './ui/load-error';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
 interface AppUser {
   id: string;
@@ -99,6 +101,7 @@ export default function CommunicationView({ language, apiRequest }: Communicatio
   const [errorMsg, setErrorMsg] = useState('');
   const [sentLogs, setSentLogs] = useState<SentLog[]>([]);
   const [loadingSent, setLoadingSent] = useState(false);
+  const showLoadingSent = useMinimumLoading(loadingSent);
   // "Nog niets verstuurd" and "we could not fetch the log" are not the same
   // answer to "did that message go out?".
   const [sentFailed, setSentFailed] = useState(false);
@@ -301,8 +304,8 @@ export default function CommunicationView({ language, apiRequest }: Communicatio
 
       {tab === 'sent' && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          {loadingSent ? (
-            <div className="text-center py-12 text-gray-400 text-sm">...</div>
+          {showLoadingSent ? (
+            <LoadingState label={language === 'tr' ? 'Yükleniyor...' : 'Laden...'} />
           ) : sentFailed ? (
             <LoadError language={language} onRetry={loadSent} />
           ) : sentLogs.length === 0 ? (

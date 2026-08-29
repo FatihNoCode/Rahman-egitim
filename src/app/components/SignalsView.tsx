@@ -126,7 +126,16 @@ interface SignalsViewProps {
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
   /** Called when a feed item links elsewhere, e.g. '#entities' -> tab id. */
   onNavigate?: (link: string) => void;
+  /**
+   * Running inside the native app. Feed items that deep-link to a website-only
+   * tab (see DESKTOP_ONLY_LINKS) are dropped here rather than navigating to a
+   * blank screen — grading a toets, for one, only exists on the website.
+   */
+  app?: boolean;
 }
+
+/** Feed-item links that have no screen in the native app. */
+const DESKTOP_ONLY_LINKS = new Set(['#toets', '#beheer', '#diploma']);
 
 const LEVEL_STYLES: Record<Level, { badge: string; border: string; dot: string }> = {
   high: { badge: 'bg-red-100 text-red-700', border: 'border-l-4 border-l-red-500', dot: 'bg-red-500' },
@@ -206,7 +215,7 @@ function riskGroupOf(student: StudentSignals): string {
   return RISK_GROUPS.find((g) => worst && g.match(worst.key))?.id || 'other';
 }
 
-export default function SignalsView({ language, apiRequest, onNavigate }: SignalsViewProps) {
+export default function SignalsView({ language, apiRequest, onNavigate, app = false }: SignalsViewProps) {
   const tr = language === 'tr';
   const text = tr
     ? {
@@ -291,7 +300,9 @@ export default function SignalsView({ language, apiRequest, onNavigate }: Signal
         apiRequest('/signals/today'),
         apiRequest('/signals/students'),
       ]);
-      setFeed(todayRes?.feed || []);
+      setFeed((todayRes?.feed || []).filter(
+        (f: FeedItem) => !(app && f.link && DESKTOP_ONLY_LINKS.has(f.link)),
+      ));
       setStudents(studentsRes?.students || []);
       setClassSignals(studentsRes?.classes || []);
       setMode(studentsRes?.mode === 'classes' ? 'classes' : 'students');

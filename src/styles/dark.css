@@ -15,9 +15,16 @@
    keep their meaning by becoming low-alpha washes of the same hue instead of
    pale pastels that glow on a dark screen. */
 
-.dark {
+/* Higher specificity than the `:root { color-scheme: light }` in theme.css.
+   A bare `.dark` ties with it and then depends on source order, which is not
+   something to bet the whole dark theme's native widgets on. This is what
+   makes the browser draw its *own* chrome — scrollbars, date pickers, the
+   autofill popup — dark alongside ours. */
+:root.dark {
   color-scheme: dark;
+}
 
+.dark {
   /* Surfaces, darkest (page) to lightest (raised). */
   --d-bg: #0f1214;
   --d-surface: #171b1f;

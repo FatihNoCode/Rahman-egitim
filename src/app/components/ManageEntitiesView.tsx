@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Pencil, Plus, Trash2, ArrowLeft, X, Check, Frown, Meh, Smile, Circle } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
 interface Class {
   id: string;
@@ -53,6 +55,7 @@ export default function ManageEntitiesView({
   const [studentDetails, setStudentDetails] = useState<any>(null);
   const [parentDetails, setParentDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const showLoadingDetails = useMinimumLoading(loadingDetails);
 
   // Class editing states
   const [newClassName, setNewClassName] = useState('');
@@ -450,11 +453,9 @@ export default function ManageEntitiesView({
           </div>
         )}
 
-        {loadingDetails ? (
-          <div className="text-center py-8">
-            <p className="text-gray-600">{language === 'tr' ? 'Yükleniyor...' : 'Laden...'}</p>
-          </div>
-        ) : studentDetails && studentDetails.length > 0 ? (
+        {showLoadingDetails ? (
+          <LoadingState label={language === 'tr' ? 'Yükleniyor...' : 'Laden...'} />
+        ) :studentDetails && studentDetails.length > 0 ? (
           <div className="space-y-4">
             {studentDetails.map((dayData: any, index: number) => {
               const isOverdue = new Date(dayData.date) < new Date();
@@ -587,11 +588,9 @@ export default function ManageEntitiesView({
           <h3 className="text-2xl font-bold text-emerald-800">{selectedParentEmail}</h3>
         </div>
 
-        {loadingDetails ? (
-          <div className="text-center py-8">
-            <p className="text-gray-600">{language === 'tr' ? 'Yükleniyor...' : 'Laden...'}</p>
-          </div>
-        ) : parentDetails ? (
+        {showLoadingDetails ? (
+          <LoadingState label={language === 'tr' ? 'Yükleniyor...' : 'Laden...'} />
+        ) :parentDetails ? (
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <div className="mb-6">
               <h4 className="text-lg font-semibold text-gray-700 mb-2">

@@ -11,7 +11,7 @@ import {
   buildTodayFeed,
   buildAdminFeed,
   buildParentFeed,
-  computeAbsenceFlags,
+  unreportedAbsenceCounts,
   weakTopics,
   needsGrading,
   type SignalContext,
@@ -20,17 +20,8 @@ import {
 import {
   planOutreach,
   outreachTasks,
-  FAMILY_LABELS,
   type OutreachTrack,
 } from "./outreach.tsx";
-import {
-  buildParentDigest,
-  buildTeacherDigest,
-  buildAdminDigest,
-  digestHtml,
-  type ChildWeek,
-  type Digest,
-} from "./digest.tsx";
 
 const app = new Hono();
 
@@ -595,8 +586,7 @@ async function notifyUser(userId: string, opts: {
     const subject = opts.emailSubject || `${opts.titleNl} | ${opts.titleTr} - Rahman Eğitim`;
     const html = opts.emailHtml || emailWrapper(opts.titleNl, `
       <p style="color:#374151;line-height:1.6">${escapeHtml(opts.bodyNl)}</p>
-      <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb">
-      <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
+      <hr>
       <p style="color:#374151;line-height:1.6">${escapeHtml(opts.bodyTr)}</p>
     `);
     await sendEmail(userRecord.email, subject, html);
@@ -698,182 +688,87 @@ async function verifyResendWebhook(request: Request, rawBody: string): Promise<b
   return receivedSigs.includes(expectedSig);
 }
 
-// Builds the raw .ics content for a single conference slot.
-function buildIcsContent(dateStr: string, startTime: string, endTime: string, title: string, description: string, attendeeEmail?: string) {
-  const toIcsDate = (time: string) => `${dateStr.replace(/-/g, '')}T${time.replace(':', '')}00`;
-  const dtStart = toIcsDate(startTime);
-  const dtEnd = toIcsDate(endTime);
-  // Deterministic UID (per slot + attendee) so opening the link twice, or a
-  // reschedule re-send, updates the same calendar entry instead of creating
-  // duplicates.
-  const uid = `oudergesprek-${dateStr}-${startTime}-${endTime}-${attendeeEmail || 'ouder'}`
-    .replace(/[^a-zA-Z0-9-]/g, '');
-  const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Rahman Eğitim//Oudergesprek//NL',
-    'CALSCALE:GREGORIAN',
-    // METHOD:REQUEST turns the event into an invitation, so Apple Calendar /
-    // Outlook show an "Accept / Maybe / Decline" prompt instead of a plain
-    // "add to calendar".
-    'METHOD:REQUEST',
-    'BEGIN:VEVENT',
-    `UID:${uid}@rahmanegitim.com`,
-    `DTSTAMP:${dtStart}`,
-    `DTSTART:${dtStart}`,
-    `DTEND:${dtEnd}`,
-    `SUMMARY:${title}`,
-    `DESCRIPTION:${description}`,
-    'ORGANIZER;CN=Rahman Eğitim:mailto:info@rahmanegitim.com',
-  ];
-  if (attendeeEmail) {
-    lines.push(
-      `ATTENDEE;CN=${attendeeEmail};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:${attendeeEmail}`,
-    );
-  }
-  lines.push(
-    'STATUS:CONFIRMED',
-    'SEQUENCE:0',
-    'END:VEVENT',
-    'END:VCALENDAR',
-  );
-  return lines.join('\r\n');
-}
-
-// Builds a hosted .ics download link (many mail clients strip `data:` URIs
-// from links, which made the Apple/Outlook button silently non-functional)
-// plus a Google Calendar link for a single conference slot.
-function buildCalendarLinks(dateStr: string, startTime: string, endTime: string, title: string, description: string, attendeeEmail?: string) {
-  const toIcsDate = (time: string) => `${dateStr.replace(/-/g, '')}T${time.replace(':', '')}00`;
-  const dtStart = toIcsDate(startTime);
-  const dtEnd = toIcsDate(endTime);
-
-  const icsParams = new URLSearchParams({ date: dateStr, start: startTime, end: endTime, title, description });
-  if (attendeeEmail) icsParams.set('email', attendeeEmail);
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-  const icsPath = `/functions/v1/make-server-6679cacd/ics?${icsParams.toString()}`;
-
-  // https link (still used as a fallback / for clients that don't support
-  // webcal). Opening this in a browser just downloads the file.
-  const icsLink = `${supabaseUrl}${icsPath}`;
-
-  // webcal:// makes the OS hand the URL straight to the default calendar app
-  // (Apple Calendar, Outlook) instead of opening the Supabase URL in a
-  // browser — so the parent lands in their agenda and can accept the invite.
-  const appleLink = `webcal://${supabaseUrl.replace(/^https?:\/\//, '')}${icsPath}`;
-
-  const googleDates = `${dtStart}/${dtEnd}`;
-  const googleLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${googleDates}&details=${encodeURIComponent(description)}`;
-
-  return { icsLink, appleLink, googleLink };
-}
-
-// Public endpoint the "Toevoegen aan Apple/Outlook Agenda" email button
-// links to — serves the .ics file over https so mail clients that strip
-// `data:` URIs (which silently broke the old version of this button) can
-// still open/download it.
-app.get("/make-server-6679cacd/ics", (c) => {
-  const { date, start, end, title, description, email } = c.req.query();
-  if (!date || !start || !end || !title) {
-    return c.json({ error: 'Missing required fields' }, 400);
-  }
-  const sanitize = (s: string) => s.replace(/[\r\n]+/g, ' ');
-  const ics = buildIcsContent(date, start, end, sanitize(title), sanitize(description || ''), email ? sanitize(email) : undefined);
-  return c.body(ics, 200, {
-    'Content-Type': 'text/calendar; charset=utf-8',
-    'Content-Disposition': 'attachment; filename="oudergesprek.ics"',
+// A booked (or rescheduled) oudergesprek slot, confirmed in-app. Used to be an
+// email with an .ics invite; the invite is dropped and this is a bell entry.
+async function notifyConferenceBooked(userId: string, session: any, slot: any, studentName: string) {
+  await createNotification(userId, {
+    type: 'oudergesprek_booked',
+    titleNl: 'Tijdslot oudergesprek bevestigd',
+    titleTr: 'Veli görüşmesi saati onaylandı',
+    bodyNl: `Het oudergesprek voor ${studentName} staat op ${session.date} om ${slot.start} (Rahman Moskee Amersfoort).`,
+    bodyTr: `${studentName} için veli görüşmesi ${session.date}, saat ${slot.start} (Rahman Moskee Amersfoort).`,
+    link: '#oudergesprekken',
   });
-});
-
-const DUTCH_MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
-
-// "2026-06-24" -> "24 juni 2026". Falls back to the raw string if it can't
-// be parsed.
-function formatDutchDate(dateStr: string): string {
-  const parts = String(dateStr).split('-').map(Number);
-  const [y, m, d] = parts;
-  if (!y || !m || !d || m < 1 || m > 12) return dateStr;
-  return `${d} ${DUTCH_MONTHS[m - 1]} ${y}`;
 }
 
-// Renders a styled "details box" card (like the ones recruiting/calendar
-// tools send) summarising the appointment. Rows are simple label/value pairs
-// so it renders consistently across mail clients (inline styles, no flexbox).
-function buildEventCard(opts: {
-  heading: string;
-  rows: { label: string; value: string }[];
-  googleLink: string;
-}): string {
-  const font = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif`;
-  const rowsHtml = opts.rows.map((r, i) => `
-        <div style="${i > 0 ? 'margin-top:16px;' : ''}">
-          <div style="color:#5d566c;line-height:24px;font-size:14px;font-family:${font}">${escapeHtml(r.label)}</div>
-          <div style="color:#141217;line-height:24px;font-size:14px;font-family:${font}">${escapeHtml(r.value)}</div>
-        </div>`).join('');
-  return `
-      <div style="border:1px solid #dcd8e4;border-radius:8px;background:#ffffff;max-width:420px;margin:20px 0;font-family:${font}">
-        <div style="padding:16px 20px">
-          <div style="font-size:16px;font-weight:bold;line-height:24px;color:#141217;font-family:${font}">${escapeHtml(opts.heading)}</div>
-        </div>
-        <div style="padding:0 20px 16px">${rowsHtml}
-        </div>
-        <div style="border-top:1px solid #dcd8e4;width:100%"></div>
-        <div style="padding:16px 20px 20px">
-          <a href="${opts.googleLink}" target="_blank" style="background-color:#059669;font-size:14px;font-weight:600;padding:10px 16px;display:inline-block;color:#ffffff;border-radius:8px;line-height:20px;text-decoration:none;font-family:${font}">Toevoegen aan Google Agenda</a>
-        </div>
-      </div>`;
-}
-
-// Sends (or re-sends, on reschedule) the oudergesprek booking confirmation
-// email with a styled details card, an "add to Google Agenda" link, and the
-// invite as an .ics attachment for the specific slot.
-async function sendConferenceConfirmationEmail(to: string, session: any, slot: any, studentName: string) {
-  const location = 'Rahman Moskee Amersfoort';
-  const title = `Oudergesprek ${studentName} | Veli Görüşmesi`;
-  const description = `Oudergesprek voor ${studentName} bij ${location}.`;
-  const { googleLink } = buildCalendarLinks(session.date, slot.start, slot.end, title, description, to);
-
-  // Attach the invite as a real .ics file named "oudergesprek". Apple Mail
-  // (and Outlook) show a native "Add to Calendar" banner for this, so the
-  // parent can accept the meeting without any browser detour.
-  const icsContent = buildIcsContent(session.date, slot.start, slot.end, title, description, to);
-
-  const card = buildEventCard({
-    heading: `Oudergesprek ${studentName}`,
-    rows: [
-      { label: 'Wanneer · Ne zaman', value: `${formatDutchDate(session.date)} &middot; ${slot.start} – ${slot.end}` },
-      { label: 'Tijdzone · Saat dilimi', value: '(GMT+02:00) Europe/Amsterdam' },
-      { label: 'Locatie · Yer', value: location },
-      { label: 'Leerling · Öğrenci', value: studentName },
-    ],
-    googleLink,
-  });
-
-  return sendEmail(
-    to,
-    `Bevestiging tijdslot oudergesprek | Veli Görüşmesi Onayı - Rahman Eğitim`,
-    emailWrapper('Oudergesprek bevestigd', `
-      <p style="color:#374151;line-height:1.6">Beste ouder,</p>
-      <p style="color:#374151;line-height:1.6">Het tijdslot voor <strong>${escapeHtml(studentName)}</strong> is bevestigd. Hieronder vindt u de details. De afspraak zit ook als bijlage (<strong>oudergesprek.ics</strong>) bij deze e-mail — open deze om de afspraak aan uw agenda toe te voegen. Tot dan, in shaa Allah.</p>
-      ${card}
-      <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-      <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-      <p style="color:#374151;line-height:1.6">Sayın veli,</p>
-      <p style="color:#374151;line-height:1.6"><strong>${escapeHtml(studentName)}</strong> için görüşme saati onaylanmıştır. Detaylar yukarıdaki kartta yer almaktadır. Randevu ayrıca ek olarak (<strong>oudergesprek.ics</strong>) eklenmiştir — takviminize eklemek için açın. İnşaallah o zaman görüşmek üzere.</p>
-    `),
-    [{ filename: 'oudergesprek.ics', content: icsContent, contentType: 'text/calendar' }],
-  );
-}
-
+// One shell for every transactional mail: the logo, a single subject line, the
+// caller's content, a sign-off and a footer. Both languages run one after the
+// other inside `bodyHtml` with no heading between them. Callers used to put an
+// "<hr><h3>Türkçe</h3>" there; that pair (and any stray <hr>) is rewritten to
+// one plain rule here rather than editing every mail.
+//
+// Dark mode is handled with a <style> block of `!important` overrides keyed to
+// the class names below. Clients that honour prefers-color-scheme (Apple Mail,
+// some Outlook) adapt; the rest keep the light version, which is fine.
 function emailWrapper(titleNl: string, bodyHtml: string) {
-  return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-    <p style="color:#059669;font-size:13px;font-weight:600;margin:0 0 6px">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</p>
-    <h2 style="color:#065f46;margin-bottom:16px">Rahman Eğitim${titleNl ? ' - ' + titleNl : ''}</h2>
-    ${bodyHtml}
-    <p style="color:#374151;line-height:1.6;margin-top:24px">Selamün Aleyküm ve Rahmetullah | Wassalamu alaikum wa rahmatullah,<br>Rahman Eğitim</p>
-    <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-    <p style="color:#9ca3af;font-size:12px">Dit bericht is verstuurd via het Rahman Eğitim leerlingvolgsysteem.</p>
-  </div>`;
+  const divider = '<hr class="rule" style="margin:26px 0;border:0;border-top:1px solid #e6e9e6">';
+  const body = String(bodyHtml)
+    .replace(/(?:<hr\b[^>]*>\s*)?<h3\b[^>]*>\s*(?:T[uü]rk[cç]e|Nederlands|Dutch|English)\s*<\/h3>/gi, divider)
+    .replace(/<hr\b[^>]*>/gi, divider);
+
+  return `<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<style>
+  :root { color-scheme: light dark; }
+  body { margin:0; padding:0; background:#eef1ee; }
+  @media (prefers-color-scheme: dark) {
+    body, .bg { background:#0c110f !important; }
+    .card { background:#141a17 !important; border-color:#262e29 !important; }
+    .content, .content p, .content li, .content td, .content div, .content span { color:#dfe5e2 !important; }
+    .content strong, .content b { color:#f2f5f3 !important; }
+    .content h3, .subject { color:#f2f5f3 !important; }
+    .rule { border-top-color:#262e29 !important; }
+    .panel { background:#1b221e !important; border-color:#2b332e !important; }
+    .muted, .footer, .footer a { color:#8b968f !important; }
+    .content a { color:#7fb0d8 !important; }
+    .btn { background:#2fb497 !important; color:#06120e !important; }
+    .wordmark { color:#eef2f0 !important; }
+  }
+</style>
+</head>
+<body class="bg" style="margin:0;background:#eef1ee;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="bg" style="background:#eef1ee">
+    <tr><td align="center" style="padding:28px 12px 40px">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%">
+        <tr><td class="card" style="background:#ffffff;border:1px solid #e4e8e5;border-radius:14px;overflow:hidden">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr><td align="center" style="padding:28px 40px 20px">
+              <img src="${APP_URL}/email-logo.png" width="44" height="44" alt="Rahman Eğitim" style="display:inline-block;vertical-align:middle;border:0">
+              <span class="wordmark" style="display:inline-block;vertical-align:middle;margin-left:10px;font-size:15px;font-weight:700;letter-spacing:1.6px;color:#1d3f60">RAHMAN EĞİTİM</span>
+            </td></tr>
+          </table>
+          <div style="height:3px;background:linear-gradient(90deg,#00a07c,#1d3f60)"></div>
+          <div class="content" style="padding:32px 40px;color:#222b28;font-size:15px;line-height:1.62">
+            ${titleNl ? `<h1 class="subject" style="margin:0 0 16px;font-size:21px;line-height:1.25;font-weight:700;color:#16201d">${escapeHtml(titleNl)}</h1>` : ''}
+            ${body}
+            <p style="margin:22px 0 0">Wassalāmu ʿalaykum wa rahmatullah,<br>Rahman Eğitim</p>
+          </div>
+        </td></tr>
+        <tr><td class="footer" style="padding:22px 40px 8px;text-align:center;font-size:12px;line-height:1.6;color:#8a938e">
+          Je krijgt deze e-mail omdat je een account hebt bij Rahman Eğitim.<br>
+          Bu e-postayı Rahman Eğitim hesabın olduğu için alıyorsun.<br>
+          <a href="${APP_URL}" class="muted" style="color:#6a746f">rahmanegitim.com</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
 
 // Shared access check for anything scoped to a class (attendance, lessons,
@@ -4380,23 +4275,18 @@ app.post("/make-server-6679cacd/attendance", async (c) => {
 
       const student = await kv.get(`student:${rec.studentId}`);
       if (!student?.parentId) continue;
-      const parentData = await getUserData(student.parentId);
-      if (!parentData?.email) continue;
 
-      await sendEmail(
-        parentData.email,
-        `Afwezigheid gemeld door leerkracht | Devamsızlık Bildirimi - Rahman Eğitim`,
-        emailWrapper('Afwezigheid', `
-          <p style="color:#374151;line-height:1.6">Beste ouder,</p>
-          <p style="color:#374151;line-height:1.6"><strong>${student.name || ''}</strong> is op <strong>${date}</strong> afwezig geregistreerd op de les, zonder dat u dit vooraf had gemeld.</p>
-          <p style="color:#374151;line-height:1.6">Wilt u een afwezigheid voortaan vooraf melden via het ouderportaal?</p>
-          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-          <p style="color:#374151;line-height:1.6">Sayın veli,</p>
-          <p style="color:#374151;line-height:1.6"><strong>${student.name || ''}</strong>, önceden bildirim yapılmadan <strong>${date}</strong> tarihindeki derste devamsız olarak işaretlendi.</p>
-          <p style="color:#374151;line-height:1.6">Bundan sonra devamsızlıkları veli portalı üzerinden önceden bildirmenizi rica ederiz.</p>
-        `)
-      );
+      // In-app only now (no mail). The parent's own worklist already carries
+      // "afwezig zonder ziekmelding", and the outreach ladder chases it if it
+      // repeats; this is the same-day nudge.
+      await createNotification(student.parentId, {
+        type: 'absence_unreported',
+        titleNl: 'Afwezigheid zonder ziekmelding',
+        titleTr: 'Bildirimsiz devamsızlık',
+        bodyNl: `${student.name || 'Uw kind'} is op ${date} afwezig gemeld door de leerkracht en wij hadden geen ziekmelding ontvangen. Geef een afwezigheid voortaan vooraf door via het portaal.`,
+        bodyTr: `${student.name || 'Çocuğunuz'} ${date} tarihinde öğretmen tarafından devamsız bildirildi ve tarafımıza bir hasta bildirimi ulaşmamıştı. Lütfen devamsızlıkları bundan sonra portal üzerinden önceden bildirin.`,
+        link: `#report-absence:${rec.studentId}`,
+      });
     }
 
     return c.json({ success: true });
@@ -5316,12 +5206,65 @@ app.put("/make-server-6679cacd/exams/live/:code/grade/:studentId", async (c) => 
       gradedAt: new Date().toISOString(),
     };
     await kv.set(`exam_attempt:${code}:${attempt.studentId}`, updated);
+
+    // Tell the parent there is a new grade to look at — only the first time an
+    // attempt is graded, so re-grading a typo does not re-notify.
+    if (!attempt.graded) {
+      await notifyNewGrade(attempt.studentId, live.examId).catch(() => {});
+    }
+
     return c.json({ attempt: updated });
   } catch (err) {
     console.log('Grade attempt error:', err);
     return c.json({ error: 'Failed to grade' }, 500);
   }
 });
+
+// A live-toets grade became available for a student. Sent when a teacher grades
+// the open questions, or straight away when an attempt has none to grade. Bell +
+// push + (pref-based) mail via notifyUser — never awaited on the request path.
+async function notifyNewGrade(studentId: string, examId: string) {
+  const student = await kv.get(`student:${studentId}`);
+  if (!student?.parentId) return;
+  const exam = examId ? await kv.get(`exam:${examId}`) : null;
+  const title = String(exam?.title || '').trim();
+  await notifyUser(student.parentId, {
+    type: 'new_grade',
+    titleNl: 'Er is een nieuw cijfer',
+    titleTr: 'Yeni bir not var',
+    bodyNl: title
+      ? `Er staat een nieuw cijfer voor "${title}" van ${student.name}.`
+      : `Er staat een nieuw toetscijfer klaar voor ${student.name}.`,
+    bodyTr: title
+      ? `${student.name} için "${title}" sınavının notu hazır.`
+      : `${student.name} için yeni bir sınav notu hazır.`,
+    link: '#grades',
+  });
+}
+
+// A new event landed on a school's agenda. One announcement per parent and per
+// teacher of that school; fire-and-forget, never on the request path.
+async function announceEvent(schoolId: string, event: { title?: string; date: string }) {
+  const classes = (await kv.getByPrefix('class:')).filter((cl: any) => cl?.id && cl.schoolId === schoolId);
+  const classIds = new Set(classes.map((cl: any) => cl.id));
+  const students = (await kv.getByPrefix('student:')).filter((s: any) => s?.id && classIds.has(s.classId));
+
+  const recipients = new Set<string>();
+  for (const s of students) if (s.parentId) recipients.add(s.parentId);
+  for (const cl of classes) if (cl.teacherId) recipients.add(cl.teacherId);
+
+  const title = String(event.title || '').trim();
+  for (const userId of recipients) {
+    await notifyUser(userId, {
+      type: 'event_planned',
+      titleNl: 'Er staat een evenement gepland',
+      titleTr: 'Planlanmış bir etkinlik var',
+      bodyNl: title ? `${title} op ${event.date}.` : `Er staat een evenement gepland op ${event.date}.`,
+      bodyTr: title ? `${event.date} tarihinde ${title}.` : `${event.date} tarihinde bir etkinlik planlandı.`,
+      link: '#agenda',
+    }).catch(() => {});
+  }
+}
 
 // ---- Public (anonymous) exam-taking routes. No verifyUser: students have no
 // account. Rate-limited per IP, and identical 404s for wrong/closed codes.
@@ -5459,6 +5402,13 @@ app.post("/make-server-6679cacd/toets/:code/submit", async (c) => {
       perQuestion: grading.perQuestion,
     };
     await kv.set(key, updated);
+
+    // An exam with no open questions is fully scored the moment it is handed
+    // in — there is no teacher step, so the grade is available now.
+    if ((grading.openMax || 0) === 0) {
+      await notifyNewGrade(studentId, exam.id).catch(() => {});
+    }
+
     return c.json({ success: true, autoScore: grading.autoScore, autoMax: grading.autoMax, openMax: grading.openMax });
   } catch (err) {
     console.log('Toets submit error:', err);
@@ -8615,23 +8565,16 @@ app.post("/make-server-6679cacd/boekhouding/payments", async (c) => {
       const paidNow = record.payments?.schoolgeld || 0;
 
       if (paidBefore < required && paidNow >= required) {
-        const student = await kv.get(`student:${studentId}`);
-        if (student?.parentId) {
-          const parentData = await getUserData(student.parentId);
-          if (parentData?.email) {
-            await sendEmail(
-              parentData.email,
-              `Schoolgeld volledig betaald | Okul Ücreti Tamamlandı - Rahman Eğitim`,
-              emailWrapper('Betaling bevestigd', `
-                <p style="color:#374151;line-height:1.6">Beste ouder,</p>
-                <p style="color:#374151;line-height:1.6">Het schoolgeld voor <strong>${student.name || ''}</strong> is volledig voldaan. Bedankt voor uw betaling!</p>
-                <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-                <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-                <p style="color:#374151;line-height:1.6">Sayın veli,</p>
-                <p style="color:#374151;line-height:1.6"><strong>${student.name || ''}</strong> için okul ücreti tamamen ödenmiştir. Ödemeniz için teşekkür ederiz!</p>
-              `)
-            );
-          }
+        const paidStudent = await kv.get(`student:${studentId}`);
+        if (paidStudent?.parentId) {
+          await createNotification(paidStudent.parentId, {
+            type: 'payment_complete',
+            titleNl: 'Schoolgeld volledig betaald',
+            titleTr: 'Okul ücreti tamamlandı',
+            bodyNl: `Het schoolgeld voor ${paidStudent.name || 'uw kind'} is volledig voldaan. Bedankt voor uw betaling.`,
+            bodyTr: `${paidStudent.name || 'Çocuğunuz'} için okul ücreti tamamen ödenmiştir. Ödemeniz için teşekkür ederiz.`,
+            link: `#billing:${studentId}`,
+          });
         }
       }
     }
@@ -8794,11 +8737,8 @@ app.post("/make-server-6679cacd/boekhouding/send-schoolgeld-reminders", async (c
       const paid = Number(record.payments?.schoolgeld) || 0;
       if (paid >= required) continue;
 
-      const parentData = await getUserData(student.parentId);
-      if (!parentData?.email) continue;
-
       if (!byParent[student.parentId]) {
-        byParent[student.parentId] = { email: parentData.email, children: [] };
+        byParent[student.parentId] = { email: '', children: [] };
       }
       byParent[student.parentId].children.push({ name: student.name || '', owed: required - paid });
     }
@@ -8806,26 +8746,18 @@ app.post("/make-server-6679cacd/boekhouding/send-schoolgeld-reminders", async (c
     const parentIds = Object.keys(byParent);
     let sent = 0;
     for (const parentId of parentIds) {
-      const { email, children } = byParent[parentId];
-      const rowsNl = children.map(ch => `<li style="color:#374151;line-height:1.8"><strong>${ch.name}</strong>: €${ch.owed} nog te betalen</li>`).join('');
-      const rowsTr = children.map(ch => `<li style="color:#374151;line-height:1.8"><strong>${ch.name}</strong>: €${ch.owed} kalan tutar</li>`).join('');
-      const ok = await sendEmail(
-        email,
-        'Herinnering openstaand schoolgeld | Ödenmemiş Okul Ücreti Hatırlatması - Rahman Eğitim',
-        emailWrapper('Openstaand schoolgeld', `
-          <p style="color:#374151;line-height:1.6">Beste ouder,</p>
-          <p style="color:#374151;line-height:1.6">Dit is een vriendelijke herinnering dat er nog schoolgeld openstaat voor:</p>
-          <ul style="margin:8px 0 16px 20px;padding:0">${rowsNl}</ul>
-          <p style="color:#374151;line-height:1.6">Wilt u dit zo spoedig mogelijk voldoen? Bedankt!</p>
-          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-          <p style="color:#374151;line-height:1.6">Sayın veli,</p>
-          <p style="color:#374151;line-height:1.6">Aşağıdaki öğrenciler için hâlâ ödenmemiş okul ücreti bulunmaktadır:</p>
-          <ul style="margin:8px 0 16px 20px;padding:0">${rowsTr}</ul>
-          <p style="color:#374151;line-height:1.6">En kısa sürede ödemenizi rica ederiz. Teşekkür ederiz!</p>
-        `)
-      );
-      if (ok) sent++;
+      const { children } = byParent[parentId];
+      const listNl = children.map(ch => `${ch.name} (€ ${ch.owed})`).join(', ');
+      const listTr = children.map(ch => `${ch.name} (€ ${ch.owed})`).join(', ');
+      await createNotification(parentId, {
+        type: 'schoolgeld_reminder',
+        titleNl: 'Openstaand schoolgeld',
+        titleTr: 'Ödenmemiş okul ücreti',
+        bodyNl: `Er staat nog schoolgeld open voor: ${listNl}. Bekijk het overzicht voor de betaalgegevens.`,
+        bodyTr: `Şu öğrenciler için ödenmemiş okul ücreti var: ${listTr}. Ödeme bilgileri için özete bakın.`,
+        link: '#billing',
+      });
+      sent++;
     }
 
     return c.json({ success: true, sent, totalParents: parentIds.length });
@@ -8907,43 +8839,29 @@ app.post("/make-server-6679cacd/oudergesprekken", async (c) => {
     const existingIds: string[] = await kv.get('oudergesprek_ids') || [];
     await kv.set('oudergesprek_ids', [...existingIds, ...newIds]);
 
-    // Send emails to every parent whose child is in one of the classes.
-    // Routed through sendEmail like every other mail, so the from-address, the
-    // bismillah header and the failure logging are the same everywhere.
+    // Tell each parent (in-app) that a round is open and they need to pick a
+    // slot. Their worklist also carries this until they book.
     let emailsSent = 0;
-    const parentEmailsSeen = new Set<string>();
+    const parentsSeen = new Set<string>();
 
     for (const student of allStudents) {
-      if (!student?.parentId) continue;
+      if (!student?.parentId || parentsSeen.has(student.parentId)) continue;
       const cls = allClasses.find((cl: any) => cl.id === student.classId);
       if (!cls) continue;
       const session = createdSessions.find((s: any) => s.classId === cls.id);
       if (!session) continue;
-
-      const parentData = await getUserData(student.parentId);
-      if (!parentData?.email || parentEmailsSeen.has(parentData.email)) continue;
-      parentEmailsSeen.add(parentData.email);
+      parentsSeen.add(student.parentId);
 
       const lastSlotEnd = session.slots[session.slots.length - 1]?.end || endTime;
-      const ok = await sendEmail(
-        parentData.email,
-        `Oudergesprek ${date} | Veli Görüşmesi - Rahman Eğitim`,
-        emailWrapper('Oudergesprek', `
-          <p style="color:#374151;line-height:1.6">Beste ouder,</p>
-          <p style="color:#374151;line-height:1.6">Er is een oudergesprek ingepland op <strong>${date}</strong> voor klas <strong>${escapeHtml(cls.name || '')}</strong>.</p>
-          <p style="color:#374151;line-height:1.6">Tijdsloten zijn beschikbaar van <strong>${startTime}</strong> tot <strong>${lastSlotEnd}</strong> (${minutesPerSlot} minuten per gesprek).</p>
-          <p style="color:#374151;line-height:1.6">Log in op het ouderportaal om uw tijdslot te kiezen. <strong>Wie het eerst komt, het eerst maalt!</strong></p>
-          <p style="margin:24px 0"><a href="${APP_URL}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Kies uw tijdslot</a></p>
-          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-          <p style="color:#374151;line-height:1.6">Sayın veli,</p>
-          <p style="color:#374151;line-height:1.6"><strong>${date}</strong> tarihinde <strong>${escapeHtml(cls.name || '')}</strong> sınıfı için veli görüşmesi planlanmıştır.</p>
-          <p style="color:#374151;line-height:1.6">Görüşme saatleri <strong>${startTime}</strong> ile <strong>${lastSlotEnd}</strong> arasındadır (görüşme başına ${minutesPerSlot} dakika).</p>
-          <p style="color:#374151;line-height:1.6">Zaman dilimi seçmek için veli portalına giriş yapın. <strong>İlk gelen, ilk alır!</strong></p>
-          <p style="margin:24px 0"><a href="${APP_URL}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Zaman dilimi seçin</a></p>
-        `),
-      );
-      if (ok) emailsSent++;
+      await createNotification(student.parentId, {
+        type: 'oudergesprek_open',
+        titleNl: 'Kies een tijdslot voor het oudergesprek',
+        titleTr: 'Veli görüşmesi için saat seçin',
+        bodyNl: `Er is een oudergesprek gepland op ${date} voor ${cls.name || 'de klas'}. Tijdsloten lopen van ${startTime} tot ${lastSlotEnd}. Kies uw tijd in het portaal, wie het eerst komt het eerst maalt.`,
+        bodyTr: `${date} tarihinde ${cls.name || 'sınıf'} için veli görüşmesi planlandı. Saatler ${startTime} ile ${lastSlotEnd} arasında. Portaldan saatinizi seçin, ilk gelen ilk alır.`,
+        link: `#oudergesprekken:${student.id}`,
+      });
+      emailsSent++;
     }
 
     return c.json({ success: true, sessions: createdSessions, emailsSent });
@@ -9074,10 +8992,7 @@ app.post("/make-server-6679cacd/oudergesprekken/:id/book", async (c) => {
     await kv.set(`oudergesprek:${id}`, session);
 
     const slot = session.slots[slotIndex];
-    const parentData = await getUserData(user.id);
-    if (parentData?.email) {
-      await sendConferenceConfirmationEmail(parentData.email, session, slot, student.name);
-    }
+    await notifyConferenceBooked(user.id, session, slot, student.name);
 
     return c.json({ success: true, slot });
   } catch (err) {
@@ -9146,10 +9061,7 @@ app.post("/make-server-6679cacd/oudergesprekken/:id/reschedule", async (c) => {
     await kv.set(`oudergesprek:${id}`, session);
 
     const slot = session.slots[toSlotIndex];
-    const parentData = await getUserData(user.id);
-    if (parentData?.email) {
-      await sendConferenceConfirmationEmail(parentData.email, session, slot, student.name);
-    }
+    await notifyConferenceBooked(user.id, session, slot, student.name);
 
     return c.json({ success: true, slot });
   } catch (err) {
@@ -9210,8 +9122,8 @@ app.delete("/make-server-6679cacd/oudergesprekken/:id", async (c) => {
   }
 });
 
-// Admin nudge — emails every parent (one child in this session's class) who
-// hasn't booked a slot yet. One email per parent even with multiple children.
+// Admin nudge: an in-app reminder to every parent (with a child in this
+// session's class) who has not booked a slot yet. One per parent.
 app.post("/make-server-6679cacd/oudergesprekken/:id/remind-unbooked", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
@@ -9236,24 +9148,16 @@ app.post("/make-server-6679cacd/oudergesprekken/:id/remind-unbooked", async (c) 
     for (const student of unbookedStudents) {
       if (seenParents.has(student.parentId)) continue;
       seenParents.add(student.parentId);
-      const parentData = await getUserData(student.parentId);
-      if (!parentData?.email) continue;
 
-      const ok = await sendEmail(
-        parentData.email,
-        `Herinnering: kies uw tijdslot oudergesprek | Hatırlatma: Görüşme saatinizi seçin - Rahman Eğitim`,
-        emailWrapper('Herinnering oudergesprek', `
-          <p style="color:#374151;line-height:1.6">Beste ouder,</p>
-          <p style="color:#374151;line-height:1.6">U heeft nog geen tijdslot gekozen voor het oudergesprek van <strong>${session.className}</strong> op <strong>${session.date}</strong>. Log in op het ouderportaal om een tijdslot te kiezen.</p>
-          <p style="margin:24px 0"><a href="${APP_URL}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Kies uw tijdslot</a></p>
-          <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-          <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-          <p style="color:#374151;line-height:1.6">Sayın veli,</p>
-          <p style="color:#374151;line-height:1.6"><strong>${session.className}</strong> sınıfının <strong>${session.date}</strong> tarihindeki veli görüşmesi için henüz bir zaman dilimi seçmediniz. Zaman dilimi seçmek için veli portalına giriş yapın.</p>
-          <p style="margin:24px 0"><a href="${APP_URL}" style="background:#059669;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Zaman dilimi seçin</a></p>
-        `)
-      );
-      if (ok) sent++;
+      await createNotification(student.parentId, {
+        type: 'oudergesprek_reminder',
+        titleNl: 'Kies nog een tijdslot voor het oudergesprek',
+        titleTr: 'Veli görüşmesi için hâlâ saat seçmediniz',
+        bodyNl: `U heeft nog geen tijdslot gekozen voor het oudergesprek van ${session.className} op ${session.date}. Kies uw tijd in het portaal.`,
+        bodyTr: `${session.className} sınıfının ${session.date} tarihli veli görüşmesi için henüz bir saat seçmediniz. Portaldan saatinizi seçin.`,
+        link: `#oudergesprekken:${student.id}`,
+      });
+      sent++;
     }
 
     return c.json({ success: true, sent, totalUnbooked: unbookedStudents.length });
@@ -9487,9 +9391,17 @@ app.post("/make-server-6679cacd/agenda/events", async (c) => {
     const event = { id: eventId, schoolId, title, date, startTime: startTime || null, endTime: endTime || null, description: description || '' };
 
     const ids: string[] = await kv.get(`agenda_event_ids:${schoolId}`) || [];
-    if (!ids.includes(eventId)) ids.push(eventId);
+    const isNew = !ids.includes(eventId);
+    if (isNew) ids.push(eventId);
     await kv.set(`agenda_event:${eventId}`, event);
     await kv.set(`agenda_event_ids:${schoolId}`, ids);
+
+    // Announce a newly planned event once, to the parents and teachers of the
+    // school. An edit to an existing event says nothing — the agenda already
+    // shows it, and re-notifying on every tweak is exactly the noise to avoid.
+    if (isNew && date >= new Date().toISOString().slice(0, 10)) {
+      announceEvent(schoolId, event).catch(() => {});
+    }
 
     return c.json({ success: true, event });
   } catch (err) {
@@ -9679,6 +9591,16 @@ async function completedTasks(scope: string): Promise<any[]> {
   return rows.filter((r: any) => r?.key);
 }
 
+/** ISO week label (`2026-W35`) for a `YYYY-MM-DD` date — keys weekly tasks. */
+function isoWeekOf(isoDate: string): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  const day = (d.getUTCDay() + 6) % 7; // Monday = 0
+  d.setUTCDate(d.getUTCDate() - day + 3); // nearest Thursday
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((d.getTime() - firstThursday.getTime()) / 86_400_000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
 // The "what needs me today" feed for the signed-in user's role.
 app.get("/make-server-6679cacd/signals/today", async (c) => {
   try {
@@ -9710,6 +9632,49 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
       const conferences = (await kv.getByPrefix('oudergesprek:')).filter(
         (s: any) => s?.id && childSchoolIds.has(s.schoolId) && s.date >= today,
       );
+
+      // Everything that ages out on its own — see buildParentFeed. Windows are
+      // deliberately short: an "event" three weeks out is not news yet, and a
+      // "new grade" from last month is not new.
+      const EVENT_WINDOW = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+      const FRESH_CUTOFF = new Date(Date.parse(`${today}T00:00:00Z`) - 10 * 86_400_000).toISOString();
+
+      const eventIdLists = await Promise.all(
+        [...childSchoolIds].map((sid) => kv.get(`agenda_event_ids:${sid}`)),
+      );
+      const eventIds = [...new Set(eventIdLists.flat().filter(Boolean))] as string[];
+      const events = (await kv.mget(eventIds.map((id) => `agenda_event:${id}`)))
+        .filter((e: any) => e?.id && e.date >= today && e.date <= EVENT_WINDOW)
+        .map((e: any) => ({ id: e.id, title: e.title, date: e.date }));
+
+      const childAttempts = (await kv.getByPrefix('exam_attempt:')).filter(
+        (a: any) => a?.studentId && childIds.includes(a.studentId),
+      );
+      const examTitleById = new Map<string, string>();
+      const newGrades: Array<{ attemptId: string; studentId: string; title?: string; gradedAt?: string }> = [];
+      for (const a of childAttempts) {
+        const scorable = a.graded || (a.submittedAt && (Number(a.openMax) || 0) === 0);
+        const at = a.gradedAt || a.submittedAt;
+        if (!scorable || !at || String(at) < FRESH_CUTOFF) continue;
+        if (a.examId && !examTitleById.has(a.examId)) {
+          examTitleById.set(a.examId, String((await kv.get(`exam:${a.examId}`))?.title || ''));
+        }
+        newGrades.push({
+          attemptId: `${a.code}:${a.studentId}`,
+          studentId: a.studentId,
+          title: a.examId ? examTitleById.get(a.examId) : undefined,
+          gradedAt: at,
+        });
+      }
+
+      const momentIdLists = await Promise.all(
+        [...childSchoolIds].map((sid) => kv.get(`moment_ids:${sid}`)),
+      );
+      const momentIds = [...new Set(momentIdLists.flat().filter(Boolean))] as string[];
+      const newMoments = (await kv.mget(momentIds.map((id) => `moment:${id}`)))
+        .filter((m: any) => m?.id && String(m.createdAt || '') >= FRESH_CUTOFF
+          && (m.studentIds || []).some((sid: string) => childIds.includes(sid)))
+        .map((m: any) => ({ id: m.id, studentIds: m.studentIds, text: m.text, createdAt: m.createdAt }));
 
       // Outstanding schoolgeld per child, from the same tiers the reminder
       // mail and the admin feed use.
@@ -9745,14 +9710,15 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
         ),
         conferences,
         outstandingByChild,
-        missingPhone: !String(userData.phone || '').trim(),
+        events,
+        newGrades,
+        newMoments,
       });
 
       return c.json({ feed, generatedAt: new Date().toISOString() });
     }
 
     const { classes, ctx } = await loadSignalScope(user.id, userData, c.req.header('X-School-Id') || undefined);
-    const studentSignals = computeStudentSignals(ctx);
     const schoolIds = await getUserSchoolIds(user.id, userData);
     const isBeheerder = userData.role !== 'teacher';
 
@@ -9780,10 +9746,12 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
       const pending = registrations.filter(
         (r: any) => r && (!schoolId || r.schoolId === schoolId) && !['geaccepteerd', 'afgewezen'].includes(r.status),
       );
-      const latestRegistrationAt = pending
-        .map((r: any) => String(r.ingediendOp || ''))
-        .sort()
-        .pop() || undefined;
+      // Key the task on the newest pending registration's id, not a date — a
+      // date fallback churns the key daily and breaks the "done" mark (a bug
+      // seen in the demo).
+      const latestRegistrationId = [...pending]
+        .sort((a: any, b: any) => String(a.ingediendOp || '').localeCompare(String(b.ingediendOp || '')))
+        .pop()?.id || undefined;
 
       // Contact-form questions still waiting on an answer. Not school-scoped:
       // the form does not ask which mosque a question is about, so the list in
@@ -9791,10 +9759,9 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
       const questionIds: string[] = await kv.get('question_ids') || [];
       const openQuestionRecords = (await kv.mget(questionIds.map((id: string) => `question:${id}`)))
         .filter((q: any) => q && q.status === 'nieuw');
-      const latestQuestionAt = openQuestionRecords
-        .map((q: any) => String(q.ingediendOp || ''))
-        .sort()
-        .pop() || undefined;
+      const latestQuestionId = [...openQuestionRecords]
+        .sort((a: any, b: any) => String(a.ingediendOp || '').localeCompare(String(b.ingediendOp || '')))
+        .pop()?.id || undefined;
 
       const vacationIds: string[] = schoolId ? (await kv.get(`agenda_vacation_ids:${schoolId}`) || []) : [];
       const vacations = (await kv.mget(vacationIds.map((id: string) => `agenda_vacation:${id}`))).filter(Boolean);
@@ -9842,17 +9809,18 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
 
       const LEVELS: Record<string, number> = { high: 3, medium: 2, low: 1 };
       feed = [
+        // Repeated unreported absence reaches the beheerder only once the ladder
+        // has climbed all the way (3rd time) — `escalated` above carries that.
         ...escalated,
-        ...computeAbsenceFlags(ctx),
         ...buildAdminFeed({
           today,
           upcomingConferences: sessions,
           unbookedConferences,
           openCases,
           pendingRegistrations: pending.length,
-          latestRegistrationAt,
+          latestRegistrationId,
           openQuestions: openQuestionRecords.length,
-          latestQuestionAt,
+          latestQuestionId,
           diplomaVisible,
           vacations,
           outstandingPayments,
@@ -9888,6 +9856,39 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
         ? (await loadOutreachTracks(schoolId)).filter((t) => t.classId && myClassIds.has(t.classId))
         : [];
 
+      // Has this teacher shared a mooi moment in the last week?
+      const weekAgo = new Date(Date.parse(`${today}T00:00:00Z`) - 7 * 86_400_000).toISOString();
+      const myMoments = schoolId
+        ? (await kv.mget(((await kv.get(`moment_ids:${schoolId}`)) || []).map((id: string) => `moment:${id}`)))
+        : [];
+      const sharedMomentRecently = myMoments.some(
+        (m: any) => m?.createdBy === user.id && String(m.createdAt || '') >= weekAgo,
+      );
+
+      // Sick notes parents filed for this teacher's classes, for a lesson today
+      // or later — informational, so the teacher is not the last to know.
+      const myStudentIds = new Set(ctx.students.filter((s: any) => myClassIds.has(s.classId)).map((s: any) => s.id));
+      const studentNameById = new Map(ctx.students.map((s: any) => [s.id, s.name]));
+      const reportedAbsences = (await kv.getByPrefix('absence_notification:'))
+        .filter((n: any) => n?.studentId && myStudentIds.has(n.studentId) && String(n.lessonDate || '') >= today)
+        .map((n: any) => ({
+          id: n.id,
+          studentName: studentNameById.get(n.studentId) || '',
+          lessonDate: String(n.lessonDate),
+        }));
+
+      // Agenda events for this teacher's school, in the coming two weeks.
+      const eventWindow = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+      const teacherEventIds: string[] = schoolId ? (await kv.get(`agenda_event_ids:${schoolId}`)) || [] : [];
+      const events = (await kv.mget(teacherEventIds.map((id) => `agenda_event:${id}`)))
+        .filter((e: any) => e?.id && e.date >= today && e.date <= eventWindow)
+        .map((e: any) => ({ id: e.id, title: e.title, date: e.date }));
+
+      // Oudergesprek rounds for this teacher's classes, same window.
+      const conferences = sessions
+        .filter((s: any) => s.date <= eventWindow && (!s.classId || myClassIds.has(s.classId)))
+        .map((s: any) => ({ id: s.id, title: s.title, className: s.className, date: s.date }));
+
       feed = [
         ...outreachTasks(myTracks, 'teacher'),
         ...buildTodayFeed({
@@ -9897,7 +9898,11 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
           attendance: ctx.attendance,
           ungradedExams,
           openCases,
-          studentSignals,
+          sharedMomentRecently,
+          isoWeek: isoWeekOf(today),
+          reportedAbsences,
+          events,
+          conferences,
         }),
       ];
     }
@@ -10352,17 +10357,24 @@ async function runOutreachScan(
   if (!data) return counts;
 
   const { classes, students, ctx } = data;
-  const signals = computeStudentSignals(ctx);
   const studentById = new Map(students.map((s: any) => [s.id, s]));
   const classById = new Map(classes.map((cl: any) => [cl.id, cl]));
+  const classNameById = new Map(classes.map((cl: any) => [cl.id, cl.name]));
 
-  const actions = planOutreach({
-    now: nowIso,
-    tracks: await loadOutreachTracks(school.id),
-    signals,
-    classNameById: new Map(classes.map((cl: any) => [cl.id, cl.name])),
-    schoolId: school.id,
-  });
+  const tracks = await loadOutreachTracks(school.id);
+  const absenceCounts = unreportedAbsenceCounts(ctx);
+  const openTrackStudents = new Set(tracks.filter((t) => !t.resolvedAt).map((t) => t.studentId));
+  const absences = students
+    .filter((s: any) => absenceCounts.has(s.id) || openTrackStudents.has(s.id))
+    .map((s: any) => ({
+      studentId: s.id,
+      studentName: s.name || '',
+      classId: s.classId || null,
+      className: classNameById.get(s.classId) || null,
+      unreportedCount: absenceCounts.get(s.id) || 0,
+    }));
+
+  const actions = planOutreach({ now: nowIso, tracks, absences, schoolId: school.id });
 
   for (const action of actions) {
     const track = action.track;
@@ -10370,8 +10382,8 @@ async function runOutreachScan(
     const cls = track.classId ? classById.get(track.classId) : null;
 
     if (action.kind === 'open' && action.audience === 'parent') {
-      // The whole point of the ladder: the family hears about it first, and
-      // hears about it early, while it is still a small thing to fix.
+      // Rung 1: the family hears first, and hears early — a first unreported
+      // absence is almost always news to them and a note fixes it.
       if (student?.parentId) {
         await notifyUser(student.parentId, {
           type: 'outreach_parent',
@@ -10379,23 +10391,9 @@ async function runOutreachScan(
           titleTr: action.titleTr,
           bodyNl: action.bodyNl,
           bodyTr: action.bodyTr,
-          link: '#overview',
+          link: `#report-absence:${track.studentId}`,
         });
         counts.parentsInformed++;
-      }
-      // The class teacher is told too, in-app only. Not as a task — there is
-      // nothing for them to do yet — but because a parent may well reply to
-      // this in the playground on Saturday, and a teacher who has not been
-      // told looks like a school that does not talk to itself.
-      if (cls?.teacherId) {
-        await createNotification(cls.teacherId, {
-          type: 'outreach_informed',
-          titleNl: `Ouders van ${track.studentName} geïnformeerd`,
-          titleTr: `${track.studentName} velisi bilgilendirildi`,
-          bodyNl: `Over de ${FAMILY_LABELS[track.family].nl}. ${track.reasonNl}`,
-          bodyTr: `${FAMILY_LABELS[track.family].tr} hakkında. ${track.reasonTr}`,
-          link: '#signals',
-        });
       }
     }
 
@@ -10406,7 +10404,7 @@ async function runOutreachScan(
         titleTr: action.titleTr,
         bodyNl: action.bodyNl,
         bodyTr: action.bodyTr,
-        link: '#signals',
+        link: '#meldingen',
       });
       counts.teacherCalls++;
     }
@@ -10462,256 +10460,17 @@ async function runOutreachScan(
       counts.escalations++;
     }
 
-    if (action.kind === 'resolve') {
-      // Only worth announcing when a person was actually working on it —
-      // closing a concern the family fixed on their own needs no ceremony.
-      if (track.stage !== 'parent_informed') {
-        if (cls?.teacherId) {
-          await createNotification(cls.teacherId, {
-            type: 'outreach_resolved',
-            titleNl: action.titleNl || `${track.studentName}: opgelost`,
-            titleTr: action.titleTr || `${track.studentName}: çözüldü`,
-            bodyNl: action.bodyNl,
-            bodyTr: action.bodyTr,
-            link: '#signals',
-          });
-        }
-        counts.resolved++;
-      }
+    if (action.kind === 'resolve' && track.stage !== 'parent_informed') {
+      // A track that a teacher or beheerder was working on has closed — worth a
+      // quiet note so they stop chasing. Nothing is sent when it never got past
+      // rung 1: closing a concern the family fixed on their own needs no fuss.
+      counts.resolved++;
     }
 
     await saveOutreachTrack(track);
   }
 
   return counts;
-}
-
-// ── The weekly digest ───────────────────────────────────────────────────────
-//
-// One mail per person per week. Built per school so the underlying data is
-// loaded once rather than once per family.
-
-function addDaysIso(iso: string, days: number): string {
-  return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-}
-
-async function sendWeeklyDigests(school: any, from: string, to: string, admins: any[]): Promise<number> {
-  const data = await loadSchoolScanData(school.id);
-  if (!data) return 0;
-  const { classes, students, ctx } = data;
-  const inWindow = (date: any) => {
-    const d = String(date || '').slice(0, 10);
-    return d >= from && d <= to;
-  };
-
-  const classById = new Map(classes.map((cl: any) => [cl.id, cl]));
-  const weekAttendance = ctx.attendance.filter((a: any) => inWindow(a.date));
-  const weekBehavior = (ctx.behavior || []).filter((b: any) => inWindow(b.date));
-  const weekHomework = (ctx.homework || []).filter((h: any) => inWindow(h.dueDate));
-  const completed = new Set(
-    (ctx.completions || [])
-      .filter((c: any) => c?.completed !== false)
-      .map((c: any) => `${c.studentId}:${c.homeworkId}`),
-  );
-  const reportedAbsence = new Set(
-    (ctx.notifications || []).map((n: any) => `${n.studentId}:${String(n.lessonDate).slice(0, 10)}`),
-  );
-
-  // Lesson days the school actually ran this week, taken from the union of
-  // every class's registrations. Measuring a class against *its own*
-  // registrations would be circular — it can never show a gap — so the school
-  // as a whole is the yardstick.
-  const schoolLessonDates = new Set(weekAttendance.map((a: any) => String(a.date)));
-
-  const momentIds: string[] = await kv.get(`moment_ids:${school.id}`) || [];
-  const weekMoments = (await kv.mget(momentIds.slice(0, 200).map((id) => `moment:${id}`)))
-    .filter((m: any) => m?.id && inWindow(m.createdAt));
-
-  const eventIds: string[] = await kv.get(`agenda_event_ids:${school.id}`) || [];
-  const upcoming = (await kv.mget(eventIds.map((id) => `agenda_event:${id}`)))
-    .filter((e: any) => e?.date && e.date > to && e.date <= addDaysIso(to, 7))
-    .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)))
-    .map((e: any) => ({ date: e.date, title: e.title }));
-
-  let sent = 0;
-
-  const deliver = async (userId: string, digest: Digest) => {
-    if (digest.empty) return;
-    await notifyUser(userId, {
-      type: 'weekly_digest',
-      titleNl: digest.headlineNl,
-      titleTr: digest.headlineTr,
-      // The bell entry is a one-liner; the mail carries the whole thing.
-      bodyNl: digest.sections[0]?.lines[0]?.nl || 'Het weekoverzicht staat klaar.',
-      bodyTr: digest.sections[0]?.lines[0]?.tr || 'Haftalık özet hazır.',
-      link: '#overview',
-      emailSubject: `${digest.headlineNl} | ${digest.headlineTr}`,
-      emailHtml: emailWrapper(digest.headlineNl, digestHtml(digest)),
-    });
-    sent++;
-  };
-
-  // ── Parents ──
-  const byParent = new Map<string, any[]>();
-  for (const student of students) {
-    if (!student.parentId) continue;
-    if (!byParent.has(student.parentId)) byParent.set(student.parentId, []);
-    byParent.get(student.parentId)!.push(student);
-  }
-
-  for (const [parentId, children] of byParent) {
-    const weeks: ChildWeek[] = children.map((child: any) => {
-      const rows = weekAttendance.filter((a: any) =>
-        a.records?.some((r: any) => r.studentId === child.id),
-      );
-      const present = rows.filter(
-        (a: any) => a.records.find((r: any) => r.studentId === child.id)?.present !== false,
-      ).length;
-      const absentDates = rows
-        .filter((a: any) => a.records.find((r: any) => r.studentId === child.id)?.present === false)
-        .map((a: any) => String(a.date).slice(0, 10));
-
-      const due = weekHomework.filter((h: any) =>
-        Array.isArray(h.studentIds) ? h.studentIds.includes(child.id) : h.classId === child.classId,
-      );
-      const ratings = weekBehavior
-        .filter((b: any) => b.studentId === child.id && typeof b.rating === 'number')
-        .map((b: any) => b.rating);
-
-      return {
-        name: child.name,
-        className: classById.get(child.classId)?.name || null,
-        lessons: rows.length,
-        present,
-        reported: absentDates.filter((d: string) => reportedAbsence.has(`${child.id}:${d}`)).length,
-        homeworkDue: due.length,
-        homeworkDone: due.filter((h: any) => completed.has(`${child.id}:${h.id}`)).length,
-        behaviorAvg: ratings.length ? ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length : null,
-        moments: weekMoments
-          .filter((m: any) => (m.studentIds || []).includes(child.id))
-          .map((m: any) => ({ textNl: m.text, textTr: m.text })),
-      };
-    });
-
-    await deliver(
-      parentId,
-      buildParentDigest({
-        children: weeks,
-        upcoming,
-        // The open items are the same ones the in-app list shows, so the mail
-        // and the app never disagree about what is outstanding.
-        openItems: buildParentFeed({
-          today: to,
-          children: children.map((s: any) => ({
-            id: s.id,
-            name: s.name,
-            classId: s.classId,
-            className: classById.get(s.classId)?.name || null,
-          })),
-          attendance: ctx.attendance,
-          notifications: ctx.notifications || [],
-          homework: ctx.homework,
-          completions: ctx.completions,
-          conferences: [],
-        }).map((i) => ({ titleNl: i.titleNl, titleTr: i.titleTr })),
-      }),
-    );
-  }
-
-  // ── Teachers ──
-  const signals = computeStudentSignals(ctx);
-  const tracks = await loadOutreachTracks(school.id);
-  const teacherIds = new Set(classes.map((cl: any) => cl.teacherId).filter(Boolean));
-
-  for (const teacherId of teacherIds) {
-    const mine = classes.filter((cl: any) => cl.teacherId === teacherId);
-    const myClassIds = new Set(mine.map((cl: any) => cl.id));
-
-    await deliver(
-      teacherId,
-      buildTeacherDigest({
-        classes: mine.map((cl: any) => ({
-          name: cl.name,
-          lessonsHeld: schoolLessonDates.size,
-          lessonsRegistered: weekAttendance.filter((a: any) => a.classId === cl.id).length,
-        })),
-        atRisk: signals
-          .filter((s) => s.level === 'high' && s.classId && myClassIds.has(s.classId))
-          .map((s) => ({
-            studentName: s.studentName,
-            reasonNl: s.signals.map((x) => x.titleNl).join(', '),
-            reasonTr: s.signals.map((x) => x.titleTr).join(', '),
-          })),
-        callsToMake: tracks
-          .filter((t) => !t.resolvedAt && t.stage === 'teacher_call' && t.classId && myClassIds.has(t.classId))
-          .map((t) => ({ studentName: t.studentName })),
-      }),
-    );
-  }
-
-  // ── Beheerders ──
-  if (admins.length) {
-    const registrationIds: string[] = await kv.get('inschrijving_ids') || [];
-    const registrations = await kv.mget(registrationIds.map((id: string) => `inschrijving:${id}`));
-    const pending = registrations.filter(
-      (r: any) => r && r.schoolId === school.id && !['geaccepteerd', 'afgewezen'].includes(r.status),
-    ).length;
-
-    const caseIds: string[] = await kv.get(`case_ids:${school.id}`) || [];
-    const cases = (await kv.mget(caseIds.map((id: string) => `case:${id}`))).filter((k: any) => k?.id);
-    const open = cases.filter((k: any) => !['fixed', 'archived'].includes(k.status));
-    const stuck = open.filter((k: any) => {
-      const ts = Date.parse(k.statusChangedAt || k.updatedAt || k.createdAt || '');
-      return Number.isFinite(ts) && Date.now() - ts > 14 * 86_400_000;
-    }).length;
-
-    const settings = await kv.get(`boekhouding:settings:${school.id}`) || DEFAULT_BOEKHOUDING_SETTINGS;
-    const tiers = settings.schoolgeld || DEFAULT_BOEKHOUDING_SETTINGS.schoolgeld;
-    const records = await kv.getByPrefix('boekhouding:student:');
-    const byStudent = new Map(records.filter((r: any) => r?.studentId).map((r: any) => [r.studentId, r]));
-    let outstanding = 0;
-    for (const student of students) {
-      const record = byStudent.get(student.id) || defaultBoekhoudingRecord(student.id);
-      const required = record.isMember
-        ? (record.hasSibling ? tiers.memberWithSibling : tiers.memberNoSibling)
-        : (record.hasSibling ? tiers.noMemberWithSibling : tiers.noMemberNoSibling);
-      if ((Number(record.payments?.schoolgeld) || 0) < required) outstanding++;
-    }
-
-    let marks = 0;
-    let presentMarks = 0;
-    for (const row of weekAttendance) {
-      for (const r of row.records || []) {
-        marks++;
-        if (r.present !== false) presentMarks++;
-      }
-    }
-
-    const gaps = classes
-      .map((cl: any) => ({
-        name: cl.name,
-        missing: schoolLessonDates.size - weekAttendance.filter((a: any) => a.classId === cl.id).length,
-      }))
-      .filter((g: any) => g.missing > 0);
-
-    const digest = buildAdminDigest({
-      schoolName: school.name || 'School',
-      pendingRegistrations: pending,
-      openCases: open.length,
-      stuckCases: stuck,
-      outstandingPayments: outstanding,
-      atRiskCount: signals.filter((s) => s.level === 'high').length,
-      escalations: tracks
-        .filter((t) => !t.resolvedAt && t.stage === 'admin_escalated')
-        .map((t) => ({ studentName: t.studentName, reasonNl: t.reasonNl, reasonTr: t.reasonTr })),
-      registrationGaps: gaps,
-      attendanceRate: marks > 0 ? presentMarks / marks : null,
-    });
-
-    for (const admin of admins) await deliver(admin.id, digest);
-  }
-
-  return sent;
 }
 
 app.post("/make-server-6679cacd/cron/tick", async (c) => {
@@ -10750,7 +10509,7 @@ app.post("/make-server-6679cacd/cron/tick", async (c) => {
       // ── 1. Teacher attendance reminders ──
       // Once a class's lesson-day ends within 20 minutes (or has already
       // ended) and attendance for today hasn't been recorded, nudge the
-      // teacher once (email + notification).
+      // teacher once (in-app).
       const lesstructuren = await getLesstructurenForSchool(school.id);
       const settings = lesstructuren.find(ls => todayStr >= ls.startDate && todayStr <= ls.endDate);
       if (settings && (settings.lessonDays || []).includes(dayOfWeek)) {
@@ -10765,33 +10524,15 @@ app.post("/make-server-6679cacd/cron/tick", async (c) => {
             if (await kv.get(flagKey)) continue;
             await kv.set(flagKey, true);
 
-            const teacherData = await getUserData(cls.teacherId);
-            if (!teacherData) continue;
-
             await createNotification(cls.teacherId, {
               type: 'attendance_reminder',
               titleNl: 'Aanwezigheid nog niet ingevuld',
               titleTr: 'Yoklama henüz girilmedi',
-              bodyNl: `Vergeet niet de aanwezigheid voor ${cls.name} van vandaag in te vullen.`,
-              bodyTr: `${cls.name} sınıfının bugünkü devamsızlığını girmeyi unutmayın.`,
-              link: '#entities',
+              bodyNl: `De les van ${cls.name} is bijna afgelopen en de aanwezigheid van vandaag staat nog niet ingevuld.`,
+              bodyTr: `${cls.name} sınıfının dersi bitmek üzere ve bugünkü yoklama henüz girilmedi.`,
+              link: '#attendance',
             });
             teacherReminders++;
-
-            if (teacherData.email) {
-              await sendEmail(
-                teacherData.email,
-                'Aanwezigheid nog niet ingevuld | Yoklama Henüz Girilmedi - Rahman Eğitim',
-                emailWrapper('Aanwezigheid', `
-                  <p style="color:#374151;line-height:1.6">Beste leerkracht,</p>
-                  <p style="color:#374151;line-height:1.6">De les van <strong>${cls.name}</strong> loopt bijna af (of is voorbij) en de aanwezigheid van vandaag is nog niet ingevuld. Wilt u dit zo spoedig mogelijk doen?</p>
-                  <hr style="margin:32px 0;border:none;border-top:1px solid #e5e7eb">
-                  <h3 style="color:#065f46;margin-bottom:8px">Türkçe</h3>
-                  <p style="color:#374151;line-height:1.6">Sayın öğretmen,</p>
-                  <p style="color:#374151;line-height:1.6"><strong>${cls.name}</strong> sınıfının dersi bitmek üzere (veya bitti) ve bugünkü yoklama henüz girilmedi. En kısa sürede girmenizi rica ederiz.</p>
-                `)
-              );
-            }
           }
         }
       }
@@ -10930,25 +10671,9 @@ app.post("/make-server-6679cacd/cron/tick", async (c) => {
       outreach.resolved += counts.resolved;
     }
 
-    // ── 7. The weekly digest ──
-    // Mondays, after the weekend's lessons are in the books. Keyed on the date
-    // rather than a week number: it only ever runs on a Monday, so the date is
-    // already unique per week and needs no second calendar to reason about.
-    let digestsSent = 0;
-    if (dayOfWeek === 1) {
-      const from = new Date(now.getTime() - 7 * 86_400_000).toISOString().slice(0, 10);
-      for (const school of schools) {
-        const flagKey = `reminder_sent:weekly_digest:${school.id}:${todayStr}`;
-        if (await kv.get(flagKey)) continue;
-        await kv.set(flagKey, true);
-        digestsSent += await sendWeeklyDigests(
-          school,
-          from,
-          todayStr,
-          adminsBySchool.get(school.id) || [],
-        );
-      }
-    }
+    // The weekly digest mail was removed: it was another thing landing in an
+    // inbox on its own schedule, and everything worth acting on already reaches
+    // people as a task or an in-app notification.
 
     return c.json({
       success: true,
@@ -10958,7 +10683,6 @@ app.post("/make-server-6679cacd/cron/tick", async (c) => {
       newYearReminders,
       caseEscalations,
       outreach,
-      digestsSent,
     });
   } catch (err) {
     console.log('Cron tick error:', err);

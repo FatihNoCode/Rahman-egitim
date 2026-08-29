@@ -1,6 +1,15 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* Without this the UA falls back to the *operating system's* appearance for
+     anything it draws itself — the autofill/suggestion popup under a search
+     field, date and select pickers, scrollbars. On a phone or Mac set to dark,
+     that painted a solid near-black box over a light screen every time
+     somebody typed in a search field, with black text on it. The app decides
+     its own theme (see src/lib/theme.ts); dark.css re-declares this as `dark`
+     when it is on. */
+  color-scheme: light;
+
   --font-size: 16px;
   --background: #ffffff;
   --foreground: oklch(0.145 0 0);

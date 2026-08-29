@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { notify, confirmDialog } from './ui/feedback';
 import LoadError from './ui/load-error';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
 interface Slot {
   start: string;
@@ -31,6 +33,7 @@ interface OudergesprekkenViewProps {
 export default function OudergesprekkenView({ language, apiRequest }: OudergesprekkenViewProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const showLoading = useMinimumLoading(loading);
   // Distinguishes "nothing to show" from "we never got an answer" — both
   // rendered the same empty state before, which is how a load failure came to
   // look like good news.
@@ -248,8 +251,8 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
           )}
         </div>
 
-        {loading ? (
-          <p className="text-gray-400 text-sm">{language === 'tr' ? 'Yükleniyor...' : 'Laden...'}</p>
+        {showLoading ? (
+          <LoadingState compact label={language === 'tr' ? 'Yükleniyor...' : 'Laden...'} />
         ) : loadFailed ? (
           <LoadError language={language} onRetry={loadSessions} />
         ) : sessions.length === 0 ? (

@@ -1,11 +1,11 @@
 PODS:
-  - Capacitor (8.4.2):
+  - Capacitor (8.5.0):
     - CapacitorCordova
   - CapacitorApp (8.1.1):
     - Capacitor
   - CapacitorBrowser (8.0.4):
     - Capacitor
-  - CapacitorCordova (8.4.2)
+  - CapacitorCordova (8.5.0)
   - CapacitorHaptics (8.0.2):
     - Capacitor
   - CapacitorPushNotifications (8.1.2):
@@ -18,13 +18,13 @@ PODS:
     - Sentry (= 9.16.1)
 
 DEPENDENCIES:
-  - "Capacitor (from `../../node_modules/@capacitor/ios`)"
-  - "CapacitorApp (from `../../node_modules/@capacitor/app`)"
-  - "CapacitorBrowser (from `../../node_modules/@capacitor/browser`)"
-  - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
-  - "CapacitorHaptics (from `../../node_modules/@capacitor/haptics`)"
-  - "CapacitorPushNotifications (from `../../node_modules/@capacitor/push-notifications`)"
-  - "SentryCapacitor (from `../../node_modules/@sentry/capacitor`)"
+  - "Capacitor (from `../../node_modules/.deno/@capacitor+ios@8.5.0/node_modules/@capacitor/ios`)"
+  - "CapacitorApp (from `../../node_modules/.deno/@capacitor+app@8.1.1/node_modules/@capacitor/app`)"
+  - "CapacitorBrowser (from `../../node_modules/.deno/@capacitor+browser@8.0.4/node_modules/@capacitor/browser`)"
+  - "CapacitorCordova (from `../../node_modules/.deno/@capacitor+ios@8.5.0/node_modules/@capacitor/ios`)"
+  - "CapacitorHaptics (from `../../node_modules/.deno/@capacitor+haptics@8.0.2/node_modules/@capacitor/haptics`)"
+  - "CapacitorPushNotifications (from `../../node_modules/.deno/@capacitor+push-notifications@8.1.2/node_modules/@capacitor/push-notifications`)"
+  - "SentryCapacitor (from `../../node_modules/.deno/@sentry+capacitor@4.3.0/node_modules/@sentry/capacitor`)"
 
 SPEC REPOS:
   trunk:
@@ -32,30 +32,30 @@ SPEC REPOS:
 
 EXTERNAL SOURCES:
   Capacitor:
-    :path: "../../node_modules/@capacitor/ios"
+    :path: "../../node_modules/.deno/@capacitor+ios@8.5.0/node_modules/@capacitor/ios"
   CapacitorApp:
-    :path: "../../node_modules/@capacitor/app"
+    :path: "../../node_modules/.deno/@capacitor+app@8.1.1/node_modules/@capacitor/app"
   CapacitorBrowser:
-    :path: "../../node_modules/@capacitor/browser"
+    :path: "../../node_modules/.deno/@capacitor+browser@8.0.4/node_modules/@capacitor/browser"
   CapacitorCordova:
-    :path: "../../node_modules/@capacitor/ios"
+    :path: "../../node_modules/.deno/@capacitor+ios@8.5.0/node_modules/@capacitor/ios"
   CapacitorHaptics:
-    :path: "../../node_modules/@capacitor/haptics"
+    :path: "../../node_modules/.deno/@capacitor+haptics@8.0.2/node_modules/@capacitor/haptics"
   CapacitorPushNotifications:
-    :path: "../../node_modules/@capacitor/push-notifications"
+    :path: "../../node_modules/.deno/@capacitor+push-notifications@8.1.2/node_modules/@capacitor/push-notifications"
   SentryCapacitor:
-    :path: "../../node_modules/@sentry/capacitor"
+    :path: "../../node_modules/.deno/@sentry+capacitor@4.3.0/node_modules/@sentry/capacitor"
 
 SPEC CHECKSUMS:
-  Capacitor: 52f999235b8bd6a7d01694753f4f4d54d182e3a3
+  Capacitor: 00b87168591cc006ea6f5c0de681ec5c39a2c8eb
   CapacitorApp: 305bd13c44f6f9d164e2ee66a4faa956ed8c0e06
   CapacitorBrowser: 752e0208aa07c7aa63d1f7cde895a3e9519b2656
-  CapacitorCordova: 345eacdc4c8282415446aea4acd8c77d82480bd4
+  CapacitorCordova: 9d3acbb574048e7167d2af127a0af2123e619f2f
   CapacitorHaptics: 296f771ecd89c7a1bd92a7b6826a7d268e2e70f5
   CapacitorPushNotifications: 32a7f840815f319fd9ba1c1c9b0b914be9d95237
   Sentry: e5d82a3c1f2d951f75c04c57215a0abb1facbd51
   SentryCapacitor: 0561def7ada7e47d0437324e7aa3db60d52bfe40
 
-PODFILE CHECKSUM: 3951e0a5e0c0aeb2da49ba1c2334560e702ad65a
+PODFILE CHECKSUM: 943d44853a9c30de34b22246eb6e6ad8c6e71a5c
 
 COCOAPODS: 1.17.0

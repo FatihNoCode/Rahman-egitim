@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Settings, X, Check, Trash2, Plus, Pencil, Mail } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
 import LoadError from './ui/load-error';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 import { matches } from '../../lib/search';
 
 interface Student {
@@ -104,6 +106,7 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
   // Payment log tab
   const [logEntries, setLogEntries] = useState<PaymentLogEntry[]>([]);
   const [loadingLog, setLoadingLog] = useState(false);
+  const showLoadingLog = useMinimumLoading(loadingLog);
   // The prices and the per-student payment records are what this whole tab
   // computes from. If either fails to load, every balance on screen is wrong
   // rather than merely empty — so say so instead of showing confident zeroes.
@@ -111,6 +114,12 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
   const todayYMD = () => new Date().toISOString().slice(0, 10);
   const [logForm, setLogForm] = useState({ date: todayYMD(), studentId: '', category: 'schoolgeld', amount: '', note: '' });
   const [logStudentSearch, setLogStudentSearch] = useState('');
+  // Open state of the student picker below. This used to be a <datalist>,
+  // which renders nothing at all in iOS WKWebView (and therefore in the app) —
+  // the field looked like a plain text box that had to be typed exactly right,
+  // so nobody could file a payment from a phone. A plain list we draw
+  // ourselves works the same everywhere.
+  const [logStudentOpen, setLogStudentOpen] = useState(false);
   const [savingLog, setSavingLog] = useState(false);
   const [savingLabel, setSavingLabel] = useState<string | null>(null);
 
@@ -384,21 +393,61 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
               </div>
               <div className="lg:col-span-2">
                 <label className="block text-xs text-gray-500 mb-1">{nl('Öğrenci', 'Leerling')}</label>
-                <input
-                  type="text"
-                  list="boekhouding-log-students"
-                  value={logStudentSearch || studentName(logForm.studentId)}
-                  onChange={e => {
-                    setLogStudentSearch(e.target.value);
-                    const match = students.find(s => s.name === e.target.value);
-                    setLogForm(prev => ({ ...prev, studentId: match ? match.id : '' }));
-                  }}
-                  placeholder={nl('Öğrenci seçin...', 'Kies leerling...')}
-                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <datalist id="boekhouding-log-students">
-                  {logStudentOptions.map(s => <option key={s.id} value={s.name} />)}
-                </datalist>
+                <div className="relative">
+                  <input
+                    type="text"
+                    role="combobox"
+                    aria-expanded={logStudentOpen}
+                    autoComplete="off"
+                    value={logStudentSearch || studentName(logForm.studentId)}
+                    onFocus={() => setLogStudentOpen(true)}
+                    onChange={e => {
+                      setLogStudentOpen(true);
+                      setLogStudentSearch(e.target.value);
+                      const match = students.find(s => s.name === e.target.value);
+                      setLogForm(prev => ({ ...prev, studentId: match ? match.id : '' }));
+                    }}
+                    placeholder={nl('Öğrenci seçin...', 'Kies leerling...')}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  {logStudentOpen && (
+                    <>
+                      {/* Tapping elsewhere closes the list — see RoleSwitchPill
+                          for the same pattern; a picker with no way out is a
+                          trap on a phone. */}
+                      <div className="fixed inset-0 z-40" onClick={() => setLogStudentOpen(false)} />
+                      <ul
+                        role="listbox"
+                        className="absolute left-0 right-0 z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+                      >
+                        {logStudentOptions.length === 0 && (
+                          <li className="px-3 py-2 text-sm text-gray-400">
+                            {nl('Öğrenci bulunamadı', 'Geen leerling gevonden')}
+                          </li>
+                        )}
+                        {logStudentOptions.map(s => (
+                          <li key={s.id}>
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={s.id === logForm.studentId}
+                              onClick={() => {
+                                setLogForm(prev => ({ ...prev, studentId: s.id }));
+                                setLogStudentSearch('');
+                                setLogStudentOpen(false);
+                              }}
+                              className={`w-full px-3 py-2 text-left text-sm transition hover:bg-gray-50 active:bg-gray-100 ${
+                                s.id === logForm.studentId ? 'bg-emerald-50 font-medium text-emerald-800' : 'text-gray-700'
+                              }`}
+                            >
+                              {s.name}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
                 {logForm.studentId && (() => {
                   const rec = records[logForm.studentId] || emptyRecord(logForm.studentId);
                   return (
@@ -484,8 +533,8 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
                   </tr>
                 </thead>
                 <tbody>
-                  {loadingLog ? (
-                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">{nl('Yükleniyor...', 'Laden...')}</td></tr>
+                  {showLoadingLog ? (
+                    <tr><td colSpan={6} className="py-4"><LoadingState compact size={32} label={nl('Yükleniyor...', 'Laden...')} /></td></tr>
                   ) : logEntries.length === 0 ? (
                     <tr><td colSpan={6} className="text-center py-8 text-gray-400">{nl('Henüz kayıt yok', 'Nog geen betalingen gelogd')}</td></tr>
                   ) : (

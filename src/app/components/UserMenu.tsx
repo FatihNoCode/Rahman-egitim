@@ -368,9 +368,28 @@ export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuPr
     }
   };
 
+  /**
+   * Opening the list *is* reading it.
+   *
+   * Each entry shows its whole body right here — there is nothing further to
+   * open — so a panel that only cleared the badge when you tapped an
+   * individual line, or found the "alles gelezen" link, meant the same
+   * notifications came back unread on every screen and on every 60s poll. The
+   * badge was reporting "you have not looked at this" at someone who had just
+   * finished looking at it.
+   *
+   * The dots stay on for *this* viewing so it is still obvious which ones
+   * were new; the next load renders them as read.
+   */
   const openNotifications = async () => {
     setView('notifications');
     await loadNotifications();
+    try {
+      await apiRequest('/notifications/read-all', { method: 'POST' });
+      setUnreadCount(0);
+    } catch (err) {
+      console.error('Error marking notifications read:', err);
+    }
   };
 
   const clickNotification = async (n: Notification) => {

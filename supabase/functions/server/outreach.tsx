@@ -30,12 +30,19 @@
 // decision separate from the sending is what makes the ladder testable and
 // stops a retry from mailing a family twice.
 
-import { type Level, type StudentSignals, LEVEL_WEIGHT } from './signals.tsx';
+import { type Level } from './signals.tsx';
 
-/** The four things a track can be about — one per signal family. */
-export type ConcernFamily = 'attendance' | 'behavior' | 'exam' | 'homework';
+/**
+ * What a track is about. The ladder used to carry four concern families
+ * (attendance, behaviour, exam results, homework), each on its own day-clock.
+ * That produced far more staff tasks and parent mail than anyone wanted, so it
+ * was narrowed to the one concern a school genuinely cannot let slide: a child
+ * marked absent with no sick note. The other three are still surfaced as
+ * read-only analysis in the Signalen tab; they no longer escalate on their own.
+ */
+export type ConcernFamily = 'attendance';
 
-export const CONCERN_FAMILIES: ConcernFamily[] = ['attendance', 'behavior', 'exam', 'homework'];
+export const CONCERN_FAMILIES: ConcernFamily[] = ['attendance'];
 
 export type OutreachStage = 'parent_informed' | 'teacher_call' | 'admin_escalated';
 
@@ -72,7 +79,9 @@ export interface OutreachTrack {
   /** Severity at the last scan, so a track records how bad it got. */
   level: Level;
   stage: OutreachStage;
-  /** Human-readable reason, refreshed each scan from the live signal. */
+  /** Count of unreported absences at the last scan — the ladder's clock. */
+  count?: number;
+  /** Human-readable reason, refreshed each scan from the live count. */
   reasonNl: string;
   reasonTr: string;
   openedAt: string;
@@ -84,65 +93,47 @@ export interface OutreachTrack {
   caseId?: string | null;
 }
 
-/**
- * How long a rung gets to work before the concern climbs.
- *
- * A week is deliberately not short. The point of stage 1 is to give a family
- * room to fix it themselves; escalating after two days would turn a helpful
- * note into a school that nags, which is exactly how these systems get muted.
- */
-export interface LadderTiming {
-  /** Days at stage 1 before the teacher is asked to phone. */
-  toTeacher: number;
-  /** Further days at stage 2 before the beheerder is pulled in. */
-  toAdmin: number;
-}
-
-export const DEFAULT_TIMING: LadderTiming = { toTeacher: 7, toAdmin: 10 };
-
 const DAY_MS = 86_400_000;
 
-/** The family a signal key belongs to: `attendance_streak` -> `attendance`. */
-export function familyOf(signalKey: string): ConcernFamily | null {
-  const head = String(signalKey || '').split('_')[0];
-  return (CONCERN_FAMILIES as string[]).includes(head) ? (head as ConcernFamily) : null;
-}
-
-export const FAMILY_LABELS: Record<ConcernFamily, { nl: string; tr: string }> = {
-  attendance: { nl: 'aanwezigheid', tr: 'devam durumu' },
-  behavior: { nl: 'gedrag in de les', tr: 'derslerdeki davranışı' },
-  exam: { nl: 'toetsresultaten', tr: 'sınav sonuçları' },
-  homework: { nl: 'huiswerk', tr: 'ödevleri' },
+/**
+ * How many unreported absences move a concern to the next rung.
+ *
+ * The ladder is now a simple counter rather than a clock: the family hears at
+ * the first unreported absence, the class teacher at the second, the beheerder
+ * at the third. Counting rather than timing keeps it honest — one missed lesson
+ * with no note is a reminder, three is a pattern.
+ */
+export const ABSENCE_THRESHOLDS: Record<OutreachStage, number> = {
+  parent_informed: 1,
+  teacher_call: 2,
+  admin_escalated: 3,
 };
 
 /**
- * What each rung says, per family.
+ * What each rung says.
  *
- * Written as things a person would actually say. The parent rung in particular
- * is phrased as an opening rather than a warning: a family that feels accused
- * stops reading, and the entire value of stage 1 is that they read it.
+ * Written as things a person would actually say. The parent rung is phrased as
+ * an opening rather than a warning: a family that feels accused stops reading,
+ * and the entire value of stage 1 is that they read it and file the note.
  */
 function stageMessage(
   stage: OutreachStage,
-  family: ConcernFamily,
-  track: { studentName: string; className: string | null; reasonNl: string; reasonTr: string },
+  track: { studentName: string; className: string | null; count?: number },
 ): { titleNl: string; titleTr: string; bodyNl: string; bodyTr: string } {
   const name = track.studentName;
-  const label = FAMILY_LABELS[family];
   const where = track.className ? ` (${track.className})` : '';
+  const n = track.count ?? 0;
 
   if (stage === 'parent_informed') {
     return {
-      titleNl: `Even meekijken met ${name}`,
-      titleTr: `${name} hakkında kısa bir bilgi`,
+      titleNl: `Ziekmelding voor ${name}?`,
+      titleTr: `${name} için hasta bildirimi?`,
       bodyNl:
-        `Het is ons opgevallen dat de ${label.nl} van ${name} de laatste tijd aandacht vraagt. ${track.reasonNl} ` +
-        `Vaak is daar een eenvoudige verklaring voor en is het zo opgelost. Herkent u het beeld, of speelt er iets ` +
-        `waar wij rekening mee kunnen houden? U kunt altijd reageren of de leerkracht aanspreken.`,
+        `${name} is een les afwezig geweest en wij hebben geen ziekmelding ontvangen. ` +
+        `Wilt u de afwezigheid doorgeven? Vaak is er een eenvoudige verklaring; met een ziekmelding is het administratief in orde.`,
       bodyTr:
-        `${name} adlı öğrencinin son dönemde ${label.tr} dikkat gerektiriyor. ${track.reasonTr} ` +
-        `Çoğu zaman bunun basit bir açıklaması olur ve kısa sürede çözülür. Durumu siz de fark ettiniz mi, ` +
-        `yoksa dikkate almamız gereken bir şey mi var? Her zaman yanıt verebilir veya öğretmenle görüşebilirsiniz.`,
+        `${name} bir derse gelmedi ve tarafımıza bir hasta bildirimi ulaşmadı. ` +
+        `Devamsızlığı bildirir misiniz? Genellikle basit bir açıklaması olur; bir bildirimle kayıt düzelmiş olur.`,
     };
   }
 
@@ -151,23 +142,23 @@ function stageMessage(
       titleNl: `Bel de ouders van ${name}`,
       titleTr: `${name} velisini arayın`,
       bodyNl:
-        `${name}${where}: de ouders zijn hier al over geïnformeerd, maar de ${label.nl} is sindsdien niet verbeterd. ` +
-        `${track.reasonNl} Een telefoongesprek werkt op dit punt beter dan nog een bericht.`,
+        `${name}${where} is nu voor de ${n}e keer afwezig geweest zonder ziekmelding. ` +
+        `De ouders zijn al een keer herinnerd; een kort telefoontje werkt op dit punt beter dan nog een bericht.`,
       bodyTr:
-        `${name}${where}: veliler bu konuda bilgilendirildi, ancak ${label.tr} o zamandan beri düzelmedi. ` +
-        `${track.reasonTr} Bu aşamada bir telefon görüşmesi, yeni bir mesajdan daha etkili olur.`,
+        `${name}${where} şimdi ${n}. kez hasta bildirimi olmadan devamsız oldu. ` +
+        `Veliler bir kez hatırlatıldı; bu aşamada kısa bir telefon görüşmesi yeni bir mesajdan daha etkili olur.`,
     };
   }
 
   return {
-    titleNl: `${name} vraagt om opvolging vanuit school`,
-    titleTr: `${name} için okul düzeyinde takip gerekiyor`,
+    titleNl: `${name}: herhaalde afwezigheid zonder ziekmelding`,
+    titleTr: `${name}: tekrarlayan bildirimsiz devamsızlık`,
     bodyNl:
-      `${name}${where}: de ouders zijn geïnformeerd en de leerkracht heeft contact gezocht, maar de ${label.nl} ` +
-      `blijft zorgelijk. ${track.reasonNl} Er is een casus aangemaakt zodat de vervolgstappen vastliggen.`,
+      `${name}${where} is ${n} keer afwezig geweest zonder ziekmelding. De ouders zijn geïnformeerd en de leerkracht ` +
+      `heeft contact gezocht, maar er is geen ziekmelding gekomen. Er is een casus aangemaakt zodat de vervolgstappen vastliggen.`,
     bodyTr:
-      `${name}${where}: veliler bilgilendirildi ve öğretmen iletişime geçti, ancak ${label.tr} hâlâ endişe verici. ` +
-      `${track.reasonTr} Sonraki adımların kayıt altına alınması için bir vaka dosyası oluşturuldu.`,
+      `${name}${where} ${n} kez hasta bildirimi olmadan devamsız oldu. Veliler bilgilendirildi ve öğretmen iletişime geçti, ` +
+      `ancak bir bildirim gelmedi. Sonraki adımların kayıt altına alınması için bir vaka dosyası oluşturuldu.`,
   };
 }
 
@@ -188,66 +179,47 @@ export interface OutreachAction {
 export interface OutreachPlanInput {
   /** ISO timestamp of this scan. */
   now: string;
-  /** Every track currently open for this school. */
+  /** Every track (open or resolved) currently stored for this school. */
   tracks: OutreachTrack[];
-  /** Fresh output of computeStudentSignals, scoped to this school. */
-  signals: StudentSignals[];
-  /** Class lookup so a track can name the class in its messages. */
-  classNameById?: Map<string, string>;
+  /**
+   * Per student, the count of unreported absences so far this school year: a
+   * lesson the student was marked absent for with no matching sick note.
+   */
+  absences: Array<{
+    studentId: string;
+    studentName: string;
+    classId: string | null;
+    className: string | null;
+    unreportedCount: number;
+  }>;
   schoolId: string;
-  timing?: LadderTiming;
 }
 
-/**
- * A concern is *active* while it is scoring high. Medium holds a track open
- * without advancing it (the situation is neither resolved nor deteriorating),
- * and low — or the signal disappearing altogether — closes it.
- *
- * Escalating on medium was tempting and wrong: "attendance is slipping" is
- * exactly the case where a single note home is the whole intervention, and
- * following it up with a phone call and a case file would make the school look
- * like it cannot tell a bad week from a real problem.
- */
-type Health = 'active' | 'holding' | 'clear';
+const STAGE_RANK: Record<OutreachStage, number> = {
+  parent_informed: 1,
+  teacher_call: 2,
+  admin_escalated: 3,
+};
 
-function healthOf(level: Level | null): Health {
-  if (!level) return 'clear';
-  if (level === 'high') return 'active';
-  if (level === 'medium') return 'holding';
-  return 'clear';
+const SUMMARY: Record<OutreachStage, { nl: string; tr: string }> = {
+  parent_informed: { nl: 'Ouders herinnerd aan de ziekmelding', tr: 'Velilere hasta bildirimi hatırlatıldı' },
+  teacher_call: { nl: 'Leerkracht gevraagd te bellen', tr: 'Öğretmenden araması istendi' },
+  admin_escalated: { nl: 'Doorgezet naar de beheerder, casus aangemaakt', tr: 'Yöneticiye iletildi, vaka dosyası oluşturuldu' },
+};
+
+/** The highest rung a given count of unreported absences warrants. */
+function stageForCount(count: number): OutreachStage | null {
+  if (count >= ABSENCE_THRESHOLDS.admin_escalated) return 'admin_escalated';
+  if (count >= ABSENCE_THRESHOLDS.teacher_call) return 'teacher_call';
+  if (count >= ABSENCE_THRESHOLDS.parent_informed) return 'parent_informed';
+  return null;
 }
 
-function daysBetween(fromIso: string, toIso: string): number {
-  const from = Date.parse(fromIso);
-  const to = Date.parse(toIso);
-  if (!Number.isFinite(from) || !Number.isFinite(to)) return 0;
-  return Math.floor((to - from) / DAY_MS);
-}
-
-/** Highest level among the signals of one family, or null when it has none. */
-function familyLevel(student: StudentSignals, family: ConcernFamily): { level: Level | null; nl: string; tr: string } {
-  let best: Level | null = null;
-  const nl: string[] = [];
-  const tr: string[] = [];
-  for (const signal of student.signals) {
-    if (familyOf(signal.key) !== family) continue;
-    if (!best || LEVEL_WEIGHT[signal.level] > LEVEL_WEIGHT[best]) best = signal.level;
-    nl.push(signal.detailNl);
-    tr.push(signal.detailTr);
-  }
-  return { level: best, nl: nl.join(' '), tr: tr.join(' ') };
-}
-
-/** How long the current stage may run before the concern climbs a rung. */
-function dwellDays(stage: OutreachStage, timing: LadderTiming): number | null {
-  if (stage === 'parent_informed') return timing.toTeacher;
-  if (stage === 'teacher_call') return timing.toAdmin;
-  return null; // admin_escalated is the top of the ladder
-}
-
-function nextStage(stage: OutreachStage): OutreachStage | null {
-  const i = STAGE_ORDER.indexOf(stage);
-  return i >= 0 && i < STAGE_ORDER.length - 1 ? STAGE_ORDER[i + 1] : null;
+function reasonFor(count: number): { nl: string; tr: string } {
+  return {
+    nl: `${count}× afwezig zonder ziekmelding dit schooljaar.`,
+    tr: `Bu öğretim yılında ${count} kez hasta bildirimi olmadan devamsız.`,
+  };
 }
 
 /**
@@ -259,7 +231,6 @@ function nextStage(stage: OutreachStage): OutreachStage | null {
  * messages and persisting `action.track`.
  */
 export function planOutreach(input: OutreachPlanInput): OutreachAction[] {
-  const timing = input.timing ?? DEFAULT_TIMING;
   const now = input.now;
   const actions: OutreachAction[] = [];
 
@@ -281,159 +252,129 @@ export function planOutreach(input: OutreachPlanInput): OutreachAction[] {
   }
   const seen = new Set<string>();
 
-  for (const student of input.signals) {
-    if (!student?.studentId) continue;
+  const historyEntry = (stage: OutreachStage) => ({
+    event: stage,
+    at: now,
+    audience: STAGE_AUDIENCE[stage],
+    summaryNl: SUMMARY[stage].nl,
+    summaryTr: SUMMARY[stage].tr,
+  });
 
-    for (const family of CONCERN_FAMILIES) {
-      const { level, nl, tr } = familyLevel(student, family);
-      const health = healthOf(level);
-      const id = `${student.studentId}:${family}`;
-      const existing = openTracks.get(id);
-      seen.add(id);
+  for (const s of input.absences) {
+    if (!s?.studentId) continue;
+    const id = `${s.studentId}:attendance`;
+    seen.add(id);
+    const count = Math.max(0, Math.floor(s.unreportedCount || 0));
+    const existing = openTracks.get(id);
+    const target = stageForCount(count);
 
-      // ── Nothing open, and something is wrong: start at the family. ──
-      if (!existing) {
-        if (health !== 'active') continue;
-        const track: OutreachTrack = {
-          id,
-          schoolId: input.schoolId,
-          studentId: student.studentId,
-          studentName: student.studentName,
-          classId: student.classId ?? null,
-          className: student.className ?? input.classNameById?.get(student.classId || '') ?? null,
-          family,
-          level: level as Level,
-          stage: 'parent_informed',
-          reasonNl: nl,
-          reasonTr: tr,
-          openedAt: now,
-          stageSince: now,
-          history: [],
-          resolvedAt: null,
-          caseId: null,
-        };
-        const msg = stageMessage('parent_informed', family, track);
-        track.history = [
-          ...(resolvedTracks.get(id)?.history ?? []),
-          {
-            event: 'parent_informed',
-            at: now,
-            audience: 'parent',
-            summaryNl: 'Ouders geïnformeerd',
-            summaryTr: 'Veliler bilgilendirildi',
-          },
-        ];
-        actions.push({ kind: 'open', stage: 'parent_informed', audience: 'parent', track, ...msg });
-        continue;
-      }
-
-      // ── Open track, concern gone: close it and say so. ──
-      if (health === 'clear') {
-        const track: OutreachTrack = {
-          ...existing,
-          level: level ?? existing.level,
-          resolvedAt: now,
-          history: [
-            ...existing.history,
-            {
-              event: 'resolved',
-              at: now,
-              audience: 'none',
-              summaryNl: 'Opgelost — het signaal is verdwenen',
-              summaryTr: 'Çözüldü — sinyal ortadan kalktı',
-            },
-          ],
-        };
-        actions.push({
-          kind: 'resolve',
-          stage: existing.stage,
-          audience: 'none',
-          track,
-          titleNl: `${existing.studentName}: ${FAMILY_LABELS[family].nl} is weer op orde`,
-          titleTr: `${existing.studentName}: ${FAMILY_LABELS[family].tr} yeniden yolunda`,
-          bodyNl: `Het signaal over de ${FAMILY_LABELS[family].nl} van ${existing.studentName} is verdwenen. De opvolging is afgesloten.`,
-          bodyTr: `${existing.studentName} adlı öğrencinin ${FAMILY_LABELS[family].tr} ile ilgili sinyal ortadan kalktı. Takip kapatıldı.`,
-        });
-        continue;
-      }
-
-      // ── Open track, still a problem: has this rung had long enough? ──
-      // The reason text is refreshed either way, so a track that is holding
-      // still shows what is currently wrong rather than what was wrong when
-      // it opened.
-      const refreshed: OutreachTrack = {
-        ...existing,
-        level: (level as Level) ?? existing.level,
-        reasonNl: nl || existing.reasonNl,
-        reasonTr: tr || existing.reasonTr,
-        studentName: student.studentName || existing.studentName,
-        className: student.className ?? existing.className,
-      };
-
-      const dwell = dwellDays(existing.stage, timing);
-      const upcoming = nextStage(existing.stage);
-      if (
-        health !== 'active' ||
-        dwell === null ||
-        !upcoming ||
-        daysBetween(existing.stageSince, now) < dwell
-      ) {
-        // Nothing to deliver, but the refreshed reason is still worth storing.
-        if (
-          refreshed.reasonNl !== existing.reasonNl ||
-          refreshed.reasonTr !== existing.reasonTr ||
-          refreshed.level !== existing.level
-        ) {
-          actions.push({
-            kind: 'escalate',
-            stage: existing.stage,
-            audience: 'none',
-            track: refreshed,
-            titleNl: '',
-            titleTr: '',
-            bodyNl: '',
-            bodyTr: '',
-          });
-        }
-        continue;
-      }
-
-      const climbed: OutreachTrack = {
-        ...refreshed,
-        stage: upcoming,
+    // ── Nothing open. Start a track at whichever rung the count already
+    //    warrants, emitting one action per rung passed on the way up so a jump
+    //    straight to 3 still informs the parent and the teacher. ──
+    if (!existing) {
+      if (!target) continue;
+      let track: OutreachTrack = {
+        id,
+        schoolId: input.schoolId,
+        studentId: s.studentId,
+        studentName: s.studentName,
+        classId: s.classId ?? null,
+        className: s.className ?? null,
+        family: 'attendance',
+        level: 'high',
+        stage: 'parent_informed',
+        count,
+        reasonNl: reasonFor(count).nl,
+        reasonTr: reasonFor(count).tr,
+        openedAt: now,
         stageSince: now,
+        history: [...(resolvedTracks.get(id)?.history ?? [])],
+        resolvedAt: null,
+        caseId: null,
+      };
+      for (const stage of STAGE_ORDER) {
+        if (STAGE_RANK[stage] > STAGE_RANK[target]) break;
+        track = { ...track, stage, stageSince: now, history: [...track.history, historyEntry(stage)] };
+        actions.push({
+          kind: stage === 'parent_informed' ? 'open' : 'escalate',
+          stage,
+          audience: STAGE_AUDIENCE[stage],
+          track,
+          openCase: stage === 'admin_escalated' && !track.caseId,
+          ...stageMessage(stage, track),
+        });
+      }
+      continue;
+    }
+
+    // ── Parent filed the notes retroactively: the count fell to zero. Close
+    //    the track, keep the history; a fresh streak re-escalates from scratch. ──
+    if (count === 0) {
+      const track: OutreachTrack = {
+        ...existing,
+        count: 0,
+        resolvedAt: now,
         history: [
-          ...refreshed.history,
+          ...existing.history,
           {
-            event: upcoming,
+            event: 'resolved',
             at: now,
-            audience: STAGE_AUDIENCE[upcoming],
-            summaryNl:
-              upcoming === 'teacher_call'
-                ? 'Leerkracht gevraagd te bellen'
-                : 'Doorgezet naar de beheerder, casus aangemaakt',
-            summaryTr:
-              upcoming === 'teacher_call'
-                ? 'Öğretmenden araması istendi'
-                : 'Yöneticiye iletildi, vaka dosyası oluşturuldu',
+            audience: 'none',
+            summaryNl: 'Opgelost — de afwezigheden zijn alsnog ziekgemeld',
+            summaryTr: 'Çözüldü — devamsızlıklar sonradan hasta bildirildi',
           },
         ],
       };
-      const msg = stageMessage(upcoming, family, climbed);
+      actions.push({
+        kind: 'resolve',
+        stage: existing.stage,
+        audience: 'none',
+        track,
+        titleNl: `${existing.studentName}: afwezigheid afgehandeld`,
+        titleTr: `${existing.studentName}: devamsızlık çözüldü`,
+        bodyNl: `De openstaande afwezigheden van ${existing.studentName} zijn ziekgemeld. De opvolging is afgesloten.`,
+        bodyTr: `${existing.studentName} adlı öğrencinin açık devamsızlıkları hasta bildirildi. Takip kapatıldı.`,
+      });
+      continue;
+    }
+
+    const currentRank = STAGE_RANK[existing.stage];
+    const targetRank = target ? STAGE_RANK[target] : currentRank;
+
+    let track: OutreachTrack = {
+      ...existing,
+      count,
+      reasonNl: reasonFor(count).nl,
+      reasonTr: reasonFor(count).tr,
+      studentName: s.studentName || existing.studentName,
+      className: s.className ?? existing.className,
+    };
+
+    // ── No new rung: just keep the count / reason current on the record. ──
+    if (targetRank <= currentRank) {
+      if (existing.count !== count) {
+        actions.push({ kind: 'escalate', stage: existing.stage, audience: 'none', track, titleNl: '', titleTr: '', bodyNl: '', bodyTr: '' });
+      }
+      continue;
+    }
+
+    // ── Count climbed into one or more higher rungs. ──
+    for (const stage of STAGE_ORDER) {
+      if (STAGE_RANK[stage] <= currentRank) continue;
+      if (STAGE_RANK[stage] > targetRank) break;
+      track = { ...track, stage, stageSince: now, history: [...track.history, historyEntry(stage)] };
       actions.push({
         kind: 'escalate',
-        stage: upcoming,
-        audience: STAGE_AUDIENCE[upcoming],
-        track: climbed,
-        openCase: upcoming === 'admin_escalated' && !climbed.caseId,
-        ...msg,
+        stage,
+        audience: STAGE_AUDIENCE[stage],
+        track,
+        openCase: stage === 'admin_escalated' && !track.caseId,
+        ...stageMessage(stage, track),
       });
     }
   }
 
-  // A track whose student dropped out of the signal list entirely — moved
-  // school, left the class, or simply has no signals any more — would
-  // otherwise stay open forever and keep showing on the student's file.
+  // A track whose student is no longer in the roster at all.
   for (const [id, track] of openTracks) {
     if (seen.has(id)) continue;
     actions.push({
@@ -449,8 +390,8 @@ export function planOutreach(input: OutreachPlanInput): OutreachAction[] {
             event: 'resolved',
             at: now,
             audience: 'none',
-            summaryNl: 'Automatisch afgesloten — geen signaal meer',
-            summaryTr: 'Otomatik kapatıldı — sinyal kalmadı',
+            summaryNl: 'Automatisch afgesloten — leerling niet meer in de klas',
+            summaryTr: 'Otomatik kapatıldı — öğrenci artık sınıfta değil',
           },
         ],
       },
@@ -483,21 +424,23 @@ export function outreachTasks(
   bodyTr: string;
   link: string;
 }> {
-  const wanted: OutreachStage = role === 'teacher' ? 'teacher_call' : 'admin_escalated';
+  // A teacher owes the call from rung 2 up; a beheerder owns it from rung 3.
+  // Rank rather than exact stage: a track that jumped straight to 3 still needs
+  // the teacher's task to exist.
+  const minRank = role === 'teacher' ? STAGE_RANK.teacher_call : STAGE_RANK.admin_escalated;
+  const stage: OutreachStage = role === 'teacher' ? 'teacher_call' : 'admin_escalated';
   return tracks
-    .filter((t) => t && !t.resolvedAt && t.stage === wanted)
+    .filter((t) => t && !t.resolvedAt && STAGE_RANK[t.stage] >= minRank)
     .map((t) => {
-      const msg = stageMessage(t.stage, t.family, t);
+      const msg = stageMessage(stage, { studentName: t.studentName, className: t.className, count: t.count ?? 0 });
       return {
-        // The stage is part of the key so ticking off "I rang them" at stage 2
-        // does not also silence the stage-3 escalation that follows it.
-        key: `outreach_${t.stage}:${t.id}`,
+        key: `outreach_${stage}:${t.id}`,
         level: 'high' as Level,
         titleNl: msg.titleNl,
         titleTr: msg.titleTr,
         bodyNl: msg.bodyNl,
         bodyTr: msg.bodyTr,
-        link: role === 'teacher' ? '#signals' : '#cases',
+        link: role === 'teacher' ? '#meldingen' : '#cases',
       };
     });
 }

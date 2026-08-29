@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X, Clock, Sun, PartyPopper, Calendar as CalendarIcon, BookOpen, Frown, Meh, Smile, Users } from 'lucide-react';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
 interface Lesstructuur {
   id: string;
@@ -262,14 +264,15 @@ export default function AgendaCalendar({
     behavior: behaviorForDate(selectedDate),
     conferences: conferencesForDate(selectedDate),
   } : null;
+  const showLoading = useMinimumLoading(loading);
   const hasSelectionData = !!(selected && (
     selected.vacation || selected.lesstructuur || selected.events.length > 0 ||
     selected.homework.length > 0 || selected.behavior ||
     selected.conferences.length > 0
   ));
 
-  if (loading) {
-    return <div className="text-center py-6 text-gray-500 text-xs">{language === 'tr' ? 'Yükleniyor...' : 'Laden...'}</div>;
+  if (showLoading) {
+    return <LoadingState compact size={32} label={language === 'tr' ? 'Yükleniyor...' : 'Laden...'} />;
   }
 
   return (

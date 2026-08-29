@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Pencil, Check, X, Users as UsersIcon, Search, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { notify } from './ui/feedback';
 import LoadError from './ui/load-error';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 import { matchesAny } from '../../lib/search';
 
 interface Class {
@@ -53,6 +55,7 @@ export default function UsersView({
 }: UsersViewProps) {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const showLoading = useMinimumLoading(loading);
   // Distinguishes "nothing to show" from "we never got an answer" — both
   // rendered the same empty state before, which is how a load failure came to
   // look like good news.
@@ -363,6 +366,10 @@ export default function UsersView({
           <input
             type="text"
             value={search}
+            /* A filter box is not a field worth remembering, and the browser's
+               own suggestion popup over it was the "dark box under the search
+               field" testers reported (see also `color-scheme` in theme.css). */
+            autoComplete="off"
             onChange={(e) => setSearch(e.target.value)}
             placeholder={text.search}
             className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -443,8 +450,8 @@ export default function UsersView({
         </div>
       )}
 
-      {loading ? (
-        <div className="text-center py-12 text-gray-400">{text.loading}</div>
+      {showLoading ? (
+        <LoadingState label={text.loading} />
       ) : loadFailed ? (
         <LoadError language={language} onRetry={loadUsers} />
       ) : (

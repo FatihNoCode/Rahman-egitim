@@ -129,6 +129,25 @@ export default function AccountPanel({ onLogout }: AccountPanelProps) {
     }
   };
 
+  /**
+   * Opening the sheet *is* reading it — every entry shows its whole body, so
+   * there is nothing further to open. Without this the badge came straight
+   * back on the next screen and on every 60s poll, telling someone who had
+   * just read them that they had not. The unread dots stay on for this
+   * viewing so it is still clear which ones were new. Mirrors UserMenu.
+   */
+  const openNotifications = async () => {
+    setShowNotifications(true);
+    await loadNotifications();
+    try {
+      await apiRequest('/notifications/read-all', { method: 'POST' });
+      setUnreadCount(0);
+      publishUnread(0);
+    } catch (err) {
+      console.error('Error marking notifications read:', err);
+    }
+  };
+
   const clickNotification = async (n: Notification) => {
     if (!n.read) {
       try {
@@ -208,7 +227,7 @@ export default function AccountPanel({ onLogout }: AccountPanelProps) {
       {/* Actions list */}
       <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
         <button
-          onClick={() => setShowNotifications(true)}
+          onClick={openNotifications}
           className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition active:bg-gray-50"
         >
           <Bell className="h-5 w-5 text-gray-400" />

@@ -795,19 +795,34 @@ export interface FeedItem {
 export interface FeedInput {
   role: string;
   today: string; // ISO date
-  /** Classes this user is responsible for. */
+  /** Classes this user is responsible for (only those with a lesson today). */
   classes: any[];
   attendance: any[];
   /** Exams with live sessions that closed but still have ungraded attempts. */
   ungradedExams: Array<{ examId: string; title: string; pending: number }>;
   /** Cases assigned to / raised by this user that are still open. */
   openCases: any[];
-  /** Output of computeStudentSignals, already scoped. */
-  studentSignals: StudentSignals[];
-  /** Students whose schoolgeld is still outstanding (admins only). */
-  outstandingPayments?: number;
   /** Days after which an open case counts as overdue. */
   caseSlaDays?: number;
+  /**
+   * Whether this teacher has shared a moment in the last 7 days. When false a
+   * gentle weekly nudge to share one is added.
+   */
+  sharedMomentRecently?: boolean;
+  /** ISO-week string (e.g. `2026-W35`) that keys the weekly share nudge. */
+  isoWeek?: string;
+  /**
+   * Sick notes parents filed for one of this teacher's classes, for a lesson
+   * today or later: { id, studentName, lessonDate }. Informational.
+   */
+  reportedAbsences?: Array<{ id: string; studentName: string; lessonDate: string }>;
+  /** Upcoming agenda events at the teacher's school: { id, title?, date }. */
+  events?: Array<{ id: string; title?: string; date: string }>;
+  /**
+   * Upcoming oudergesprek sessions for the teacher's classes:
+   * { id, title?, className?, date }.
+   */
+  conferences?: Array<{ id: string; title?: string; className?: string; date: string }>;
 }
 
 const DAY_MS = 86_400_000;
@@ -825,7 +840,7 @@ export function buildTodayFeed(input: FeedInput): FeedItem[] {
   const missing = list(input.classes).filter(
     (cls) => cls?.id && !attendance.some((a) => a?.classId === cls.id && a.date === input.today),
   );
-  if (missing.length && ['teacher', 'admin'].includes(input.role)) {
+  if (missing.length) {
     items.push({
       // Date-scoped: a task ticked off today must come back tomorrow, and the
       // archive should show one entry per day rather than one forever.
@@ -835,9 +850,7 @@ export function buildTodayFeed(input: FeedInput): FeedItem[] {
       titleTr: 'Yoklama henüz girilmedi',
       bodyNl: `${missing.length} ${missing.length === 1 ? 'klas' : 'klassen'}: ${missing.map((c) => c.name).join(', ')}.`,
       bodyTr: `${missing.length} sınıf: ${missing.map((c) => c.name).join(', ')}.`,
-      // A teacher registers the lesson on their own Les-tab; a beheerder does
-      // it from class management. Same task, different door.
-      link: input.role === 'teacher' ? '#attendance' : '#entities',
+      link: '#attendance',
       count: missing.length,
     });
   }
@@ -875,36 +888,65 @@ export function buildTodayFeed(input: FeedInput): FeedItem[] {
     });
   }
 
-  // Note: chasing the parents who have not booked an oudergesprek slot used to
-  // live here, on the teacher's list. It is a beheerder's job — they run the
-  // round, they hold the parent contact details, and a teacher cannot send the
-  // reminder anyway — so it moved to buildAdminFeed.
-
-  const highRisk = list(input.studentSignals).filter((s) => s.level === 'high');
-  if (highRisk.length) {
-    const names = highRisk.slice(0, 3).map((s) => s.studentName).join(', ');
+  // A parent filed a sick note for one of this teacher's lessons. Purely so the
+  // teacher is not the last to know a child will be out — nothing to action, so
+  // it stays low and drops off once the lesson date has passed (the caller only
+  // sends notes dated today or later).
+  for (const note of list(input.reportedAbsences)) {
+    if (!note?.id || !note.lessonDate || note.lessonDate < input.today) continue;
     items.push({
-      key: 'students_at_risk',
-      level: 'high',
-      titleNl: 'Leerlingen die aandacht nodig hebben',
-      titleTr: 'İlgi gerektiren öğrenciler',
-      bodyNl: `${highRisk.length} ${highRisk.length === 1 ? 'leerling' : 'leerlingen'}: ${names}${highRisk.length > 3 ? ' e.a.' : ''}.`,
-      bodyTr: `${highRisk.length} öğrenci: ${names}${highRisk.length > 3 ? ' ve diğerleri' : ''}.`,
-      link: '#signals',
-      count: highRisk.length,
+      key: `absence_reported:${note.id}`,
+      level: 'low',
+      titleNl: `${note.studentName} is ziek gemeld`,
+      titleTr: `${note.studentName} için hasta bildirimi yapıldı`,
+      bodyNl: `De ouders hebben ${note.studentName} ziek gemeld voor de les van ${note.lessonDate}.`,
+      bodyTr: `Veliler ${note.lessonDate} tarihli ders için ${note.studentName} adlı öğrenciyi hasta bildirdi.`,
+      link: '#meldingen',
     });
   }
 
-  if (input.outstandingPayments && ['admin', 'regional_admin', 'superadmin'].includes(input.role)) {
+  // An oudergesprek round is on the calendar for one of the teacher's classes.
+  for (const conf of list(input.conferences)) {
+    if (!conf?.id || !conf.date || conf.date < input.today) continue;
+    const where = conf.title || conf.className || 'oudergesprek';
     items.push({
-      key: 'payments_outstanding',
+      key: `conference_upcoming:${conf.id}`,
       level: 'low',
-      titleNl: 'Openstaand schoolgeld',
-      titleTr: 'Ödenmemiş okul ücreti',
-      bodyNl: `${input.outstandingPayments} leerlingen met een openstaand bedrag.`,
-      bodyTr: `${input.outstandingPayments} öğrencinin ödenmemiş tutarı var.`,
-      link: '#boekhouding',
-      count: input.outstandingPayments,
+      titleNl: 'Er staat een oudergesprek gepland',
+      titleTr: 'Planlanmış bir veli görüşmesi var',
+      bodyNl: `${where} op ${conf.date}.`,
+      bodyTr: `${conf.date} tarihinde ${where}.`,
+      link: '#oudergesprekken',
+    });
+  }
+
+  // Events on the school agenda in the coming window (caller-filtered).
+  for (const event of list(input.events)) {
+    if (!event?.id || !event.date || event.date < input.today) continue;
+    const title = String(event.title || '').trim();
+    items.push({
+      key: `event_upcoming:${event.id}`,
+      level: 'low',
+      titleNl: 'Er staat een evenement ingepland',
+      titleTr: 'Planlanmış bir etkinlik var',
+      bodyNl: title ? `${title} op ${event.date}.` : `Er staat een evenement gepland op ${event.date}.`,
+      bodyTr: title ? `${event.date} tarihinde ${title}.` : `${event.date} tarihinde bir etkinlik planlandı.`,
+      link: '#agenda',
+    });
+  }
+
+  // A weekly nudge to share a mooi moment — the one message home that is not
+  // about a problem. Only when nothing has been shared in the last week, and
+  // keyed on the ISO week so ticking it off clears it until next week.
+  if (input.sharedMomentRecently === false && input.isoWeek) {
+    items.push({
+      key: `share_moment:${input.isoWeek}`,
+      level: 'low',
+      titleNl: 'Deel een mooi moment',
+      titleTr: 'Güzel bir an paylaşın',
+      bodyNl: 'U heeft deze week nog geen mooi moment met ouders gedeeld. Eén korte zin is genoeg.',
+      bodyTr: 'Bu hafta henüz velilerle güzel bir an paylaşmadınız. Kısa bir cümle yeterli.',
+      link: '#signals',
     });
   }
 
@@ -934,6 +976,29 @@ function lessonMarks(studentId: string, ctx: SignalContext): Array<{ date: strin
       date: String(a.date),
       present: a.records.find((r: any) => r.studentId === studentId)?.present !== false,
     }));
+}
+
+/**
+ * Per student, how many lessons this school year they were marked absent for
+ * with no matching sick note. This is the number the outreach ladder counts on:
+ * 1 tells the parent, 2 the teacher, 3 the beheerder. A note filed later (even
+ * retroactively) drops the count, which is what lets the ladder resolve itself.
+ */
+export function unreportedAbsenceCounts(ctx: SignalContext): Map<string, number> {
+  const out = new Map<string, number>();
+  const reportedByStudent = new Map<string, Set<string>>();
+  for (const n of Array.isArray(ctx.notifications) ? ctx.notifications : []) {
+    if (!n?.studentId || !n.lessonDate) continue;
+    if (!reportedByStudent.has(n.studentId)) reportedByStudent.set(n.studentId, new Set());
+    reportedByStudent.get(n.studentId)!.add(String(n.lessonDate).slice(0, 10));
+  }
+  for (const student of ctx.students) {
+    if (!student?.id) continue;
+    const reported = reportedByStudent.get(student.id) || new Set<string>();
+    const count = lessonMarks(student.id, ctx).filter((m) => !m.present && !reported.has(m.date)).length;
+    if (count > 0) out.set(student.id, count);
+  }
+  return out;
 }
 
 export interface AbsenceFlagOptions {
@@ -1174,12 +1239,17 @@ export interface AdminFeedInput {
   openCases: any[];
   /** Registrations still awaiting a decision. */
   pendingRegistrations: number;
-  /** When the newest of those came in — see the note on the task key below. */
-  latestRegistrationAt?: string;
+  /**
+   * Id of the newest pending registration — keys the task so a beheerder who
+   * has looked at the inbox is not asked again until a *new* family applies.
+   * A stable id, never a date: a `today` fallback makes the key churn daily and
+   * the "done" mark stops matching (a bug seen in the demo).
+   */
+  latestRegistrationId?: string;
   /** Questions from the public contact form that nobody has answered yet. */
   openQuestions?: number;
-  /** When the newest of those came in — keys the task, like registrations. */
-  latestQuestionAt?: string;
+  /** Id of the newest open question — keys the task, like registrations. */
+  latestQuestionId?: string;
   /** Whether the diploma tab is currently switched on for teachers. */
   diplomaVisible: boolean;
   /** Vacation periods already entered in the agenda. */
@@ -1256,7 +1326,7 @@ export function buildAdminFeed(input: AdminFeedInput): FeedItem[] {
       // Keyed on the newest pending registration rather than on the date: a
       // beheerder who has looked at the inbox should not be asked again
       // tomorrow, but the moment a new family applies this comes back.
-      key: `inschrijvingen_open:${input.latestRegistrationAt || today}`,
+      key: `inschrijvingen_open:${input.latestRegistrationId || 'pending'}`,
       level: 'medium',
       titleNl: 'Nieuwe inschrijvingen behandelen',
       titleTr: 'Yeni kayıtları değerlendirin',
@@ -1272,7 +1342,7 @@ export function buildAdminFeed(input: AdminFeedInput): FeedItem[] {
   if ((input.openQuestions || 0) > 0) {
     const open = input.openQuestions || 0;
     items.push({
-      key: `vragen_open:${input.latestQuestionAt || today}`,
+      key: `vragen_open:${input.latestQuestionId || 'open'}`,
       level: 'medium',
       titleNl: 'Vragen beantwoorden',
       titleTr: 'Soruları yanıtlayın',
@@ -1367,10 +1437,24 @@ export interface ParentFeedInput {
   conferences: any[];
   /** Outstanding schoolgeld per child id, in euros. */
   outstandingByChild?: Record<string, number>;
-  /** Whether the account itself is still missing a phone number. */
-  missingPhone?: boolean;
   /** How far back an unexplained absence is still worth asking about. */
   unreportedWindowDays?: number;
+  /**
+   * Agenda events at the children's school, already filtered by the caller to
+   * those dated today or later and within the "coming up" window: { id, title,
+   * date }. One feed entry per event, not per child.
+   */
+  events?: Array<{ id: string; title?: string; date: string }>;
+  /**
+   * Recently graded live-toets attempts for these children, already filtered by
+   * the caller to graded-and-fresh: { attemptId, studentId, title, gradedAt }.
+   */
+  newGrades?: Array<{ attemptId: string; studentId: string; title?: string; gradedAt?: string }>;
+  /**
+   * Recently shared moments that include one of these children, already
+   * filtered by the caller to fresh: { id, studentIds, text, createdAt }.
+   */
+  newMoments?: Array<{ id: string; studentIds?: string[]; text?: string; createdAt?: string }>;
 }
 
 export function buildParentFeed(input: ParentFeedInput): FeedItem[] {
@@ -1450,8 +1534,11 @@ export function buildParentFeed(input: ParentFeedInput): FeedItem[] {
         bodyTr: `${openHomework.length} ödev yapılmayı bekliyor, en yakın teslim tarihi ${soonest}.`,
         // Carries the child so the dashboard can switch to them before it
         // opens the tab — otherwise a family with two children lands on a page
-        // that is about the *other* one.
-        link: `#overview:${child.id}`,
+        // that is about the *other* one. The target is the huiswerk tab, not
+        // the overview: this entry is *shown* on the overview, so pointing it
+        // there made "Aç" navigate to the page the reader is already on, which
+        // reads as a dead button.
+        link: `#huiswerk:${child.id}`,
         count: openHomework.length,
       });
     }
@@ -1474,6 +1561,14 @@ export function buildParentFeed(input: ParentFeedInput): FeedItem[] {
     // 4. A conference round is open and this child has no slot yet.
     for (const session of list(input.conferences)) {
       if (!session?.id || !session.date || session.date < today) continue;
+      // One session is created per class (see the oudergesprekken endpoint), so
+      // a round covers the whole school as several sessions. Without this check
+      // a family gets "pick a time for Zeynep" off her brother's session, which
+      // she can never book and which therefore never goes away — the parent
+      // sees the reminder come back the moment after they confirmed a slot.
+      // The client's own list scopes the same way; `!classId` covers the older
+      // school-wide sessions that predate per-class rounds.
+      if (session.classId && child.classId && session.classId !== child.classId) continue;
       const slots = list(session.slots);
       if (slots.some((s: any) => s?.studentId === child.id)) continue;
       if (!slots.some((s: any) => !s?.bookedBy)) continue; // nothing left to book
@@ -1487,20 +1582,54 @@ export function buildParentFeed(input: ParentFeedInput): FeedItem[] {
         link: `#oudergesprekken:${child.id}`,
       });
     }
+
+    // 5. A new grade for this child. Informational — nothing to do — so it is
+    //    low and ages out of the feed on its own after the caller's freshness
+    //    window; the caller has already filtered to graded-and-recent.
+    for (const grade of list(input.newGrades).filter((g) => g?.studentId === child.id)) {
+      const title = String(grade.title || '').trim();
+      items.push({
+        key: `parent_new_grade:${child.id}:${grade.attemptId}`,
+        level: 'low',
+        titleNl: `${named}nieuw cijfer`,
+        titleTr: `${named}yeni not`,
+        bodyNl: title ? `Er staat een nieuw cijfer voor "${title}".` : 'Er staat een nieuw toetscijfer klaar.',
+        bodyTr: title ? `"${title}" için yeni bir not var.` : 'Yeni bir sınav notu hazır.',
+        link: `#grades:${child.id}`,
+      });
+    }
+
+    // 6. A moment a teacher shared about this child. The one entry in the whole
+    //    feed that is good news — kept low so it never sits above something
+    //    that needs doing, but shown so a parent who opens the app sees it.
+    for (const moment of list(input.newMoments).filter((m) => list(m?.studentIds).includes(child.id))) {
+      const text = String(moment.text || '').trim();
+      items.push({
+        key: `parent_moment:${moment.id}:${child.id}`,
+        level: 'low',
+        titleNl: `${named}een mooi moment gedeeld door de docent`,
+        titleTr: `${named}öğretmen güzel bir an paylaştı`,
+        bodyNl: text || 'De docent heeft een mooi moment met u gedeeld.',
+        bodyTr: text || 'Öğretmen sizinle güzel bir an paylaştı.',
+        link: `#overview:${child.id}`,
+      });
+    }
   }
 
-  // 5. The account itself. A school that cannot reach a parent by phone is one
-  //    incident away from a real problem, so this is asked once and then never
-  //    again — it disappears the moment a number is saved.
-  if (input.missingPhone) {
+  // 7. Events on the school agenda. School-level, so one entry per event rather
+  //    than one per child. The caller has already filtered to upcoming events
+  //    inside the "coming up" window, so this ages out on its own.
+  for (const event of list(input.events)) {
+    if (!event?.id || !event.date || event.date < today) continue;
+    const title = String(event.title || '').trim();
     items.push({
-      key: 'parent_profile_phone',
-      level: 'medium',
-      titleNl: 'Vul uw telefoonnummer aan',
-      titleTr: 'Telefon numaranızı ekleyin',
-      bodyNl: 'Wij hebben geen telefoonnummer van u. Zonder nummer kunnen wij u niet bereiken als er tijdens de les iets is.',
-      bodyTr: 'Kayıtlarımızda telefon numaranız yok. Numara olmadan ders sırasında bir durum olduğunda size ulaşamayız.',
-      link: '#account',
+      key: `parent_event:${event.id}`,
+      level: 'low',
+      titleNl: 'Er staat een evenement gepland',
+      titleTr: 'Planlanmış bir etkinlik var',
+      bodyNl: title ? `${title} op ${event.date}.` : `Er staat een evenement gepland op ${event.date}.`,
+      bodyTr: title ? `${event.date} tarihinde ${title}.` : `${event.date} tarihinde bir etkinlik planlandı.`,
+      link: '#overview',
     });
   }
 

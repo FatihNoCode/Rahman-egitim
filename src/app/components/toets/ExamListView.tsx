@@ -4,6 +4,8 @@ import QRCode from 'qrcode';
 import ExamBuilder from './ExamBuilder';
 import ExamPrintView from './ExamPrintView';
 import { ExamDraft, EMPTY_EXAM } from './examTypes';
+import LoadingState from '../ui/LoadingState';
+import { useMinimumLoading } from '../../hooks/useMinimumLoading';
 import { examDocumentTitle } from './examText';
 import { notify, confirmDialog } from '../ui/feedback';
 import { isAppLayout } from '../../../lib/native';
@@ -78,6 +80,7 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
 
   const [exams, setExams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const showLoading = useMinimumLoading(loading);
   const [mode, setMode] = useState<Mode>({ view: 'list' });
   const [liveInfo, setLiveInfo] = useState<{ code: string; qr: string; className: string } | null>(null);
   const [goLiveFor, setGoLiveFor] = useState<any | null>(null);
@@ -305,7 +308,7 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
     published: 'bg-emerald-100 text-emerald-700',
   } as Record<string, string>)[status] || 'bg-gray-100 text-gray-500';
 
-  if (loading) return <div className="text-center py-6 text-gray-500 text-sm">{tr ? 'Yükleniyor...' : 'Laden...'}</div>;
+  if (showLoading) return <LoadingState label={tr ? 'Yükleniyor...' : 'Laden...'} />;
 
   // Writing a toets is the one part of this screen a phone can't carry: the
   // builder is a wide grid of questions, answer options and scores that only
@@ -414,7 +417,7 @@ export default function ExamListView({ language, apiRequest, classes }: ExamList
         )}
 
         {!resultsData ? (
-          <p className="text-sm text-gray-400">{tr ? 'Yükleniyor...' : 'Laden...'}</p>
+          <LoadingState compact label={tr ? 'Yükleniyor...' : 'Laden...'} />
         ) : (resultsData.results || []).length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-8 text-center text-sm text-gray-400">{text.noAttempts}</div>
         ) : (

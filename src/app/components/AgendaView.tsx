@@ -3,6 +3,8 @@ import { Plus, Trash2, Pencil, Calendar, Sun, PartyPopper } from 'lucide-react';
 import AgendaCalendar from './AgendaCalendar';
 import { notify, confirmDialog } from './ui/feedback';
 import LoadError from './ui/load-error';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
 interface Lesstructuur {
   id: string;
@@ -213,7 +215,8 @@ export default function AgendaView({ language, apiRequest }: AgendaViewProps) {
     return date.toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
-  if (loading) return <div className="text-center py-8 text-gray-500">{language === 'tr' ? 'Yükleniyor...' : 'Laden...'}</div>;
+  const showLoading = useMinimumLoading(loading);
+  if (showLoading) return <LoadingState label={language === 'tr' ? 'Yükleniyor...' : 'Laden...'} />;
   // All three lists below come from that one load, so a failure takes the
   // whole tab rather than showing three empty sections.
   if (loadFailed) return <LoadError language={language} onRetry={loadAll} />;

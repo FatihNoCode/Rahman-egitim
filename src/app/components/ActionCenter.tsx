@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { CheckCircle2, ChevronRight, RefreshCw } from 'lucide-react';
 import { childAccent, childInitial } from './childIdentity';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
 /**
  * "Wat vraagt om uw aandacht" — the parent's worklist.
@@ -118,6 +120,7 @@ export default function ActionCenter({
 
   const [rawItems, setRawItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const showLoading = useMinimumLoading(loading);
   // A parent has one job on this screen and it is not diagnosing our server.
   // A failed load renders as nothing at all rather than as an error card that
   // they can neither act on nor dismiss.
@@ -192,7 +195,9 @@ export default function ActionCenter({
         </button>
       </div>
 
-      {items.length === 0 && !loading && !failed && showAllClear && (
+      {showLoading && <LoadingState compact size={32} />}
+
+      {items.length === 0 && !showLoading && !failed && showAllClear && (
         <div className="mb-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
           <CheckCircle2 className="w-5 h-5 shrink-0" />
           {text.allClear}

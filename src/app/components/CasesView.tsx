@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, Send, Archive, Check, X, FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
 import LoadError from './ui/load-error';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
 interface CaseRecord {
   id: string;
@@ -203,9 +205,10 @@ export default function CasesView({ language, apiRequest, role, currentUserId }:
   };
 
   const visibleCases = cases.filter((cs) => showArchived || cs.status !== 'archived');
+  const showLoading = useMinimumLoading(loading);
 
-  if (loading) {
-    return <div className="text-center py-6 text-gray-500 text-sm">{language === 'tr' ? 'Yükleniyor...' : 'Laden...'}</div>;
+  if (showLoading) {
+    return <LoadingState label={language === 'tr' ? 'Yükleniyor...' : 'Laden...'} />;
   }
 
   return (

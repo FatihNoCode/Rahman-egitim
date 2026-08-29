@@ -39,6 +39,14 @@ const STATUS_LABELS = {
   afgewezen:    { nl: 'Afgewezen',    tr: 'Reddedildi', color: 'bg-red-100 text-red-700 border-red-200' },
 };
 
+// The public inschrijving form is Dutch-only, so `geslacht` arrives as the
+// Dutch word it was submitted with. Printing it raw left "Cinsiyet: Meisje"
+// sitting in an otherwise entirely Turkish screen.
+const GESLACHT_LABELS: Record<string, { nl: string; tr: string }> = {
+  jongen: { nl: 'Jongen', tr: 'Erkek' },
+  meisje: { nl: 'Meisje', tr: 'Kız' },
+};
+
 const ACTIVE_STATUSES = ['nieuw', 'gezien'] as const;
 const ARCHIVE_STATUSES = ['geaccepteerd', 'afgewezen'] as const;
 
@@ -145,7 +153,7 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
         >
           {nl('Actief', 'Aktif')}
           <span className={`text-xs rounded-full px-1.5 ${view === 'actief' ? 'bg-white/20' : 'bg-gray-100'}`}>
-            {registrations.filter(r => (ACTIVE_STATUSES as readonly string[]).includes(r.status)).length}
+            {loading ? '·' : registrations.filter(r => (ACTIVE_STATUSES as readonly string[]).includes(r.status)).length}
           </span>
         </button>
         <button
@@ -157,7 +165,7 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
           <Archive className="h-4 w-4" />
           {nl('Archief', 'Arşiv')}
           <span className={`text-xs rounded-full px-1.5 ${view === 'archief' ? 'bg-white/20' : 'bg-gray-100'}`}>
-            {registrations.filter(r => (ARCHIVE_STATUSES as readonly string[]).includes(r.status)).length}
+            {loading ? '·' : registrations.filter(r => (ARCHIVE_STATUSES as readonly string[]).includes(r.status)).length}
           </span>
         </button>
       </div>
@@ -178,7 +186,14 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
                 isSelected ? 'border-emerald-500 bg-emerald-50' : 'border-transparent bg-white hover:border-gray-200'
               }`}
             >
-              <p className={`text-2xl font-bold ${isSelected ? 'text-emerald-700' : 'text-gray-700'}`}>{count}</p>
+              {/* A confident "0" while the list is still in flight reads as
+                  "there are no registrations", which is the opposite of what
+                  a queue of new ones means. Say nothing until we know. */}
+              {loading ? (
+                <p className="mx-auto h-8 w-8 animate-pulse rounded bg-gray-200" />
+              ) : (
+                <p className={`text-2xl font-bold ${isSelected ? 'text-emerald-700' : 'text-gray-700'}`}>{count}</p>
+              )}
               <p className={`text-xs font-medium mt-0.5 ${isSelected ? 'text-emerald-600' : 'text-gray-500'}`}>{label}</p>
             </button>
           );
@@ -283,7 +298,14 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
                         </p>
                         <div className="flex items-center gap-2 text-sm text-gray-700">
                           <span className="text-gray-400 text-xs">{nl('Geslacht', 'Cinsiyet')}:</span>
-                          <span className="font-medium capitalize">{reg.geslacht}</span>
+                          <span className="font-medium capitalize">
+                            {GESLACHT_LABELS[String(reg.geslacht).toLowerCase()]
+                              ? nl(
+                                  GESLACHT_LABELS[String(reg.geslacht).toLowerCase()].nl,
+                                  GESLACHT_LABELS[String(reg.geslacht).toLowerCase()].tr,
+                                )
+                              : reg.geslacht}
+                          </span>
                         </div>
                         <div className="flex items-center gap-2 text-sm text-gray-700">
                           <span className="text-gray-400 text-xs">{nl('Leeftijd (na zomer)', 'Yaş (yaz sonrası)')}:</span>

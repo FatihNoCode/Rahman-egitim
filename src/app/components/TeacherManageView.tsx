@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { ArrowLeft, X, Check, Frown, Meh, Smile, Circle, BookOpen } from 'lucide-react';
 import { notify } from './ui/feedback';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
 interface Class {
   id: string;
@@ -38,8 +40,10 @@ export default function TeacherManageView({
   const [studentDetails, setStudentDetails] = useState<any>(null);
   const [parentDetails, setParentDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const showLoadingDetails = useMinimumLoading(loadingDetails);
   const [classHomework, setClassHomework] = useState<any[]>([]);
   const [loadingClassHomework, setLoadingClassHomework] = useState(false);
+  const showLoadingClassHomework = useMinimumLoading(loadingClassHomework);
 
   const t = {
     tr: {
@@ -263,11 +267,9 @@ export default function TeacherManageView({
           </div>
         )}
 
-        {loadingDetails ? (
-          <div className="text-center py-8">
-            <p className="text-gray-600">{text.loading}</p>
-          </div>
-        ) : studentDetails && studentDetails.length > 0 ? (
+        {showLoadingDetails ? (
+          <LoadingState label={text.loading} />
+        ) :studentDetails && studentDetails.length > 0 ? (
           <div className="space-y-4">
             {studentDetails.map((dayData: any, index: number) => {
               const isOverdue = new Date(dayData.date) < new Date();
@@ -389,11 +391,9 @@ export default function TeacherManageView({
           <h3 className="text-2xl font-bold text-emerald-800">{selectedParentEmail}</h3>
         </div>
 
-        {loadingDetails ? (
-          <div className="text-center py-8">
-            <p className="text-gray-600">{text.loading}</p>
-          </div>
-        ) : parentDetails ? (
+        {showLoadingDetails ? (
+          <LoadingState label={text.loading} />
+        ) :parentDetails ? (
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <div className="mb-6">
               <h4 className="text-lg font-semibold text-gray-700 mb-2">{text.lastCheckIn}</h4>
@@ -530,8 +530,8 @@ export default function TeacherManageView({
         <h4 className="text-lg font-semibold text-gray-700 mb-4">
           {language === 'tr' ? 'Verilen ödevler' : 'Gegeven Huiswerk'}
         </h4>
-        {loadingClassHomework ? (
-          <p className="text-gray-500 text-sm">{text.loading}</p>
+        {showLoadingClassHomework ? (
+          <LoadingState compact label={text.loading} />
         ) : classHomework.length === 0 ? (
           <p className="text-gray-500 italic text-sm">{text.noData}</p>
         ) : (

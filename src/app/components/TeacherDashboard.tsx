@@ -13,6 +13,9 @@ import CasesView from './CasesView';
 import SignalsView from './SignalsView';
 import MomentComposer from './MomentComposer';
 import ExamListView from './toets/ExamListView';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
+import { localDay } from '../../lib/localDate';
 import UserMenu from './UserMenu';
 import RoleSwitchPill from './RoleSwitchPill';
 import Sidebar from './Sidebar';
@@ -144,6 +147,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   // statement about the class, not about the fetch — for as long as the
   // request took, so a full class looked empty every time the tab opened.
   const [studentsLoading, setStudentsLoading] = useState(true);
+  const showStudentsLoading = useMinimumLoading(studentsLoading);
   const [studentsWithStats, setStudentsWithStats] = useState<any[]>([]);
   const app = isAppLayout();
   const [activeTab, setActiveTab] = useHashTab<string>(
@@ -165,7 +169,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const [conferExpanded, setConferExpanded] = useState<string | null>(null);
 
   // Attendance and Behavior state
-  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [attendanceDate, setAttendanceDate] = useState(localDay());
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, boolean | 'late'>>({});
   const [behaviorRecords, setBehaviorRecords] = useState<Record<string, 'sad' | 'neutral' | 'happy'>>({});
   const [absenceNotifications, setAbsenceNotifications] = useState<Record<string, any>>({});
@@ -221,6 +225,30 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   const toggleStep = (n: 1 | 2 | 3) => setOpenStep((cur) => (cur === n ? null : n));
   // How far the roster has been worked through, for the collapsed step header.
   const attendanceMarked = students.filter((s) => attendanceRecords[s.id] !== undefined).length;
+
+  /**
+   * Keeps the roster still while a row grows under your thumb.
+   *
+   * Marking a pupil present opens the behaviour rating inside that pupil's
+   * row, which is ~150px of new content — so every name below it jumps down
+   * by that much, and the next tap (which a teacher aims before the list has
+   * settled) lands on the wrong child. Attendance quietly recorded against
+   * the wrong name is the worst outcome this screen has.
+   *
+   * So: note where the row sits on screen, let React re-render, then scroll by
+   * exactly however far it moved. The row the teacher is looking at stays
+   * under their thumb and the list appears to grow downwards.
+   */
+  const markAttendance = (e: React.MouseEvent<HTMLButtonElement>, apply: () => void) => {
+    const row = (e.currentTarget as HTMLElement).closest('[data-attendance-row]') as HTMLElement | null;
+    const before = row?.getBoundingClientRect().top ?? null;
+    apply();
+    if (!row || before === null) return;
+    requestAnimationFrame(() => {
+      const delta = row.getBoundingClientRect().top - before;
+      if (delta) window.scrollBy(0, delta);
+    });
+  };
 
   useEffect(() => {
     pruneLessonDrafts();
@@ -510,6 +538,17 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       if (!homeworkDueDate) {
         setOpenStep(3);
         notify.error(language === 'tr' ? 'Lütfen ödev bitiş tarihi seçin!' : 'Selecteer een einddatum voor het huiswerk!');
+        return;
+      }
+      // Homework whose deadline has already passed is filed straight into the
+      // parent's archive: nobody is ever asked to do it, and nothing on either
+      // screen says it was a mistake. Nearly always a mistyped year, so it is
+      // refused here rather than saved quietly.
+      if (homeworkDueDate < localDay()) {
+        setOpenStep(3);
+        notify.error(language === 'tr'
+          ? 'Ödev bitiş tarihi geçmişte olamaz. Lütfen bugünü veya sonrasını seçin.'
+          : 'De inleverdatum kan niet in het verleden liggen. Kies vandaag of later.');
         return;
       }
       if (homeworkCategory === 'custom' && (!customHomeworkTr || !customHomeworkNl)) {
@@ -917,7 +956,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                   title={language === 'tr' ? 'Yoklama ve Davranış' : 'Aanwezigheid & Gedrag'}
                   done={students.length > 0 && attendanceMarked === students.length}
                   status={
-                    studentsLoading
+                    showStudentsLoading
                       ? (language === 'tr' ? 'Yükleniyor…' : 'Laden…')
                       : students.length === 0
                         ? (language === 'tr' ? 'Bu sınıfta öğrenci yok' : 'Deze klas heeft nog geen leerlingen')
@@ -927,24 +966,21 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                   onToggle={() => toggleStep(2)}
                 >
                   <div className="space-y-2 sm:space-y-3">
-                    {studentsLoading && (
-                      <div className="flex items-center gap-2 py-4 text-sm text-gray-400">
-                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-emerald-600" />
-                        {language === 'tr' ? 'Yükleniyor…' : 'Laden…'}
-                      </div>
+                    {showStudentsLoading && (
+                      <LoadingState compact size={32} label={language === 'tr' ? 'Yükleniyor…' : 'Laden…'} />
                     )}
-                    {!studentsLoading && students.map((student) => {
+                    {!showStudentsLoading && students.map((student) => {
                       const isPresent = attendanceRecords[student.id];
                       const isAbsent = attendanceRecords[student.id] === false;
                       const isLate = attendanceRecords[student.id] === 'late';
                       const isPhysicallyPresent = isPresent === true || isLate;
                       return (
-                        <div key={student.id} className="p-2 sm:p-3 bg-gray-50 rounded-lg">
+                        <div key={student.id} data-attendance-row className="p-2 sm:p-3 bg-gray-50 rounded-lg">
                           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-2">
                             <span className="font-medium text-sm sm:text-base flex-1">{student.name}</span>
                             <div className="flex gap-1 sm:gap-2 w-full sm:w-auto">
                               <button
-                                onClick={() => setAttendanceRecords({ ...attendanceRecords, [student.id]: true })}
+                                onClick={(e) => markAttendance(e, () => setAttendanceRecords({ ...attendanceRecords, [student.id]: true }))}
                                 className={`flex-1 sm:flex-none px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg font-semibold transition text-xs sm:text-sm ${
                                   isPresent === true ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700'
                                 }`}
@@ -952,7 +988,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                                 {t.present}
                               </button>
                               <button
-                                onClick={() => setAttendanceRecords({ ...attendanceRecords, [student.id]: 'late' })}
+                                onClick={(e) => markAttendance(e, () => setAttendanceRecords({ ...attendanceRecords, [student.id]: 'late' }))}
                                 className={`flex-1 sm:flex-none px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg font-semibold transition text-xs sm:text-sm ${
                                   isLate ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-700'
                                 }`}
@@ -960,12 +996,12 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                                 {language === 'tr' ? 'Geç' : 'Te laat'}
                               </button>
                               <button
-                                onClick={() => {
+                                onClick={(e) => markAttendance(e, () => {
                                   setAttendanceRecords({ ...attendanceRecords, [student.id]: false });
                                   const newBehavior = { ...behaviorRecords };
                                   delete newBehavior[student.id];
                                   setBehaviorRecords(newBehavior);
-                                }}
+                                })}
                                 className={`flex-1 sm:flex-none px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg font-semibold transition text-xs sm:text-sm ${
                                   isAbsent ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-700'
                                 }`}
@@ -1340,6 +1376,10 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                           <input
                             type="date"
                             value={homeworkDueDate}
+                            /* The picker itself refuses a past date; the save
+                               path checks it again, since a date can also be
+                               typed straight into the field. */
+                            min={localDay()}
                             onChange={(e) => setHomeworkDueDate(e.target.value)}
                             className="w-full max-w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                           />
@@ -1497,6 +1537,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                 <SignalsView
                   language={language}
                   apiRequest={apiRequest}
+                  app={app}
                   onNavigate={(link) => setActiveTab(link.replace('#', ''))}
                 />
                 <MomentComposer

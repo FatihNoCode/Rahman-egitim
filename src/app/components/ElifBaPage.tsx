@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Spinner from './ui/Spinner';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
@@ -3218,7 +3219,10 @@ function LeaderboardView({ lang, playerName, onBack }: { lang: Lang; playerName:
       </div>
       <div className="flex-1 overflow-y-auto p-4">
         {rows === null ? (
-          <p className="text-white/70 text-center mt-10">{tr('loading', lang)}</p>
+          <div className="flex flex-col items-center gap-3 mt-10 text-white/70">
+            <Spinner size={40} tone="on-emerald" label={tr('loading', lang)} />
+            <p className="text-center">{tr('loading', lang)}</p>
+          </div>
         ) : rows.length === 0 ? (
           <p className="text-white/70 text-center mt-10">{tr('noScores', lang)}</p>
         ) : (

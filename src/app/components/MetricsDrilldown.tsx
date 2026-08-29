@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ChevronRight, Users, GraduationCap, CalendarDays, MessageSquare, ClipboardCheck, Building2 } from 'lucide-react';
+import LoadingState from './ui/LoadingState';
+import Spinner from './ui/Spinner';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
 interface MetricsNode {
   level: string;
@@ -63,6 +66,7 @@ export default function MetricsDrilldown({ language, apiRequest, rootScope, root
   const [node, setNode] = useState<MetricsNode | null>(null);
   const [crumbs, setCrumbs] = useState<Crumb[]>([]);
   const [loading, setLoading] = useState(true);
+  const showLoading = useMinimumLoading(loading);
 
   const load = useCallback(async (level: string, id: string | null, newCrumbs: Crumb[]) => {
     setLoading(true);
@@ -83,7 +87,7 @@ export default function MetricsDrilldown({ language, apiRequest, rootScope, root
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootScope, rootId]);
 
-  if (loading && !node) return <div className="text-center py-6 text-gray-400 text-sm">{text.loading}</div>;
+  if (showLoading && !node) return <LoadingState compact label={text.loading} />;
   if (!node) return null;
 
   const m = node.metrics;
@@ -136,7 +140,7 @@ export default function MetricsDrilldown({ language, apiRequest, rootScope, root
             )}
           </span>
         ))}
-        {loading && <span className="text-xs text-gray-400 ml-2">{text.loading}</span>}
+        {showLoading && <Spinner size={16} className="ml-2 align-middle" label={text.loading} />}
       </div>
 
       {/* Metric cards */}

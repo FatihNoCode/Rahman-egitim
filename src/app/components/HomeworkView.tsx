@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Archive, BookOpen, Check, CalendarClock, CheckCircle2 } from 'lucide-react';
+import LoadingState from './ui/LoadingState';
+import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
 export interface HomeworkItem {
   id: string;
@@ -26,7 +28,7 @@ const T = {
     open: 'Nog te doen',
     done: 'Afgerond',
     markDone: 'Markeer als afgerond',
-    markOpen: 'Toch nog niet af',
+    markOpen: 'Markeer als niet afgerond',
     due: 'Inleveren op',
     dueToday: 'Vandaag inleveren',
     dueTomorrow: 'Morgen inleveren',
@@ -43,7 +45,7 @@ const T = {
     open: 'Yapılacak',
     done: 'Tamamlandı',
     markDone: 'Tamamlandı olarak işaretle',
-    markOpen: 'Henüz tamamlanmadı',
+    markOpen: 'Tamamlanmadı olarak işaretle',
     due: 'Teslim tarihi',
     dueToday: 'Bugün teslim',
     dueTomorrow: 'Yarın teslim',
@@ -103,6 +105,7 @@ export default function HomeworkView({
   const text = T[language];
   const [homework, setHomework] = useState<HomeworkItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const showLoading = useMinimumLoading(loading);
   const [showArchive, setShowArchive] = useState(false);
 
   useEffect(() => {
@@ -222,8 +225,8 @@ export default function HomeworkView({
     );
   };
 
-  if (loading) {
-    return <p className="text-sm text-gray-400">{text.loading}</p>;
+  if (showLoading) {
+    return <LoadingState compact label={text.loading} />;
   }
 
   return (

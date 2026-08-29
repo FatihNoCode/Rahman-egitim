@@ -36,6 +36,10 @@
   --d-border: rgba(255, 255, 255, 0.09);
   --d-border-2: rgba(255, 255, 255, 0.13);
   --d-border-3: rgba(255, 255, 255, 0.18);
+
+  /* Branded waw loader (src/app/components/ui/Spinner.tsx). */
+  --spinner-track: rgba(16, 185, 129, 0.24);
+  --spinner-pen: #6ee7b7;
 }
 
 /* The shell itself. `theme.css` sets --background/--foreground for the shadcn

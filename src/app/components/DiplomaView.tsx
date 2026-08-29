@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Award, Download, Star, FileText, CheckCircle2, Settings2, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 import { useApp } from '../App';
 import { notify } from './ui/feedback';
+import Spinner from './ui/Spinner';
 import amiri400 from '../../assets/fonts/amiri-400-arabic.woff2?url';
 import amiri700 from '../../assets/fonts/amiri-700-arabic.woff2?url';
 import scheherazade400 from '../../assets/fonts/scheherazade-new-400-arabic.woff2?url';
@@ -650,7 +651,7 @@ export default function DiplomaView({ classes, language, apiRequest }: DiplomaVi
         <p className="text-gray-400 text-sm">{text.chooseStudent}</p>
       ) : loading || !data ? (
         <div className="flex justify-center py-10">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+          <Spinner size={44} />
         </div>
       ) : (
         <div className="space-y-6">

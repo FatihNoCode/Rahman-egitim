@@ -15,6 +15,7 @@ import LessonReportsPanel from './LessonReportsPanel';
 import Modal from './ui/modal';
 import { notify } from './ui/feedback';
 import LoadError from './ui/load-error';
+import Spinner from './ui/Spinner';
 import { isAppLayout } from '../../lib/native';
 import { logAction } from '../../lib/deviceLog';
 import MobileNav from './mobile/MobileNav';
@@ -643,7 +644,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           <Suspense
             fallback={
               <div className="flex size-full items-center justify-center">
-                <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+                <Spinner size={48} tone="on-emerald" />
               </div>
             }
           >

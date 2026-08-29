@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { RefreshCw, Users, School, GraduationCap, BookOpen, CalendarCheck, UserPlus, Send, ArrowLeft } from 'lucide-react';
+import { Users, School, GraduationCap, BookOpen, CalendarCheck, UserPlus, Send, ArrowLeft } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
@@ -28,6 +28,7 @@ import {
 // SuperAdminDashboard.
 const LocationsMap = lazy(() => import('./LocationsMap'));
 import LoadError from './ui/load-error';
+import Spinner from './ui/Spinner';
 
 interface RegionalAdminDashboardProps {
   onLogout: () => void;
@@ -412,8 +413,8 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
             {text.noRegion}
           </div>
         ) : loading ? (
-          <div className="text-center py-24 text-gray-400">
-            <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+          <div className="py-24 text-gray-400 flex flex-col items-center gap-3">
+            <Spinner size={40} />
             {text.loading}
           </div>
         ) : loadFailed ? (
@@ -468,7 +469,7 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
                     <Suspense
                       fallback={
                         <div className="flex items-center justify-center h-[24rem]">
-                          <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+                          <Spinner size={48} />
                         </div>
                       }
                     >
@@ -513,8 +514,8 @@ export default function RegionalAdminDashboard({ onLogout }: RegionalAdminDashbo
                   <div>
                     <h4 className="text-sm font-semibold text-gray-700 mb-2">{text.staff}</h4>
                     {loadingStaff ? (
-                      <div className="text-center py-6 text-gray-400">
-                        <RefreshCw className="h-5 w-5 animate-spin mx-auto" />
+                      <div className="flex justify-center py-6 text-gray-400">
+                        <Spinner size={28} />
                       </div>
                     ) : staff.length === 0 ? (
                       <p className="text-sm text-gray-400">{text.noStaff}</p>

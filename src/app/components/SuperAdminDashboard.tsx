@@ -13,6 +13,7 @@ import { notify, confirmDialog } from './ui/feedback';
 import MetricsDrilldown from './MetricsDrilldown';
 import MonitoringBarChart from './MonitoringCharts';
 import LoadError from './ui/load-error';
+import Spinner from './ui/Spinner';
 import { isAppLayout } from '../../lib/native';
 import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
@@ -819,7 +820,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
         {tab === 'locations' && !selectedLocation && (
           loading ? (
             <div className="text-center py-24 text-gray-400">
-              <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+              <Spinner size={40} className="mb-3" />
               {t.loading}
             </div>
           ) : loadFailed ? (
@@ -841,7 +842,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
                 <Suspense
                   fallback={
                     <div className="flex items-center justify-center h-[34rem]">
-                      <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+                      <Spinner size={48} />
                     </div>
                   }
                 >
@@ -911,7 +912,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
 
               {loading ? (
                 <div className="text-center py-12 text-gray-400">
-                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                  <Spinner size={40} className="mb-3" />
                   {t.loading}
                 </div>
               ) : loadFailed ? (
@@ -1026,7 +1027,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
               </div>
               {loadingRegional ? (
                 <div className="text-center py-8 text-gray-400">
-                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                  <Spinner size={40} className="mb-3" />
                   {t.loading}
                 </div>
               ) : regionalAdmins.length === 0 ? (
@@ -1074,7 +1075,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
               </div>
               {loadingRegional ? (
                 <div className="text-center py-8 text-gray-400">
-                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                  <Spinner size={40} className="mb-3" />
                   {t.loading}
                 </div>
               ) : proposals.length === 0 ? (
@@ -1213,7 +1214,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
 
               {loadingDemoTesters ? (
                 <div className="text-center py-8 text-gray-400">
-                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                  <Spinner size={40} className="mb-3" />
                   {t.loading}
                 </div>
               ) : demoTesters.length === 0 ? (
@@ -1263,7 +1264,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
             <h2 className="text-lg font-semibold text-gray-800">{rtx.orgOverview}</h2>
             {loadingOrgSummary ? (
               <div className="text-center py-24 text-gray-400">
-                <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                <Spinner size={40} className="mb-3" />
                 {t.loading}
               </div>
             ) : (
@@ -1379,7 +1380,7 @@ export default function SuperAdminDashboard({ onLogout, onEnterSchool }: SuperAd
             <h2 className="text-lg font-semibold text-gray-800">{rtx.monitoringTitle}</h2>
             {loadingMonitoring ? (
               <div className="text-center py-24 text-gray-400">
-                <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+                <Spinner size={40} className="mb-3" />
                 {t.loading}
               </div>
             ) : (

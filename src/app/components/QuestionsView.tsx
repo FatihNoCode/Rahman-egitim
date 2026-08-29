@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Mail, MessageCircleQuestion, RefreshCw, Send, Check, Trash2, Clock, CornerDownLeft } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
 import LoadError from './ui/load-error';
+import Spinner from './ui/Spinner';
 
 /**
  * Questions from the public contact form.
@@ -219,8 +220,8 @@ export default function QuestionsView({ language, apiRequest }: QuestionsViewPro
       </div>
 
       {loading ? (
-        <div className="text-center py-16 text-gray-400">
-          <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+        <div className="py-16 text-gray-400 flex flex-col items-center gap-3">
+          <Spinner size={40} />
           {nl('Laden...', 'Yükleniyor...')}
         </div>
       ) : loadFailed ? (

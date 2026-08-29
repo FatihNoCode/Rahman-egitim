@@ -6,6 +6,7 @@ import LoginPage from './components/LoginPage';
 import HomePage from './components/HomePage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { FeedbackHost } from './components/ui/feedback';
+import Spinner from './components/ui/Spinner';
 import OfflineNotice from './components/OfflineNotice';
 import { markSessionStart, clearSessionStart, isSessionExpired } from '../lib/session';
 import { isNative, isAppLayout, NATIVE_AUTH_REDIRECT } from '../lib/native';
@@ -684,8 +685,7 @@ export default function App() {
     return (
       <div className="size-full flex flex-col items-center justify-center gap-5 bg-gray-50">
         <img src={logoUrl} alt="Rahman Eğitim" className="h-16 w-16 object-contain" />
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
-        <span className="sr-only">Yükleniyor... / Laden...</span>
+        <Spinner size={48} label="Yükleniyor... / Laden..." />
       </div>
     );
   }
@@ -702,7 +702,7 @@ export default function App() {
           <Suspense
             fallback={
               <div className="flex items-center justify-center size-full">
-                <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+                <Spinner size={48} />
               </div>
             }
           >

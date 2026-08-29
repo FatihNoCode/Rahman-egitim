@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Inbox as InboxIcon, RefreshCw, Paperclip } from 'lucide-react';
 import LoadError from './ui/load-error';
+import Spinner from './ui/Spinner';
 
 interface InboxMessage {
   id: string;
@@ -83,8 +84,8 @@ export default function InboxView({ t, apiRequest, language }: InboxViewProps) {
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-gray-400">
-          <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3" />
+        <div className="flex justify-center py-12 text-gray-400">
+          <Spinner size={40} />
         </div>
       ) : loadFailed ? (
         <LoadError language={language} onRetry={load} />

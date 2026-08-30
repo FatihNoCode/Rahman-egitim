@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Settings, X, Check, Trash2, Plus, Pencil, Mail } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Settings, X, Check, Trash2, Plus, Pencil, BellRing, ListOrdered, Users, Search } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
 import LoadError from './ui/load-error';
 import LoadingState from './ui/LoadingState';
@@ -44,9 +44,22 @@ interface StudentRecord {
 
 interface BoekhoudingViewProps {
   students: Student[];
+  /** Only used to name and filter by class on the per-student overview. */
+  classes?: { id: string; name: string }[];
   language: 'tr' | 'nl';
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
 }
+
+/**
+ * Schoolgeld is owed by every child. The rest — a bag, a Quran, a workbook —
+ * is only owed by the families who bought one, and the only record that they
+ * did is a logged payment. So an optional product counts towards what a family
+ * owes exactly when something has been paid for it, which is the same rule the
+ * parents' own billing screen uses.
+ */
+const OPTIONAL_CATEGORIES = ['tas', 'quran', 'elifbe', 'temel'] as const;
+
+type PaymentStatus = 'paid' | 'partial' | 'none';
 
 const DEFAULT_SETTINGS: BoekhoudingSettings = {
   schoolgeld: { noMemberNoSibling: 520, noMemberWithSibling: 470, memberNoSibling: 150, memberWithSibling: 130 },
@@ -91,7 +104,17 @@ interface PaymentLogEntry {
   createdAt: string;
 }
 
-export default function BoekhoudingView({ students, language, apiRequest }: BoekhoudingViewProps) {
+export default function BoekhoudingView({ students, classes = [], language, apiRequest }: BoekhoudingViewProps) {
+  // Two jobs behind one tab: filing a payment as it comes in, and answering
+  // "who still owes us what". The log answers the first and is hopeless at the
+  // second — it is ordered by when money arrived, so a child who paid nothing
+  // has no row in it at all, which is precisely the child being looked for.
+  const [section, setSection] = useState<'log' | 'students'>('log');
+  const [overviewQuery, setOverviewQuery] = useState('');
+  const [overviewClassId, setOverviewClassId] = useState('');
+  const [overviewStatus, setOverviewStatus] = useState<'' | PaymentStatus | 'outstanding'>('');
+  const [overviewSort, setOverviewSort] = useState<'name' | 'outstanding' | 'paid'>('name');
+
   const [settings, setSettings] = useState<BoekhoudingSettings>(DEFAULT_SETTINGS);
   const [editSettings, setEditSettings] = useState<BoekhoudingSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
@@ -324,8 +347,8 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
       const res = await apiRequest('/boekhouding/send-schoolgeld-reminders', { method: 'POST' });
       setShowReminderConfirm(false);
       notify.success(nl(
-        `${res.sent} / ${res.totalParents} veliye hatırlatma e-postası gönderildi.`,
-        `${res.sent} / ${res.totalParents} herinneringsmails verstuurd.`
+        `${res.sent} / ${res.totalParents} veliye uygulama içi hatırlatma gönderildi.`,
+        `${res.sent} / ${res.totalParents} herinneringen in de app geplaatst.`
       ));
     } catch (e) {
       notify.error(nl('Hata oluştu!', 'Er is een fout opgetreden!'));
@@ -333,6 +356,93 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
       setSendingReminders(false);
     }
   };
+
+  const classNameById = useMemo(
+    () => Object.fromEntries(classes.map(c => [c.id, c.name])),
+    [classes],
+  );
+
+  // One row per child in the school — including the ones who have never paid
+  // anything, which is the whole point of this list existing beside the log.
+  const overviewRows = useMemo(() => {
+    const prices: Record<string, number> = {
+      tas: settings.tas,
+      quran: settings.quran,
+      elifbe: settings.elifbe,
+      temel: settings.temel,
+    };
+
+    const rows = students.map(student => {
+      const rec = records[student.id] || emptyRecord(student.id);
+      const schoolDue = getSchoolPrice(settings, rec.isMember, rec.hasSibling);
+      const schoolPaid = Number(rec.payments?.schoolgeld) || 0;
+
+      let due = schoolDue;
+      let paid = schoolPaid;
+      const extras: { category: string; paid: number; due: number }[] = [];
+      for (const cat of OPTIONAL_CATEGORIES) {
+        const catPaid = Number(rec.payments?.[cat]) || 0;
+        if (catPaid <= 0) continue;
+        const catDue = prices[cat] || 0;
+        extras.push({ category: cat, paid: catPaid, due: catDue });
+        due += catDue;
+        paid += catPaid;
+      }
+
+      const outstanding = Math.max(0, due - paid);
+      const status: PaymentStatus = paid <= 0 ? 'none' : outstanding <= 0 ? 'paid' : 'partial';
+
+      return {
+        student,
+        className: classNameById[student.classId || ''] || '',
+        isMember: rec.isMember,
+        hasSibling: rec.hasSibling,
+        schoolDue,
+        schoolPaid,
+        extras,
+        due,
+        paid,
+        outstanding,
+        status,
+      };
+    });
+
+    return rows.sort((a, b) => {
+      if (overviewSort === 'outstanding') return b.outstanding - a.outstanding;
+      if (overviewSort === 'paid') return b.paid - a.paid;
+      return (a.student.name || '').localeCompare(b.student.name || '', language === 'tr' ? 'tr' : 'nl');
+    });
+  }, [students, records, settings, classNameById, overviewSort, language]);
+
+  const visibleRows = overviewRows.filter(r => {
+    if (overviewClassId && r.student.classId !== overviewClassId) return false;
+    if (overviewStatus === 'outstanding' ? r.outstanding <= 0 : overviewStatus && r.status !== overviewStatus) return false;
+    if (overviewQuery.trim() && !matches(`${r.student.name} ${r.className}`, overviewQuery)) return false;
+    return true;
+  });
+
+  const totals = visibleRows.reduce(
+    (acc, r) => ({
+      due: acc.due + r.due,
+      paid: acc.paid + r.paid,
+      outstanding: acc.outstanding + r.outstanding,
+      fullyPaid: acc.fullyPaid + (r.status === 'paid' ? 1 : 0),
+      nothing: acc.nothing + (r.status === 'none' ? 1 : 0),
+    }),
+    { due: 0, paid: 0, outstanding: 0, fullyPaid: 0, nothing: 0 },
+  );
+
+  const statusStyle: Record<PaymentStatus, string> = {
+    paid: 'bg-emerald-100 text-emerald-700',
+    partial: 'bg-amber-100 text-amber-700',
+    none: 'bg-red-100 text-red-700',
+  };
+  const statusLabel = (st: PaymentStatus) =>
+    st === 'paid'
+      ? nl('Tam ödendi', 'Volledig betaald')
+      : st === 'partial'
+      ? nl('Kısmi ödeme', 'Gedeeltelijk betaald')
+      : nl('Ödenmedi', 'Niets betaald');
 
   const logStudentOptions = logStudentSearch.trim()
     ? students.filter(s => matches(s.name, logStudentSearch))
@@ -356,7 +466,7 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
             disabled={outstandingParentIds.size === 0}
             className="flex items-center gap-2 px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Mail className="h-4 w-4" />
+            <BellRing className="h-4 w-4" />
             {nl('Hatırlatma gönder', 'Herinnering sturen')}
           </button>
           <button
@@ -377,6 +487,200 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
         />
       )}
 
+      {/* Two sections, not two tabs at the top level: the log and the roster
+          answer different questions about the same money, and switching
+          between them should not move the beheerder out of Boekhouding. */}
+      <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+        <button
+          type="button"
+          onClick={() => setSection('log')}
+          className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
+            section === 'log' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <ListOrdered className="h-4 w-4" />
+          {nl('Ödeme kayıtları', 'Betalingen')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSection('students')}
+          className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
+            section === 'students' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Users className="h-4 w-4" />
+          {nl('Öğrenci bazında', 'Per leerling')}
+        </button>
+      </div>
+
+      {section === 'students' && (
+        <div>
+          <p className="mb-3 text-xs text-gray-500">
+            {nl(
+              'Her öğrenci için ödenen ve açık kalan tutar. Okul ücreti herkes için geçerlidir; çanta, Kuran gibi kalemler yalnızca ödeme kaydı girilmişse hesaba katılır.',
+              'Per leerling wat betaald is en wat er nog openstaat. Schoolgeld geldt voor iedereen; tas, Quran en de overige posten tellen alleen mee zodra er een betaling voor gelogd is.',
+            )}
+          </p>
+
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-3">
+              <p className="text-xs text-gray-500">{nl('Beklenen', 'Verwacht')}</p>
+              <p className="text-lg font-bold text-gray-800">€{totals.due.toFixed(2)}</p>
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs text-emerald-700">{nl('Ödenen', 'Betaald')}</p>
+              <p className="text-lg font-bold text-emerald-800">€{totals.paid.toFixed(2)}</p>
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <p className="text-xs text-amber-700">{nl('Açık', 'Openstaand')}</p>
+              <p className="text-lg font-bold text-amber-800">€{totals.outstanding.toFixed(2)}</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-3">
+              <p className="text-xs text-gray-500">{nl('Tam ödeyen / hiç ödemeyen', 'Volledig / niets betaald')}</p>
+              <p className="text-lg font-bold text-gray-800">
+                {totals.fullyPaid} <span className="text-gray-300">/</span> {totals.nothing}
+              </p>
+            </div>
+          </div>
+
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="search"
+                value={overviewQuery}
+                onChange={e => setOverviewQuery(e.target.value)}
+                placeholder={nl('İsim veya sınıf ara', 'Zoek op naam of klas')}
+                className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <select
+              value={overviewClassId}
+              onChange={e => setOverviewClassId(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="">{nl('Tüm sınıflar', 'Alle klassen')}</option>
+              {classes.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <select
+              value={overviewStatus}
+              onChange={e => setOverviewStatus(e.target.value as typeof overviewStatus)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="">{nl('Tüm durumlar', 'Alle statussen')}</option>
+              <option value="paid">{nl('Tam ödendi', 'Volledig betaald')}</option>
+              <option value="partial">{nl('Kısmi ödeme', 'Gedeeltelijk betaald')}</option>
+              <option value="none">{nl('Hiç ödenmedi', 'Niets betaald')}</option>
+              <option value="outstanding">{nl('Açığı olanlar', 'Nog openstaand')}</option>
+            </select>
+            <select
+              value={overviewSort}
+              onChange={e => setOverviewSort(e.target.value as typeof overviewSort)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="name">{nl('İsme göre', 'Op naam')}</option>
+              <option value="outstanding">{nl('En çok açık', 'Meest openstaand')}</option>
+              <option value="paid">{nl('En çok ödenen', 'Meest betaald')}</option>
+            </select>
+            {(overviewQuery || overviewClassId || overviewStatus) && (
+              <button
+                type="button"
+                onClick={() => { setOverviewQuery(''); setOverviewClassId(''); setOverviewStatus(''); }}
+                className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700"
+              >
+                <X className="h-3.5 w-3.5" />
+                {nl('Filtreleri temizle', 'Filters wissen')}
+              </button>
+            )}
+          </div>
+
+          <p className="mb-2 text-xs text-gray-400">
+            {nl(
+              `${students.length} öğrenciden ${visibleRows.length} tanesi`,
+              `${visibleRows.length} van ${students.length} leerlingen`,
+            )}
+          </p>
+
+          {visibleRows.length === 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-400">
+              {nl('Öğrenci bulunamadı.', 'Geen leerlingen gevonden.')}
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-emerald-50">
+                      <th className="border border-gray-200 px-3 py-2 text-left font-semibold text-emerald-800">{nl('Öğrenci', 'Leerling')}</th>
+                      <th className="border border-gray-200 px-3 py-2 text-left font-semibold text-emerald-800">{nl('Sınıf', 'Klas')}</th>
+                      <th className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-800">{nl('Eğitim bedeli', 'Schoolgeld')}</th>
+                      <th className="border border-gray-200 px-3 py-2 text-left font-semibold text-emerald-800">{nl('Diğer kalemler', 'Overige posten')}</th>
+                      <th className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-800">{nl('Ödenen', 'Betaald')}</th>
+                      <th className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-800">{nl('Açık', 'Openstaand')}</th>
+                      <th className="border border-gray-200 px-3 py-2 text-left font-semibold text-emerald-800">{nl('Durum', 'Status')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleRows.map(r => (
+                      <tr key={r.student.id} className="hover:bg-gray-50">
+                        <td className="border border-gray-200 px-3 py-2 font-medium text-gray-800">
+                          {r.student.name}
+                          {(r.isMember || r.hasSibling) && (
+                            <span className="ml-2 inline-flex gap-1 align-middle">
+                              {r.isMember && (
+                                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                  {nl('Üye', 'Lid')}
+                                </span>
+                              )}
+                              {r.hasSibling && (
+                                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+                                  {nl('Kardeş', 'B/Z')}
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </td>
+                        <td className="border border-gray-200 px-3 py-2 text-gray-500">{r.className || '—'}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-right text-gray-700 whitespace-nowrap">
+                          €{r.schoolPaid.toFixed(2)} <span className="text-gray-400">/ €{r.schoolDue.toFixed(2)}</span>
+                        </td>
+                        <td className="border border-gray-200 px-3 py-2 text-gray-500">
+                          {r.extras.length === 0
+                            ? '—'
+                            : r.extras
+                                .map(e => `${categoryLabel(e.category)} €${e.paid.toFixed(2)}/€${e.due.toFixed(2)}`)
+                                .join(', ')}
+                        </td>
+                        <td className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-700 whitespace-nowrap">€{r.paid.toFixed(2)}</td>
+                        <td className={`border border-gray-200 px-3 py-2 text-right font-semibold whitespace-nowrap ${r.outstanding > 0 ? 'text-amber-700' : 'text-gray-300'}`}>
+                          €{r.outstanding.toFixed(2)}
+                        </td>
+                        <td className="border border-gray-200 px-3 py-2">
+                          <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${statusStyle[r.status]}`}>
+                            {statusLabel(r.status)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-emerald-700 font-semibold text-white">
+                      <td colSpan={4} className="border border-emerald-700 px-3 py-2 text-right">{nl('Toplam', 'Totaal')}</td>
+                      <td className="border border-emerald-700 px-3 py-2 text-right whitespace-nowrap">€{totals.paid.toFixed(2)}</td>
+                      <td className="border border-emerald-700 px-3 py-2 text-right whitespace-nowrap">€{totals.outstanding.toFixed(2)}</td>
+                      <td className="border border-emerald-700 px-3 py-2"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {section === 'log' && (
       <div>
         {/* New entry form */}
           <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
@@ -627,6 +931,7 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
             </div>
           </div>
         </div>
+      )}
 
       {/* Send schoolgeld reminder confirmation */}
       {showReminderConfirm && (
@@ -634,14 +939,19 @@ export default function BoekhoudingView({ students, language, apiRequest }: Boek
           <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
             <div className="flex items-center gap-3 mb-4">
               <div className="bg-amber-100 rounded-full p-2">
-                <Mail className="h-5 w-5 text-amber-700" />
+                <BellRing className="h-5 w-5 text-amber-700" />
               </div>
               <h4 className="text-lg font-bold text-gray-800">{nl('Hatırlatma gönder', 'Herinnering versturen')}</h4>
             </div>
+            {/* Not an email. The reminder is placed in the parent's own
+                notification bell in the app, and rides along as a push to the
+                phones that allow one. The copy used to promise a mail, which
+                sent beheerders looking in a mailbox for something that was
+                never sent there. */}
             <p className="text-sm text-gray-600 mb-6">
               {nl(
-                `Ödenmemiş okul ücreti olan velilere hatırlatma e-postası göndermek istediğinize emin misiniz? Bu e-posta ${outstandingParentIds.size} veliye gönderilecek.`,
-                `Weet u zeker dat u een herinneringsmail wilt sturen naar ouders met openstaand schoolgeld? Deze e-mail wordt verstuurd naar ${outstandingParentIds.size} ${outstandingParentIds.size === 1 ? 'ouder' : 'ouders'}.`
+                `Ödenmemiş okul ücreti olan velilere uygulama içi hatırlatma göndermek istediğinize emin misiniz? Bildirim ${outstandingParentIds.size} velinin bildirim zilinde görünecek (ve izin verenlerin telefonuna push olarak gider). E-posta gönderilmez.`,
+                `Weet u zeker dat u een herinnering wilt sturen naar ouders met openstaand schoolgeld? De melding verschijnt bij ${outstandingParentIds.size} ${outstandingParentIds.size === 1 ? 'ouder' : 'ouders'} in de app (en als pushbericht op telefoons die dat toestaan). Er wordt geen e-mail verstuurd.`
               )}
             </p>
             <div className="flex gap-3">

@@ -20,6 +20,15 @@ interface LessonReportsPanelProps {
   language: 'tr' | 'nl';
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
   lessons: LessonReport[];
+  /**
+   * Render as its own section with a heading, rather than as rows tucked into
+   * somebody else's list.
+   *
+   * It used to ride in the footer of the worklist, which put its "Archief"
+   * button directly beneath the worklist's own — two identical grey buttons,
+   * one above the other, neither saying what it held.
+   */
+  standalone?: boolean;
 }
 
 const T = {
@@ -28,20 +37,26 @@ const T = {
     open: 'Openen',
     markRead: 'Markeer als gelezen',
     read: 'Gelezen',
-    archive: 'Archief',
+    archive: 'Archief · lesverslagen',
     archiveHint: 'Gelezen lesverslagen',
     none: 'Nog geen lesverslagen.',
-    hideArchive: 'Archief verbergen',
+    heading: 'Lesverslagen',
+    intro: 'Wat er in de les is behandeld. Gelezen verslagen gaan naar het archief.',
+    allRead: 'U heeft alle lesverslagen gelezen.',
+    hideArchive: 'Archief lesverslagen verbergen',
   },
   tr: {
     title: 'Ders özeti',
     open: 'Aç',
     markRead: 'Okundu olarak işaretle',
     read: 'Okundu',
-    archive: 'Arşiv',
+    archive: 'Arşiv · ders özetleri',
     archiveHint: 'Okunan ders özetleri',
     none: 'Henüz ders özeti yok.',
-    hideArchive: 'Arşivi gizle',
+    heading: 'Ders özetleri',
+    intro: 'Derste neler işlendiği. Okunan özetler arşive taşınır.',
+    allRead: 'Tüm ders özetlerini okudunuz.',
+    hideArchive: 'Ders özeti arşivini gizle',
   },
 };
 
@@ -63,7 +78,7 @@ const T = {
  * belongs to a class: two siblings in the same class share it, and asking
  * someone to read the same paragraph twice under two names is not a feature.
  */
-export default function LessonReportsPanel({ language, apiRequest, lessons }: LessonReportsPanelProps) {
+export default function LessonReportsPanel({ language, apiRequest, lessons, standalone = false }: LessonReportsPanelProps) {
   const text = T[language];
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
@@ -164,12 +179,16 @@ export default function LessonReportsPanel({ language, apiRequest, lessons }: Le
     </div>
   );
 
-  return (
+  const body = (
     <>
-      {unread.map((l) => row(l, false))}
+      {standalone
+        ? (unread.length === 0
+            ? <p className="text-sm text-gray-400">{text.allRead}</p>
+            : <div className="space-y-2">{unread.map((l) => row(l, false))}</div>)
+        : unread.map((l) => row(l, false))}
 
       {archived.length > 0 && (
-        <div>
+        <div className={standalone ? 'mt-2' : ''}>
           <button
             type="button"
             onClick={() => setShowArchive((v) => !v)}
@@ -210,5 +229,15 @@ export default function LessonReportsPanel({ language, apiRequest, lessons }: Le
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{opened?.summary}</p>
       </Modal>
     </>
+  );
+
+  if (!standalone) return body;
+
+  return (
+    <div className="mb-4 sm:mb-6">
+      <h2 className="mb-1 text-lg font-semibold text-emerald-800 sm:text-xl">{text.heading}</h2>
+      <p className="mb-3 text-xs text-gray-500">{text.intro}</p>
+      {body}
+    </div>
   );
 }

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useApp, isTestAccount } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, AlertTriangle, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen, ChevronRight } from 'lucide-react';
+import { Euro, Moon, AlertTriangle, BarChart3, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen, CalendarDays, ChevronRight, Thermometer } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
@@ -819,39 +819,86 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             />
             )}
 
-            {/* Selected child header + actions. Overview only: the billing and
-                oudergesprekken tabs already say which child they're about, and
-                repeating the card there just pushed their content down. */}
+            {/* Selected child header + the things a parent actually opens the
+                app to do. Overview only: the billing and oudergesprekken tabs
+                already say which child they're about, and repeating the card
+                there just pushed their content down.
+
+                The two buttons here used to be the whole of it — ziekmelding
+                and statistieken, side by side, in the same weight as each
+                other. Everything else a family comes for (huiswerk, cijfers,
+                facturatie) was reachable only through the tab bar, which on
+                the website is a strip of grey text above the fold and in the
+                app is a row of icons at the bottom. So the home screen now
+                names those destinations too, as a row of tiles under the
+                child's name. */}
             {selectedChild && activeTab === 'overview' && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  {/* With two or more children the sticky switcher directly
-                      above is already saying the name, on this tab and every
-                      other one — repeating it here is the kind of duplication
-                      that teaches people to stop reading headings. With one
-                      child there is no switcher, so the name is stated here
-                      instead. */}
-                  {students.length < 2 && (
-                    <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">{selectedChild.name}</h2>
-                  )}
-                  <p className="text-sm text-gray-500">
-                    {t.class}: {selectedChild.className || '-'}
-                    {selectedChild.schoolId && schoolNames[selectedChild.schoolId] ? ` · ${schoolNames[selectedChild.schoolId]}` : ''}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => openAbsenceModal(selectedChild.id)}
-                    className="px-3 py-1.5 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 text-sm font-medium transition"
-                  >
-                    {t.reportAbsence}
-                  </button>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    {/* With two or more children the sticky switcher directly
+                        above is already saying the name — repeating it here is
+                        the kind of duplication that teaches people to stop
+                        reading headings. With one child there is no switcher,
+                        so the name is stated here instead. */}
+                    {students.length < 2 && (
+                      <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">{selectedChild.name}</h2>
+                    )}
+                    <p className="text-sm text-gray-500">
+                      {t.class}: {selectedChild.className || '-'}
+                      {selectedChild.schoolId && schoolNames[selectedChild.schoolId] ? ` · ${schoolNames[selectedChild.schoolId]}` : ''}
+                    </p>
+                  </div>
                   <button
                     onClick={() => loadStats(selectedChild.id)}
-                    className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm font-medium transition"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
                   >
+                    <BarChart3 className="h-4 w-4" />
                     {t.viewStats}
                   </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {([
+                    {
+                      id: 'absence',
+                      label: t.reportAbsence,
+                      icon: Thermometer,
+                      tone: 'bg-orange-50 text-orange-700 hover:bg-orange-100',
+                      onClick: () => openAbsenceModal(selectedChild.id),
+                    },
+                    {
+                      id: 'huiswerk',
+                      label: language === 'tr' ? 'Ödevler' : 'Huiswerk',
+                      icon: BookOpen,
+                      tone: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
+                      onClick: () => setActiveTab('huiswerk'),
+                    },
+                    {
+                      id: 'grades',
+                      label: language === 'tr' ? 'Notlar' : 'Cijfers',
+                      icon: GraduationCap,
+                      tone: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100',
+                      onClick: () => setActiveTab('grades'),
+                    },
+                    {
+                      id: 'billing',
+                      label: language === 'tr' ? 'Ödemeler' : 'Facturatie',
+                      icon: Receipt,
+                      tone: 'bg-violet-50 text-violet-700 hover:bg-violet-100',
+                      onClick: () => setActiveTab('billing'),
+                    },
+                  ] as const).map((action) => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      onClick={action.onClick}
+                      className={`flex flex-col items-start gap-1.5 rounded-xl p-3 text-left text-sm font-semibold transition ${action.tone}`}
+                    >
+                      <action.icon className="h-5 w-5" />
+                      <span className="leading-tight">{action.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -1143,13 +1190,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           filterChildId={selectedChildId}
           onRefresh={() => setAgendaRefresh((n) => n + 1)}
           onDismiss={dismissActionItem}
-          footer={
-            <LessonReportsPanel
-              language={language}
-              apiRequest={apiRequest}
-              lessons={lessons}
-            />
-          }
         />
 
         {/* The schoolgeld reminder, read once. It used to be a permanent row
@@ -1332,9 +1372,32 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
         </Modal>
 
 
-        {/* The good news, above the calendar. Scoped to the selected child so
-            a compliment reads as being about them rather than about a class.
-            Absent entirely when there is nothing yet — see hideWhenEmpty. */}
+        {/* ── Van school ──────────────────────────────────────────────
+            Everything below the worklist is the school talking to this family
+            rather than asking something of them, and each kind of message now
+            gets its own named section.
+
+            They used to run together: the lesverslagen were rows inside the
+            worklist's footer, and gedrag followed straight after the moments
+            with nothing between them. That put two — soon three — identical
+            grey "Archief" buttons within a screen of each other, none of them
+            saying what it held, so the reader could not tell which list they
+            were about to unfold. A heading per section, and a named archive
+            button inside each, is the whole fix. */}
+        <div className="mb-2 mt-6 flex items-center gap-2 border-t border-gray-200 pt-5">
+          <h2 className="text-base font-semibold text-gray-500">
+            {language === 'tr' ? 'Okuldan' : 'Van school'}
+          </h2>
+          <p className="text-xs text-gray-400">
+            {language === 'tr'
+              ? 'Okuduklarınız arşive taşınır.'
+              : 'Wat u gelezen heeft, gaat naar het archief.'}
+          </p>
+        </div>
+
+        {/* The good news first. Scoped to the selected child so a compliment
+            reads as being about them rather than about a class. Absent
+            entirely when there is nothing yet — see hideWhenEmpty. */}
         <MomentsFeed
           language={language}
           apiRequest={apiRequest}
@@ -1343,11 +1406,22 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           hideWhenEmpty
         />
 
+        {/* What was covered in the lesson. Its own section now, with its own
+            heading and its own named archive. */}
+        <LessonReportsPanel
+          language={language}
+          apiRequest={apiRequest}
+          lessons={lessons}
+          standalone
+        />
+
         {/* What the teacher wrote about this child's behaviour. Used to be a
             calendar square; a remark about your child should not have to be
-            hunted for by date. */}
+            hunted for by date. `apiRequest` is what lets a read remark be
+            filed away instead of standing on the home screen all year. */}
         <BehaviorPanel
           language={language}
+          apiRequest={apiRequest}
           behaviorList={behaviorList}
           childName={students.length > 1 ? selectedChild.name : undefined}
         />
@@ -1357,8 +1431,9 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             now have a place where they can be seen without first guessing the
             right day — see HomeworkView, LessonReportsPanel and
             BehaviorPanel. */}
-        <div className="mb-4 sm:mb-6">
-          <h2 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-3">
+        <div className="mb-4 mt-6 border-t border-gray-200 pt-5 sm:mb-6">
+          <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-emerald-800 sm:text-xl">
+            <CalendarDays className="h-5 w-5" />
             {language === 'tr' ? 'Ajanda' : 'Agenda'}
           </h2>
           {selectedChild && loadingChild ? (

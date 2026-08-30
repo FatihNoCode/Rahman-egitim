@@ -4534,6 +4534,56 @@ app.post("/make-server-6679cacd/behavior", async (c) => {
   }
 });
 
+// Which behaviour remarks this account has read and filed away.
+//
+// Deliberately not under /behavior/:studentId — that route would swallow
+// "read" as a student id. The mark is per account rather than per child for
+// the same reason the lesson-report one is: a parent who read a remark on
+// their phone should not be told it is new again by the tablet.
+app.get("/make-server-6679cacd/behavior-read", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const marks = await kv.getByPrefix(`behavior_read:${user.id}:`);
+    const read = marks
+      .filter((m: any) => m && m.behaviorId)
+      .map((m: any) => String(m.behaviorId));
+
+    return c.json({ read });
+  } catch (err) {
+    console.log('Get behavior read marks error:', err);
+    return c.json({ error: 'Failed to get behavior read marks' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/behavior-read", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const { behaviorId, read = true } = await c.req.json();
+    // No access check is needed: the key is scoped to the caller's own id, so
+    // the worst a wrong id can do is hide a remark from the person who sent
+    // it. The pattern is here to keep one account from writing unbounded keys.
+    if (typeof behaviorId !== 'string' || !/^[\w-]{1,64}$/.test(behaviorId)) {
+      return c.json({ error: 'Invalid behaviorId' }, 400);
+    }
+
+    const key = `behavior_read:${user.id}:${behaviorId}`;
+    if (read) {
+      await kv.set(key, { behaviorId, userId: user.id, readAt: new Date().toISOString() });
+    } else {
+      await kv.del(key);
+    }
+
+    return c.json({ ok: true });
+  } catch (err) {
+    console.log('Mark behavior read error:', err);
+    return c.json({ error: 'Failed to mark behavior read' }, 500);
+  }
+});
+
 app.get("/make-server-6679cacd/behavior/:studentId", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);

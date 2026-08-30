@@ -2,11 +2,10 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { ArrowLeft, Layers, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle, MessageCircleQuestion, Moon, GraduationCap } from 'lucide-react';
+import { ArrowLeft, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle, MessageCircleQuestion, Moon, GraduationCap } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import booksLogo from '../../imports/logo.svg';
-import ManageEntitiesView from './ManageEntitiesView';
 import BoekhoudingView from './BoekhoudingView';
 import InschrijvingenView from './InschrijvingenView';
 import QuestionsView from './QuestionsView';
@@ -63,6 +62,8 @@ interface Student {
   parentId?: string;
   parentEmail?: string;
   classId?: string;
+  /** YYYY-MM-DD, optional. Set from the leerlingen roster. */
+  birthDate?: string | null;
 }
 
 interface StudentWithStats extends Student {
@@ -83,7 +84,7 @@ interface AdminDashboardProps {
 // the app as tabs that opened a card explaining where to go instead, which
 // meant four of the bar's destinations did no work. They are simply absent from
 // the app now; the beheerder's phone shows the sections a phone can do.
-const DESKTOP_ONLY_TABS = ['entities', 'users', 'import', 'inschrijvingen'];
+const DESKTOP_ONLY_TABS = ['users', 'import', 'inschrijvingen'];
 
 export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashboardProps) {
   const { language, setLanguage, apiRequest, user: currentUser } = useApp();
@@ -92,8 +93,8 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   const [activeTab, setActiveTab] = useHashTab<string>(
     // The website opens on the class register; the app doesn't have one, so it
     // lands on Start like every other role.
-    app ? 'signals' : 'entities',
-    ['signals', 'leerlingen', 'entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'vragen', 'oudergesprekken', 'agenda', 'communicatie', 'cases', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    app ? 'signals' : 'leerlingen',
+    ['signals', 'leerlingen', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'vragen', 'oudergesprekken', 'agenda', 'communicatie', 'cases', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   const [navOrder, setNavOrder] = useNavOrder('admin', [
     'signals',
@@ -133,11 +134,6 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   // Student management
   const [students, setStudents] = useState<StudentWithStats[]>([]);
 
-  // id -> name map built from /users, used to show parent names (not just
-  // email) on the Klassen beheer roster.
-  const [parentNamesByEmail, setParentNamesByEmail] = useState<Record<string, string>>({});
-
-
   useEffect(() => {
     loadData();
     loadSchoolYearSettings();
@@ -173,7 +169,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
 
   useEffect(() => {
     if (
-      (activeTab === 'entities' || activeTab === 'leerlingen')
+      activeTab === 'leerlingen'
       && students.length > 0
       && students[0].absenceCount === undefined
     ) {
@@ -237,24 +233,17 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   const loadData = async () => {
     setLoadFailed(false);
     try {
-      const [metricsData, classesData, teachersData, studentsData, usersData] = await Promise.all([
+      const [metricsData, classesData, teachersData, studentsData] = await Promise.all([
         apiRequest('/metrics'),
         apiRequest('/classes'),
         apiRequest('/teachers'),
         apiRequest('/students'),
-        apiRequest('/users'),
       ]);
 
       setMetrics(metricsData);
       setClasses(classesData.classes || []);
       setTeachers(teachersData.teachers || []);
       setStudents(studentsData.students || []);
-
-      const nameByEmail: Record<string, string> = {};
-      (usersData.users || []).forEach((u: any) => {
-        if (u.role === 'parent' && u.name) nameByEmail[u.email] = u.name;
-      });
-      setParentNamesByEmail(nameByEmail);
     } catch (error) {
       console.error('Error loading data:', error);
       setLoadFailed(true);
@@ -290,12 +279,14 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
     // Start / Ana Sayfa — the same landing tab as every other role, showing a
     // beheerder's signals rather than a parent's children.
     sharedNavItem('home', language, 'signals'),
-    // Leerlingen is the way *into* a child; Klassen beheer is the way to
-    // change the structure around them (create a class, move a group, assign
-    // a teacher). Two different jobs that used to share one tab, where the
-    // common one was buried under the rare one.
+    // Leerlingen is both the way *into* a child and the way to change the
+    // structure around them. Klassen beheer used to be a second tab holding
+    // that second half, which meant a beheerder had to decide which tab a
+    // control lived in before they could look for it — and "verplaats dit
+    // kind" is a decision made while reading the child's file, not while
+    // reading a list of classes. Classes now sit behind one button on this
+    // tab, and a child's class sits on the child's own page.
     { id: 'leerlingen', label: language === 'tr' ? 'Öğrenciler' : 'Leerlingen', icon: GraduationCap },
-    { id: 'entities', label: language === 'tr' ? 'Sınıf yönetimi' : 'Klassen beheer', shortLabel: language === 'tr' ? 'Sınıflar' : 'Klassen', icon: Layers },
     { id: 'users', label: language === 'tr' ? 'Kullanıcılar' : 'Gebruikers', icon: Users },
     { id: 'import', label: language === 'tr' ? 'İçe aktar' : 'Importeren', icon: Upload },
     sharedNavItem('meldingen', language),
@@ -469,52 +460,18 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
             </div>
           )}
 
-          {/* Klassen beheer and Gebruikers are both wide registers: a row per
-              student or per account, carrying the parent's email address, the
-              class, the behaviour notes and a column of actions. On a phone
-              those rows either wrap into an unreadable stack or scroll
-              sideways past the edge of the screen, and both are edited far
-              more comfortably sitting down. So the tab stays, and says where
-              the work happens. */}
+          {/* Leerlingen reads and edits: one row per child on a phone-shaped
+              list, with the class structure behind a button rather than in a
+              tab of its own. */}
           {activeTab === 'leerlingen' && (
             <StudentsView
               students={students}
               classes={classes}
               language={language}
               apiRequest={apiRequest}
-            />
-          )}
-
-          {activeTab === 'entities' && (
-            app ? (
-              <DesktopOnly
-                language={language}
-                title={language === 'tr' ? 'Sınıf yönetimi' : 'Klassen beheer'}
-                reason={
-                  language === 'tr'
-                    ? 'Sınıf yönetimi, her öğrenci için veli e-postası, sınıf ve notların yan yana durduğu geniş bir tablodur. Telefon ekranında bu satırlar okunamıyor — web sitesinde çok daha rahat çalışırsınız.'
-                    : 'Klassen beheer is een brede tabel: per leerling het e-mailadres van de ouder, de klas en de notities naast elkaar. Op een telefoonscherm zijn die rijen niet te lezen — op de website werkt het een stuk prettiger.'
-                }
-                tab="entities"
-              />
-            ) : (
-            <>
-            <TabIntro>
-              {language === 'tr'
-                ? 'Yapıyı burada değiştirirsiniz: sınıf açma, öğretmen atama, öğrenci ekleme ve sınıflar arasında taşıma. Tek bir öğrenciyi görmek için Öğrenciler sekmesini kullanın.'
-                : 'Hier verandert u de structuur: klassen aanmaken, een docent koppelen, leerlingen toevoegen of verplaatsen. Wilt u één leerling bekijken, gebruik dan het tabblad Leerlingen.'}
-            </TabIntro>
-            <ManageEntitiesView
-              classes={classes}
               teachers={teachers}
-              students={students}
-              parentNamesByEmail={parentNamesByEmail}
-              language={language}
-              apiRequest={apiRequest}
               onDataChange={loadData}
             />
-            </>
-            )
           )}
 
           {activeTab === 'users' && (
@@ -696,6 +653,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
             </TabIntro>
             <BoekhoudingView
               students={students}
+              classes={classes}
               language={language}
               apiRequest={apiRequest}
             />

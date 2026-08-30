@@ -89,7 +89,7 @@ interface ActionCenterProps {
   onRefresh?: () => void;
   /** Rendered inside the section, after the feed entries. */
   footer?: ReactNode;
-  /** Keep the section on screen even with no feed entries (a footer needs it). */
+  /** Keep the section on screen even with no feed entries. */
   alwaysShow?: boolean;
   /**
    * Called after an entry has been opened and dealt with, so the caller can
@@ -129,16 +129,20 @@ export default function ActionCenter({
         allClear: 'Şu anda yapmanız gereken bir şey yok.',
         refresh: 'Yenile',
         open: 'Aç',
-        archive: 'Arşiv',
-        hideArchive: 'Arşivi gizle',
+        // Named, not a bare "Arşiv": the parent's home screen carries three
+        // of these buttons within a screen height of each other (this one,
+        // the lesson reports, the behaviour remarks). Unlabelled they read as
+        // one control repeated three times.
+        archive: 'Arşiv · bekleyenler',
+        hideArchive: 'Bekleyenler arşivini gizle',
       }
     : {
         title: 'Wat om uw aandacht vraagt',
         allClear: 'Er staat op dit moment niets open.',
         refresh: 'Vernieuwen',
         open: 'Openen',
-        archive: 'Archief',
-        hideArchive: 'Archief verbergen',
+        archive: 'Archief · meldingen',
+        hideArchive: 'Archief meldingen verbergen',
       };
 
   const [rawItems, setRawItems] = useState<ActionItem[]>([]);

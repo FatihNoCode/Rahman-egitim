@@ -1948,13 +1948,90 @@ app.put("/make-server-6679cacd/me", async (c) => {
 
 // ============= NOTIFICATIONS =============
 
+// The bell.
+//
+// Two kinds of thing land here now. The first is a written notification: a
+// record of something that happened, stored when it happened. The second is
+// the parent worklist — the things only this family can act on — which used
+// to be a panel on their home screen and is derived fresh on every read.
+//
+// They are merged rather than kept apart because to the reader they were never
+// two lists. "Openstaand schoolgeld" arrived twice, once in each, and a family
+// that has seen a thing in one place has no reason to look for it in the
+// other. Tasks come first: something to do outranks something to know.
+//
+// Worklist entries carry a `feed:` id and are always unread while they stand,
+// which is deliberate — see the read routes below.
+const FEED_ID_PREFIX = 'feed:';
+
+// How long a derived worklist may be reused. The badge is polled every 60
+// seconds by every signed-in phone, and building the list reads attendance,
+// homework, completions, absence notes, conferences and exam attempts — far
+// too much to run on a timer per family. Five minutes is well inside the
+// resolution anything here actually has: none of these tasks appear or
+// disappear in less than a lesson.
+const WORKLIST_CACHE_MS = 5 * 60 * 1000;
+
+/** Drop a parent's cached worklist after they did something that resolves one. */
+async function invalidateWorklist(userId: string) {
+  try {
+    await kv.del(`worklist_cache:${userId}`);
+  } catch {
+    // Worst case the reader waits out the five-minute window.
+  }
+}
+
+async function cachedParentWorklist(userId: string, today: string) {
+  const key = `worklist_cache:${userId}`;
+  const cached = await kv.get(key);
+  if (cached?.day === today && Date.now() - Date.parse(cached.at || '') < WORKLIST_CACHE_MS) {
+    return Array.isArray(cached.items) ? cached.items : [];
+  }
+  const items = await parentWorklist(userId, today);
+  await kv.set(key, { day: today, at: new Date().toISOString(), items });
+  return items;
+}
+
+async function bellEntries(userId: string, userData: any) {
+  const ids: string[] = await kv.get(`user_notifications:${userId}`) || [];
+  const stored = (await kv.mget(ids.map((id: string) => `notification:${id}`))).filter((n: any) => n);
+
+  if (userData?.role !== 'parent') return stored;
+
+  const today = new Date().toISOString().slice(0, 10);
+  let worklist: any[] = [];
+  try {
+    worklist = await cachedParentWorklist(userId, today);
+  } catch (err) {
+    // A failure here must not take the bell down with it: a written
+    // notification is a record, and losing sight of one is worse than
+    // missing a task that will be derived again on the next poll.
+    console.log('Parent worklist for bell error:', err);
+  }
+
+  const asEntries = worklist.map((item: any) => ({
+    id: `${FEED_ID_PREFIX}${item.key}`,
+    userId,
+    type: 'worklist',
+    titleNl: item.titleNl,
+    titleTr: item.titleTr,
+    bodyNl: item.bodyNl,
+    bodyTr: item.bodyTr,
+    link: item.link || null,
+    read: false,
+    createdAt: new Date().toISOString(),
+  }));
+
+  return [...asEntries, ...stored];
+}
+
 app.get("/make-server-6679cacd/notifications", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
     if (error) return c.json({ error }, 401);
 
-    const ids: string[] = await kv.get(`user_notifications:${user.id}`) || [];
-    const notifications = (await kv.mget(ids.map((id: string) => `notification:${id}`))).filter((n: any) => n);
+    const userData = await getUserData(user.id);
+    const notifications = await bellEntries(user.id, userData);
     const unreadCount = notifications.filter((n: any) => !n.read).length;
     return c.json({ notifications, unreadCount });
   } catch (err) {
@@ -1969,6 +2046,25 @@ app.post("/make-server-6679cacd/notifications/:id/read", async (c) => {
     if (error) return c.json({ error }, 401);
 
     const id = c.req.param('id');
+    // A worklist entry has no stored row to flip — it is derived. Reading one
+    // means the family has dealt with it, or at least seen it and chosen to
+    // put it down, so the key is filed and the entry stops being generated.
+    // This is the *only* way one clears by hand; "alles gelezen" and opening
+    // the sheet deliberately leave them alone, because they are tasks and a
+    // badge that clears itself would be lying about what is outstanding.
+    if (id.startsWith(FEED_ID_PREFIX)) {
+      const key = id.slice(FEED_ID_PREFIX.length);
+      if (!key || key.length > 200) return c.json({ error: 'Invalid key' }, 400);
+      const listKey = `signals_dismissed:${user.id}`;
+      const current: string[] = (await kv.get(listKey)) || [];
+      const next = [key, ...current.filter((k) => k !== key)].slice(0, 200);
+      await kv.set(listKey, next);
+      // Otherwise the entry the reader just cleared comes straight back on the
+      // next poll and stays for the rest of the cache window.
+      await kv.del(`worklist_cache:${user.id}`);
+      return c.json({ success: true });
+    }
+
     const notification = await kv.get(`notification:${id}`);
     if (!notification || notification.userId !== user.id) {
       return c.json({ error: 'Not found' }, 404);
@@ -5820,6 +5916,7 @@ app.post("/make-server-6679cacd/homework/:homeworkId/complete", async (c) => {
       completed,
       completedAt: completed ? new Date().toISOString() : null
     });
+    await invalidateWorklist(user.id);
 
     return c.json({ success: true });
   } catch (err) {
@@ -6995,6 +7092,7 @@ app.post("/make-server-6679cacd/absence-notification", async (c) => {
     const notifications = await kv.get(yearKey) || [];
     await kv.set(yearKey, [...notifications, notificationId]);
 
+    await invalidateWorklist(user.id);
     return c.json({ success: true, notification, onTime });
   } catch (err) {
     console.log('Report absence error:', err);
@@ -7513,9 +7611,9 @@ app.delete("/make-server-6679cacd/students/:studentId", async (c) => {
 // the same child through four separate requests each, and each screen then
 // assembled its own half-answer: one showed homework but no grades, the other
 // grades but no lesson reports. This is the whole file — the record, the
-// register, the behaviour remarks, the homework, the published grades and the
-// moments a teacher shared — so both screens can show the same page and a
-// question about a child has one place to be answered.
+// register, the behaviour remarks, the homework and the published grades — so
+// both screens can show the same page and a question about a child has one
+// place to be answered.
 app.get("/make-server-6679cacd/students/:studentId/profile", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
@@ -7565,10 +7663,6 @@ app.get("/make-server-6679cacd/students/:studentId/profile", async (c) => {
       }
     }
 
-    const moments = (await kv.getByPrefix('moment:'))
-      .filter((m: any) => m?.id && (m.studentIds || []).includes(studentId))
-      .map((m: any) => ({ id: m.id, text: m.text, kind: m.kind, createdAt: m.createdAt, createdByName: m.createdByName }));
-
     const absenceNotifications = [];
     for (const n of await kv.getByPrefix('absence_notification:')) {
       if (n?.studentId === studentId) {
@@ -7594,7 +7688,6 @@ app.get("/make-server-6679cacd/students/:studentId/profile", async (c) => {
       lessons,
       homework,
       completionByHomework,
-      moments,
       absenceNotifications,
     });
   } catch (err) {
@@ -9380,6 +9473,7 @@ app.post("/make-server-6679cacd/oudergesprekken/:id/book", async (c) => {
     const slot = session.slots[slotIndex];
     await notifyConferenceBooked(user.id, session, slot, student.name);
 
+    await invalidateWorklist(user.id);
     return c.json({ success: true, slot });
   } catch (err) {
     console.log('Book oudergesprek slot error:', err);
@@ -9449,6 +9543,7 @@ app.post("/make-server-6679cacd/oudergesprekken/:id/reschedule", async (c) => {
     const slot = session.slots[toSlotIndex];
     await notifyConferenceBooked(user.id, session, slot, student.name);
 
+    await invalidateWorklist(user.id);
     return c.json({ success: true, slot });
   } catch (err) {
     console.log('Reschedule oudergesprek slot error:', err);
@@ -9977,16 +10072,6 @@ async function completedTasks(scope: string): Promise<any[]> {
   return rows.filter((r: any) => r?.key);
 }
 
-/** ISO week label (`2026-W35`) for a `YYYY-MM-DD` date — keys weekly tasks. */
-function isoWeekOf(isoDate: string): string {
-  const d = new Date(`${isoDate}T00:00:00Z`);
-  const day = (d.getUTCDay() + 6) % 7; // Monday = 0
-  d.setUTCDate(d.getUTCDate() - day + 3); // nearest Thursday
-  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
-  const week = 1 + Math.round(((d.getTime() - firstThursday.getTime()) / 86_400_000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
-  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
-}
-
 // The "what needs me today" feed for the signed-in user's role.
 // Move one worklist entry to the archive (or bring it back).
 //
@@ -10021,6 +10106,115 @@ app.post("/make-server-6679cacd/signals/dismiss", async (c) => {
   }
 });
 
+/**
+ * The parent worklist: the handful of things only this family can act on.
+ *
+ * It used to be a panel at the top of the parent's home screen ("Wat om uw
+ * aandacht vraagt"), sitting directly above the day summary and saying the
+ * same things the bell was already saying — the schoolgeld reminder, the
+ * oudergesprek with no slot picked, the absence nobody explained. Two places
+ * telling one family the same thing means one of them is the place they stop
+ * reading, and the bell is the one that also reaches a phone in a pocket.
+ *
+ * So the list moved into the bell (see the /notifications route), and this is
+ * the builder both it and /signals/today share. Every entry is derived, not
+ * stored: it appears while the thing is true and disappears when it is done,
+ * which is why it can never go stale the way a written notification can.
+ */
+async function parentWorklist(userId: string, today: string) {
+    const childIds: string[] = await kv.get(`parent_children:${userId}`) || [];
+    const children = (await kv.mget(childIds.map((id: string) => `student:${id}`))).filter((s: any) => s?.id);
+    if (!children.length) return [];
+
+    const classIds = new Set(children.map((s: any) => s.classId).filter(Boolean));
+    const childSchoolIds = new Set(children.map((s: any) => s.schoolId).filter(Boolean));
+    const classes = (await kv.getByPrefix('class:')).filter((cl: any) => cl?.id && classIds.has(cl.id));
+    const classById = new Map(classes.map((cl: any) => [cl.id, cl]));
+
+    const conferences = (await kv.getByPrefix('oudergesprek:')).filter(
+      (s: any) => s?.id && childSchoolIds.has(s.schoolId) && s.date >= today,
+    );
+
+    // Everything that ages out on its own — see buildParentFeed. Windows are
+    // deliberately short: an "event" three weeks out is not news yet, and a
+    // "new grade" from last month is not new.
+    const EVENT_WINDOW = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+    const FRESH_CUTOFF = new Date(Date.parse(`${today}T00:00:00Z`) - 10 * 86_400_000).toISOString();
+
+    const eventIdLists = await Promise.all(
+      [...childSchoolIds].map((sid) => kv.get(`agenda_event_ids:${sid}`)),
+    );
+    const eventIds = [...new Set(eventIdLists.flat().filter(Boolean))] as string[];
+    const events = (await kv.mget(eventIds.map((id) => `agenda_event:${id}`)))
+      .filter((e: any) => e?.id && e.date >= today && e.date <= EVENT_WINDOW)
+      .map((e: any) => ({ id: e.id, title: e.title, date: e.date }));
+
+    const childAttempts = (await kv.getByPrefix('exam_attempt:')).filter(
+      (a: any) => a?.studentId && childIds.includes(a.studentId),
+    );
+    const examTitleById = new Map<string, string>();
+    const newGrades: Array<{ attemptId: string; studentId: string; title?: string; gradedAt?: string }> = [];
+    for (const a of childAttempts) {
+      const scorable = a.graded || (a.submittedAt && (Number(a.openMax) || 0) === 0);
+      const at = a.gradedAt || a.submittedAt;
+      if (!scorable || !at || String(at) < FRESH_CUTOFF) continue;
+      if (a.examId && !examTitleById.has(a.examId)) {
+        examTitleById.set(a.examId, String((await kv.get(`exam:${a.examId}`))?.title || ''));
+      }
+      newGrades.push({
+        attemptId: `${a.code}:${a.studentId}`,
+        studentId: a.studentId,
+        title: a.examId ? examTitleById.get(a.examId) : undefined,
+        gradedAt: at,
+      });
+    }
+
+    // Outstanding schoolgeld per child, from the same tiers the reminder
+    // mail and the admin feed use.
+    const outstandingByChild: Record<string, number> = {};
+    for (const schoolId of childSchoolIds) {
+      const settings = await kv.get(`boekhouding:settings:${schoolId}`) || DEFAULT_BOEKHOUDING_SETTINGS;
+      const tiers = settings.schoolgeld || DEFAULT_BOEKHOUDING_SETTINGS.schoolgeld;
+      for (const child of children.filter((s: any) => s.schoolId === schoolId)) {
+        const record = (await kv.get(`boekhouding:student:${child.id}`)) || defaultBoekhoudingRecord(child.id);
+        const required = record.isMember
+          ? (record.hasSibling ? tiers.memberWithSibling : tiers.memberNoSibling)
+          : (record.hasSibling ? tiers.noMemberWithSibling : tiers.noMemberNoSibling);
+        const paid = Number(record.payments?.schoolgeld) || 0;
+        if (paid < required) outstandingByChild[child.id] = required - paid;
+      }
+    }
+
+    const feed = buildParentFeed({
+      today,
+      children: children.map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        classId: s.classId,
+        className: classById.get(s.classId)?.name || null,
+      })),
+      attendance: (await kv.getByPrefix('attendance:')).filter((a: any) => a?.classId && classIds.has(a.classId)),
+      notifications: (await kv.getByPrefix('absence_notification:')).filter(
+        (n: any) => n?.studentId && childIds.includes(n.studentId),
+      ),
+      homework: (await kv.getByPrefix('homework:')).filter((h: any) => h?.classId && classIds.has(h.classId)),
+      completions: (await kv.getByPrefix('homework_completion:')).filter(
+        (x: any) => x?.studentId && childIds.includes(x.studentId),
+      ),
+      conferences,
+      outstandingByChild,
+      events,
+      newGrades,
+    });
+
+    // An entry the parent has already dealt with is gone for good. Under
+    // the old home-screen worklist it moved to a visible archive; in the
+    // bell there is nothing to archive *into* — a read notification is
+    // simply read — so a dismissed key is filtered out here.
+    const dismissed = new Set<string>(await kv.get(`signals_dismissed:${userId}`) || []);
+    return feed.filter((item) => !dismissed.has(item.key));
+}
+
 app.get("/make-server-6679cacd/signals/today", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
@@ -10039,109 +10233,8 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
     // they can actually act on, and the ladder tells them about a concern in
     // words a person wrote (see outreach.tsx).
     if (userData.role === 'parent') {
-      const childIds: string[] = await kv.get(`parent_children:${user.id}`) || [];
-      const children = (await kv.mget(childIds.map((id: string) => `student:${id}`))).filter((s: any) => s?.id);
-      if (!children.length) return c.json({ feed: [], generatedAt: new Date().toISOString() });
-
-      const classIds = new Set(children.map((s: any) => s.classId).filter(Boolean));
-      const childSchoolIds = new Set(children.map((s: any) => s.schoolId).filter(Boolean));
-      const classes = (await kv.getByPrefix('class:')).filter((cl: any) => cl?.id && classIds.has(cl.id));
-      const classById = new Map(classes.map((cl: any) => [cl.id, cl]));
-
-      const conferences = (await kv.getByPrefix('oudergesprek:')).filter(
-        (s: any) => s?.id && childSchoolIds.has(s.schoolId) && s.date >= today,
-      );
-
-      // Everything that ages out on its own — see buildParentFeed. Windows are
-      // deliberately short: an "event" three weeks out is not news yet, and a
-      // "new grade" from last month is not new.
-      const EVENT_WINDOW = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
-      const FRESH_CUTOFF = new Date(Date.parse(`${today}T00:00:00Z`) - 10 * 86_400_000).toISOString();
-
-      const eventIdLists = await Promise.all(
-        [...childSchoolIds].map((sid) => kv.get(`agenda_event_ids:${sid}`)),
-      );
-      const eventIds = [...new Set(eventIdLists.flat().filter(Boolean))] as string[];
-      const events = (await kv.mget(eventIds.map((id) => `agenda_event:${id}`)))
-        .filter((e: any) => e?.id && e.date >= today && e.date <= EVENT_WINDOW)
-        .map((e: any) => ({ id: e.id, title: e.title, date: e.date }));
-
-      const childAttempts = (await kv.getByPrefix('exam_attempt:')).filter(
-        (a: any) => a?.studentId && childIds.includes(a.studentId),
-      );
-      const examTitleById = new Map<string, string>();
-      const newGrades: Array<{ attemptId: string; studentId: string; title?: string; gradedAt?: string }> = [];
-      for (const a of childAttempts) {
-        const scorable = a.graded || (a.submittedAt && (Number(a.openMax) || 0) === 0);
-        const at = a.gradedAt || a.submittedAt;
-        if (!scorable || !at || String(at) < FRESH_CUTOFF) continue;
-        if (a.examId && !examTitleById.has(a.examId)) {
-          examTitleById.set(a.examId, String((await kv.get(`exam:${a.examId}`))?.title || ''));
-        }
-        newGrades.push({
-          attemptId: `${a.code}:${a.studentId}`,
-          studentId: a.studentId,
-          title: a.examId ? examTitleById.get(a.examId) : undefined,
-          gradedAt: at,
-        });
-      }
-
-      const momentIdLists = await Promise.all(
-        [...childSchoolIds].map((sid) => kv.get(`moment_ids:${sid}`)),
-      );
-      const momentIds = [...new Set(momentIdLists.flat().filter(Boolean))] as string[];
-      const newMoments = (await kv.mget(momentIds.map((id) => `moment:${id}`)))
-        .filter((m: any) => m?.id && String(m.createdAt || '') >= FRESH_CUTOFF
-          && (m.studentIds || []).some((sid: string) => childIds.includes(sid)))
-        .map((m: any) => ({ id: m.id, studentIds: m.studentIds, text: m.text, createdAt: m.createdAt }));
-
-      // Outstanding schoolgeld per child, from the same tiers the reminder
-      // mail and the admin feed use.
-      const outstandingByChild: Record<string, number> = {};
-      for (const schoolId of childSchoolIds) {
-        const settings = await kv.get(`boekhouding:settings:${schoolId}`) || DEFAULT_BOEKHOUDING_SETTINGS;
-        const tiers = settings.schoolgeld || DEFAULT_BOEKHOUDING_SETTINGS.schoolgeld;
-        for (const child of children.filter((s: any) => s.schoolId === schoolId)) {
-          const record = (await kv.get(`boekhouding:student:${child.id}`)) || defaultBoekhoudingRecord(child.id);
-          const required = record.isMember
-            ? (record.hasSibling ? tiers.memberWithSibling : tiers.memberNoSibling)
-            : (record.hasSibling ? tiers.noMemberWithSibling : tiers.noMemberNoSibling);
-          const paid = Number(record.payments?.schoolgeld) || 0;
-          if (paid < required) outstandingByChild[child.id] = required - paid;
-        }
-      }
-
-      const feed = buildParentFeed({
-        today,
-        children: children.map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          classId: s.classId,
-          className: classById.get(s.classId)?.name || null,
-        })),
-        attendance: (await kv.getByPrefix('attendance:')).filter((a: any) => a?.classId && classIds.has(a.classId)),
-        notifications: (await kv.getByPrefix('absence_notification:')).filter(
-          (n: any) => n?.studentId && childIds.includes(n.studentId),
-        ),
-        homework: (await kv.getByPrefix('homework:')).filter((h: any) => h?.classId && classIds.has(h.classId)),
-        completions: (await kv.getByPrefix('homework_completion:')).filter(
-          (x: any) => x?.studentId && childIds.includes(x.studentId),
-        ),
-        conferences,
-        outstandingByChild,
-        events,
-        newGrades,
-        newMoments,
-      });
-
-      // Entries the parent has already dealt with move to the archive rather
-      // than vanishing: the message stays readable, it just stops occupying
-      // the top of the home screen. Marked here rather than filtered out, so
-      // the client can show both lists from one response.
-      const dismissed = new Set<string>(await kv.get(`signals_dismissed:${user.id}`) || []);
-      const marked = feed.map((item) => ({ ...item, dismissed: dismissed.has(item.key) }));
-
-      return c.json({ feed: marked, generatedAt: new Date().toISOString() });
+      const feed = await parentWorklist(user.id, today);
+      return c.json({ feed, generatedAt: new Date().toISOString() });
     }
 
     const { classes, ctx } = await loadSignalScope(user.id, userData, c.req.header('X-School-Id') || undefined);
@@ -10282,15 +10375,6 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
         ? (await loadOutreachTracks(schoolId)).filter((t) => t.classId && myClassIds.has(t.classId))
         : [];
 
-      // Has this teacher shared a mooi moment in the last week?
-      const weekAgo = new Date(Date.parse(`${today}T00:00:00Z`) - 7 * 86_400_000).toISOString();
-      const myMoments = schoolId
-        ? (await kv.mget(((await kv.get(`moment_ids:${schoolId}`)) || []).map((id: string) => `moment:${id}`)))
-        : [];
-      const sharedMomentRecently = myMoments.some(
-        (m: any) => m?.createdBy === user.id && String(m.createdAt || '') >= weekAgo,
-      );
-
       // Sick notes parents filed for this teacher's classes, for a lesson today
       // or later — informational, so the teacher is not the last to know.
       const myStudentIds = new Set(ctx.students.filter((s: any) => myClassIds.has(s.classId)).map((s: any) => s.id));
@@ -10324,8 +10408,6 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
           attendance: ctx.attendance,
           ungradedExams,
           openCases,
-          sharedMomentRecently,
-          isoWeek: isoWeekOf(today),
           reportedAbsences,
           events,
           conferences,
@@ -10466,245 +10548,6 @@ app.get("/make-server-6679cacd/outreach/student/:studentId", async (c) => {
   } catch (err) {
     console.log('Outreach history error:', err);
     return c.json({ error: 'Failed to load outreach history' }, 500);
-  }
-});
-
-// ============= MOMENTS =============
-//
-// A short, positive note a teacher writes about a child — "kende alle letters
-// vandaag", "hielp een klasgenoot uit zichzelf". It is the only thing in this
-// app that exists purely to be *good news*.
-//
-// That is not decoration. Every other message a parent gets from a school is
-// an obligation or a problem, and a channel that only ever carries bad news is
-// one people learn to avoid — which is exactly the parent you most need to
-// reach when something is wrong. Moments are what make the app worth opening,
-// and an opened app is what makes the rest of this system work.
-//
-// Text only, deliberately: photos of other people's children carry a consent
-// problem this school has no process for, and one badly-shared photo would
-// cost more trust than the feature could ever earn.
-
-const MOMENT_KINDS = ['praise', 'milestone', 'note'] as const;
-
-app.post("/make-server-6679cacd/moments", async (c) => {
-  try {
-    const { user, error } = await verifyUser(c.req.raw);
-    if (error) return c.json({ error }, 401);
-    const userData = await getUserData(user.id);
-    if (!['teacher', 'admin', 'superadmin'].includes(userData?.role)) {
-      return c.json({ error: 'Only teachers and admins can post moments' }, 403);
-    }
-
-    const { studentIds, classId, kind, text } = await c.req.json();
-    if (!Array.isArray(studentIds) || studentIds.length === 0) {
-      return c.json({ error: 'Select at least one student' }, 400);
-    }
-    if (studentIds.length > 40) return c.json({ error: 'Too many students at once' }, 400);
-    const body = String(text || '').trim();
-    if (!body) return c.json({ error: 'Text is required' }, 400);
-    if (body.length > 500) return c.json({ error: 'Text is too long' }, 400);
-    const momentKind = MOMENT_KINDS.includes(kind) ? kind : 'praise';
-
-    const students = (await kv.mget(studentIds.map((id: string) => `student:${id}`))).filter((s: any) => s?.id);
-    if (students.length !== studentIds.length) return c.json({ error: 'Unknown student' }, 400);
-    for (const s of students) {
-      if (!s.classId || !(await userHasClassAccess(user.id, userData, s.classId))) {
-        return c.json({ error: 'Unauthorized for one of the selected students' }, 403);
-      }
-    }
-
-    const schoolId = students[0].schoolId || userData.schoolId || null;
-    if (!schoolId) return c.json({ error: 'Could not determine school' }, 400);
-
-    const id = crypto.randomUUID();
-    const record = {
-      id,
-      schoolId,
-      classId: classId || students[0].classId || null,
-      studentIds,
-      kind: momentKind,
-      text: body,
-      createdBy: user.id,
-      createdByName: userData.name || '',
-      createdAt: new Date().toISOString(),
-    };
-    await kv.set(`moment:${id}`, record);
-    const ids: string[] = await kv.get(`moment_ids:${schoolId}`) || [];
-    ids.unshift(id);
-    // Capped: this is a running feed, not an archive. Older entries stay
-    // readable through the student's own file, not through the school index.
-    if (ids.length > 500) ids.length = 500;
-    await kv.set(`moment_ids:${schoolId}`, ids);
-
-    // Tell the parents right away. This is the one notification in the system
-    // nobody minds receiving, so it goes out immediately rather than waiting
-    // for the weekly digest.
-    for (const student of students) {
-      if (!student.parentId) continue;
-      await notifyUser(student.parentId, {
-        type: 'moment',
-        titleNl: `Een mooi moment van ${student.name}`,
-        titleTr: `${student.name} için güzel bir an`,
-        bodyNl: body,
-        bodyTr: body,
-        link: '#overview',
-      });
-    }
-
-    return c.json({ moment: record });
-  } catch (err) {
-    console.log('Create moment error:', err);
-    return c.json({ error: 'Failed to create moment' }, 500);
-  }
-});
-
-// The feed. A parent sees their own children's moments; staff see the ones
-// from the classes they teach, so a teacher can check what has already been
-// said before adding to it.
-// Which moments this account has read and filed away.
-//
-// Deliberately not under /moments/:id — that route would swallow "read" as a
-// moment id. Per account rather than per child, like the lesverslag and gedrag
-// marks: a compliment about a child is read by the family, not by the pupil,
-// and a parent who read it on their phone should not be told it is new again
-// by the tablet.
-//
-// A moment is written once and then stands on the home screen for the rest of
-// the year, which is how a feed of good news becomes wallpaper. Archiving is
-// the fix; nothing is ever deleted by it.
-app.get("/make-server-6679cacd/moments-read", async (c) => {
-  try {
-    const { user, error } = await verifyUser(c.req.raw);
-    if (error) return c.json({ error }, 401);
-
-    const marks = await kv.getByPrefix(`moment_read:${user.id}:`);
-    const read = marks
-      .filter((m: any) => m && m.momentId)
-      .map((m: any) => String(m.momentId));
-
-    return c.json({ read });
-  } catch (err) {
-    console.log('Get moment read marks error:', err);
-    return c.json({ error: 'Failed to get moment read marks' }, 500);
-  }
-});
-
-app.post("/make-server-6679cacd/moments-read", async (c) => {
-  try {
-    const { user, error } = await verifyUser(c.req.raw);
-    if (error) return c.json({ error }, 401);
-
-    const { momentId, read = true } = await c.req.json();
-    // No access check is needed: the key is scoped to the caller's own id, so
-    // the worst a wrong id can do is hide a moment from the person who sent
-    // it. The pattern is here to keep one account from writing unbounded keys.
-    if (typeof momentId !== 'string' || !/^[\w-]{1,64}$/.test(momentId)) {
-      return c.json({ error: 'Invalid momentId' }, 400);
-    }
-
-    const key = `moment_read:${user.id}:${momentId}`;
-    if (read) {
-      await kv.set(key, { momentId, userId: user.id, readAt: new Date().toISOString() });
-    } else {
-      await kv.del(key);
-    }
-
-    return c.json({ ok: true });
-  } catch (err) {
-    console.log('Mark moment read error:', err);
-    return c.json({ error: 'Failed to mark moment read' }, 500);
-  }
-});
-
-app.get("/make-server-6679cacd/moments", async (c) => {
-  try {
-    const { user, error } = await verifyUser(c.req.raw);
-    if (error) return c.json({ error }, 401);
-    const userData = await getUserData(user.id);
-    if (!userData) return c.json({ error: 'User not found' }, 404);
-
-    let allowedStudentIds: Set<string>;
-    let schoolIds: Set<string>;
-
-    if (userData.role === 'parent') {
-      const childIds: string[] = await kv.get(`parent_children:${user.id}`) || [];
-      allowedStudentIds = new Set(childIds);
-      const children = (await kv.mget(childIds.map((id: string) => `student:${id}`))).filter((s: any) => s?.id);
-      schoolIds = new Set(children.map((s: any) => s.schoolId).filter(Boolean));
-    } else {
-      schoolIds = await getUserSchoolIds(user.id, userData);
-      const classes = (await kv.getByPrefix('class:')).filter(
-        (cl: any) => cl?.id && schoolIds.has(cl.schoolId),
-      );
-      const mine = userData.role === 'teacher'
-        ? classes.filter((cl: any) => cl.teacherId === user.id)
-        : classes;
-      const classIds = new Set(mine.map((cl: any) => cl.id));
-      const students = (await kv.getByPrefix('student:')).filter(
-        (s: any) => s?.id && classIds.has(s.classId),
-      );
-      allowedStudentIds = new Set(students.map((s: any) => s.id));
-    }
-
-    const ids: string[] = [];
-    for (const schoolId of schoolIds) {
-      ids.push(...((await kv.get(`moment_ids:${schoolId}`)) || []));
-    }
-    const moments = (await kv.mget([...new Set(ids)].map((id) => `moment:${id}`)))
-      .filter((m: any) => m?.id && (m.studentIds || []).some((sid: string) => allowedStudentIds.has(sid)))
-      .sort((a: any, b: any) => String(b.createdAt).localeCompare(String(a.createdAt)))
-      .slice(0, 60);
-
-    // A parent must never learn which *other* children were praised in the
-    // same breath, so the list is narrowed to their own before it goes out.
-    // One mget rather than a lookup per student: a teacher's roster is large
-    // enough that the difference is the whole response time.
-    const named = await kv.mget([...allowedStudentIds].map((sid) => `student:${sid}`));
-    const studentNames = new Map<string, string>(
-      named.filter((s: any) => s?.id && s.name).map((s: any) => [s.id, s.name]),
-    );
-
-    return c.json({
-      moments: moments.map((m: any) => {
-        const visible = (m.studentIds || []).filter((sid: string) => allowedStudentIds.has(sid));
-        return {
-          id: m.id,
-          kind: m.kind,
-          text: m.text,
-          createdAt: m.createdAt,
-          createdByName: m.createdByName,
-          studentIds: visible,
-          studentNames: visible.map((sid: string) => studentNames.get(sid) || ''),
-        };
-      }),
-    });
-  } catch (err) {
-    console.log('List moments error:', err);
-    return c.json({ error: 'Failed to load moments' }, 500);
-  }
-});
-
-app.delete("/make-server-6679cacd/moments/:id", async (c) => {
-  try {
-    const { user, error } = await verifyUser(c.req.raw);
-    if (error) return c.json({ error }, 401);
-    const userData = await getUserData(user.id);
-    const moment = await kv.get(`moment:${c.req.param('id')}`);
-    if (!moment) return c.json({ error: 'Not found' }, 404);
-    // The author can retract their own; an admin can remove any in their school.
-    const isAuthor = moment.createdBy === user.id;
-    const isAdmin = ['admin', 'superadmin'].includes(userData?.role)
-      && (await getUserSchoolIds(user.id, userData)).has(moment.schoolId);
-    if (!isAuthor && !isAdmin) return c.json({ error: 'Unauthorized' }, 403);
-
-    await kv.del(`moment:${moment.id}`);
-    const ids: string[] = await kv.get(`moment_ids:${moment.schoolId}`) || [];
-    await kv.set(`moment_ids:${moment.schoolId}`, ids.filter((id: string) => id !== moment.id));
-    return c.json({ success: true });
-  } catch (err) {
-    console.log('Delete moment error:', err);
-    return c.json({ error: 'Failed to delete moment' }, 500);
   }
 });
 

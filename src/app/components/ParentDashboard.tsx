@@ -8,8 +8,6 @@ import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
 import ChildSwitcher from './ChildSwitcher';
 import RoleSwitchPill from './RoleSwitchPill';
-import ActionCenter, { type ActionItem } from './ActionCenter';
-import MomentsFeed from './MomentsFeed';
 import HomeworkView from './HomeworkView';
 import DaySummaryPanel from './DaySummaryPanel';
 import GradeDetail, { type Grade } from './GradeDetail';
@@ -20,6 +18,7 @@ import Spinner from './ui/Spinner';
 import LoadingState from './ui/LoadingState';
 import { isAppLayout } from '../../lib/native';
 import { logAction } from '../../lib/deviceLog';
+import { useDeepLink } from './deepLink';
 import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
 import AccountAvatarButton from './mobile/AccountAvatarButton';
@@ -159,10 +158,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   // behind it are the part a family can act on.
   const [openGrade, setOpenGrade] = useState<Grade | null>(null);
   const [loadingGrades, setLoadingGrades] = useState(false);
-  // Bumped whenever something happens that could resolve a worklist entry — a
-  // ziekmelding filed, a slot booked. The list re-fetches instead of leaving a
-  // task on screen that has already been done.
-  const [actionRefresh, setActionRefresh] = useState(0);
   // On the website the profile form lives inside the UserMenu dropdown, so the
   // "vul uw telefoonnummer aan" task opens it through this signal.
   const [profileSignal, setProfileSignal] = useState(0);
@@ -180,9 +175,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   // the worklist builds. The nonce is what makes opening the same event twice
   // scroll to it twice.
   const [agendaFocus, setAgendaFocus] = useState<{ date: string; nonce: number } | null>(null);
-  // The schoolgeld reminder, read as a dialog rather than lived with as a
-  // permanent row. Holds the child it is about.
-  const [paymentNotice, setPaymentNotice] = useState<{ childId: string; body: string } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -450,20 +442,20 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     setActiveTab(MOBILE_ACCOUNT_ID);
   };
 
-  // Tells the server an entry has been read and filed. Optimistic — the
-  // worklist has already moved it — so a failed write only means it comes
-  // back on the next refresh, never that the tap did nothing.
-  const dismissActionItem = (key: string) => {
-    apiRequest('/signals/dismiss', {
-      method: 'POST',
-      body: JSON.stringify({ key, dismissed: true }),
-    }).catch(() => {});
-  };
-
-  // Returns true when the entry is *finished by being opened* — an
-  // announcement, a reminder — so the worklist can archive it. See
-  // ActionCenter's onNavigate.
-  const handleActionNavigate = (link: string, item: ActionItem): boolean | void => {
+  /**
+   * Open whatever a bell entry points at.
+   *
+   * The home screen used to carry the worklist itself — "Wat om uw aandacht
+   * vraagt" — directly above the day summary. It was the second place the
+   * same things were already being said: the schoolgeld reminder, the
+   * oudergesprek that still needs a slot and the unexplained absence all
+   * arrive as notifications too. One of the two had to go, and the bell is the
+   * one that also reaches a phone that is in a pocket.
+   *
+   * So this is what is left of it: the part that knew what those links mean.
+   * See deepLink.ts for why the bell publishes rather than navigates.
+   */
+  useDeepLink((link) => {
     const [target, arg] = link.replace(/^#/, '').split(':');
 
     if (target === 'report-absence') {
@@ -476,32 +468,19 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       return;
     }
     // An event announcement has nothing to do — it is news. Opening it puts
-    // the day on the agenda with the details already unfolded underneath,
-    // and files the announcement away.
+    // the day on the agenda with the details already unfolded underneath.
     if (target === 'agenda-event') {
       setActiveTab('overview');
       if (arg) setAgendaFocus({ date: arg, nonce: Date.now() });
-      return true;
-    }
-    // Same for the schoolgeld reminder: read it in full, once, and it moves
-    // to the archive instead of sitting at the top of the home screen for the
-    // rest of the term. The dialog links on to the facturatie tab for anyone
-    // who wants the payment details.
-    if (item.key.startsWith('parent_payment_due')) {
-      if (arg && students.some((s) => s.id === arg)) setSelectedChildId(arg);
-      setPaymentNotice({
-        childId: arg || selectedChildId,
-        body: language === 'tr' ? item.bodyTr : item.bodyNl,
-      });
-      return true;
+      return;
     }
     // Every per-child entry carries the child it is about. Without this a
     // family with two children could tap "openstaand schoolgeld" under one
     // name and land on the other child's facturatie — the tab is right, the
     // child is wrong, and nothing on the page says so.
     if (arg && students.some((s) => s.id === arg)) setSelectedChildId(arg);
-    setActiveTab(target);
-  };
+    if (byId[target] || target === 'overview') setActiveTab(target);
+  });
 
   const submitAbsenceNotification = async () => {
     if (!selectedStudent || !absenceDate) {
@@ -542,7 +521,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       setSelectedStudent('');
       setAbsenceDate('');
       setAbsenceReason('');
-      setActionRefresh((n) => n + 1);
       setAgendaRefresh((n) => n + 1);
     } catch (error: any) {
       console.error('Error reporting absence:', error);
@@ -574,7 +552,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       // Refresh sessions
       const conferData = await apiRequest('/oudergesprekken').catch(() => ({ sessions: [] }));
       setConferSessions(conferData.sessions || []);
-      setActionRefresh((n) => n + 1);
       // A booked slot is an agenda entry, so the calendar has to be told.
       setAgendaRefresh((n) => n + 1);
     } catch (err: any) {
@@ -1143,57 +1120,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
         {selectedChild && activeTab === 'overview' && (
         <>
-        {/* What needs this family, before anything the school merely wants to
-            show them — scoped to the child the switcher above names, so the
-            page never mixes two children together. The lesverslag list rides
-            along in the footer: it is the other thing the school is waiting
-            for someone to read. */}
-        <ActionCenter
-          language={language}
-          apiRequest={apiRequest}
-          onNavigate={handleActionNavigate}
-          refreshKey={actionRefresh}
-          showAllClear
-          alwaysShow
-          childrenList={students}
-          filterChildId={selectedChildId}
-          onDismiss={dismissActionItem}
-        />
-
-        {/* The schoolgeld reminder, read once. It used to be a permanent row
-            on the home screen that no parent could clear — money owed is not a
-            task the app can see completed, so the entry outlived its own
-            usefulness and taught people to ignore that part of the screen.
-            Read here, filed in the archive, with the way through to the
-            payment details still one tap away. */}
-        <Modal
-          open={!!paymentNotice}
-          onClose={() => setPaymentNotice(null)}
-          title={language === 'tr' ? 'Ödenmemiş okul ücreti' : 'Openstaand schoolgeld'}
-          subtitle={students.find((s) => s.id === paymentNotice?.childId)?.name}
-          closeLabel={language === 'tr' ? 'Kapat' : 'Sluiten'}
-          footer={
-            <button
-              type="button"
-              onClick={() => {
-                setPaymentNotice(null);
-                setActiveTab('billing');
-              }}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
-            >
-              <Receipt className="h-4 w-4" />
-              {language === 'tr' ? 'Ödeme özetine git' : 'Naar het betaaloverzicht'}
-            </button>
-          }
-        >
-          <p className="text-sm leading-relaxed text-gray-700">{paymentNotice?.body}</p>
-          <p className="mt-3 text-xs text-gray-400">
-            {language === 'tr'
-              ? 'Bu hatırlatma arşive taşındı. Ayrıntıları istediğiniz zaman Ödemeler sekmesinden görebilirsiniz.'
-              : 'Deze herinnering is naar het archief verplaatst. De details blijven staan onder Facturatie.'}
-          </p>
-        </Modal>
-
         <Modal
           open={!!(showStats && stats)}
           onClose={() => setShowStats(null)}
@@ -1345,13 +1271,12 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             rather than asking something of them.
 
             There were four feeds here: lesverslagen, gedrag, huiswerk and
-            mooie momenten, each with its own heading and its own grey
+            "mooie momenten", each with its own heading and its own grey
             "Archief" button, all within a screen of each other. The first
             three are the same Saturday seen from three angles, so they are one
-            list now, grouped by day — see DaySummaryPanel. The moments feed
-            stays on its own: it is the one thing here that is not about a
-            particular lesson, and good news folded into an admin summary is
-            good news nobody reads. */}
+            list now, grouped by day — see DaySummaryPanel. The fourth is
+            gone: a channel that only carried good news turned out to be a
+            channel nobody wrote in, and an empty one is worse than none. */}
         <div className="mb-2 mt-6 flex items-center gap-2 border-t border-gray-200 pt-5">
           <h2 className="text-base font-semibold text-gray-500">
             {language === 'tr' ? 'Okuldan' : 'Van school'}
@@ -1362,18 +1287,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               : 'Wat u gelezen heeft, gaat naar het archief.'}
           </p>
         </div>
-
-        {/* The good news first. Scoped to the selected child so a compliment
-            reads as being about them rather than about a class. Absent
-            entirely when there is nothing yet — see hideWhenEmpty. */}
-        <MomentsFeed
-          language={language}
-          apiRequest={apiRequest}
-          filterStudentId={selectedChild.id}
-          limit={5}
-          hideWhenEmpty
-          allowArchive
-        />
 
         {/* Lesverslag, gedrag en huiswerk, per dag. */}
         <DaySummaryPanel
@@ -1409,7 +1322,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               role="parent"
               conferences={myBookedConferences}
               focus={agendaFocus}
-              onRefreshed={() => setActionRefresh((n) => n + 1)}
             />
           )}
         </div>

@@ -12,7 +12,6 @@ import {
   Meh,
   Phone,
   Smile,
-  Sparkles,
   UserRound,
   X,
 } from 'lucide-react';
@@ -66,7 +65,6 @@ const T = {
     tooLate: 'te laat',
     recentDays: 'Laatste lesdagen',
     noAttendance: 'Nog geen aanwezigheid geregistreerd.',
-    moments: 'Gedeelde momenten',
     due: 'Inleverdatum',
     done: 'Af',
     open: 'Open',
@@ -105,7 +103,6 @@ const T = {
     tooLate: 'geç',
     recentDays: 'Son ders günleri',
     noAttendance: 'Henüz yoklama kaydı yok.',
-    moments: 'Paylaşılan anlar',
     due: 'Son tarih',
     done: 'Tamam',
     open: 'Açık',
@@ -384,26 +381,6 @@ export default function StudentProfile({ studentId, language, apiRequest, onBack
               </div>
             )}
           </div>
-
-          {(data.moments || []).length > 0 && (
-            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-              <h4 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-gray-700">
-                <Sparkles className="h-4 w-4 text-emerald-600" />
-                {text.moments}
-              </h4>
-              <div className="space-y-2">
-                {sorted<any>(data.moments, 'createdAt').map((m: any) => (
-                  <div key={m.id} className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3">
-                    <p className="text-sm text-gray-800">{m.text}</p>
-                    <p className="mt-1 text-xs text-gray-400">
-                      {fmt(m.createdAt)}
-                      {m.createdByName ? ` · ${m.createdByName}` : ''}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 

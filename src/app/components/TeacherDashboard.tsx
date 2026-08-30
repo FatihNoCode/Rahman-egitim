@@ -12,7 +12,6 @@ import DiplomaView from './DiplomaView';
 import AgendaCalendar from './AgendaCalendar';
 import CasesView from './CasesView';
 import SignalsView from './SignalsView';
-import MomentComposer from './MomentComposer';
 import ExamListView from './toets/ExamListView';
 import LoadingState from './ui/LoadingState';
 import { useMinimumLoading } from '../hooks/useMinimumLoading';
@@ -1569,28 +1568,13 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             )}
 
             {/* ─── SIGNALS TAB ─── */}
-            {/* The start screen carries both halves of the job: what is going
-                wrong, and the one-line way to tell a family something went
-                right. Keeping them on the same screen is deliberate — a
-                teacher who only ever contacts parents about problems is the
-                teacher whose messages stop being read. */}
             {activeTab === 'signals' && (
-              <div className="space-y-6">
-                <SignalsView
-                  language={language}
-                  apiRequest={apiRequest}
-                  app={app}
-                  onNavigate={(link) => setActiveTab(link.replace('#', ''))}
-                />
-                <MomentComposer
-                  language={language}
-                  apiRequest={apiRequest}
-                  classes={classes}
-                  students={students}
-                  selectedClassId={selectedClass}
-                  onSelectClass={setSelectedClass}
-                />
-              </div>
+              <SignalsView
+                language={language}
+                apiRequest={apiRequest}
+                app={app}
+                onNavigate={(link) => setActiveTab(link.replace('#', ''))}
+              />
             )}
 
             {/* ─── CASES TAB ─── */}

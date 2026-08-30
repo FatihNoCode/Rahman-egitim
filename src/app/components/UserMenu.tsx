@@ -4,6 +4,7 @@ import { useApp, supabase } from '../App';
 import { getThemePref, setThemePref, subscribeTheme, type ThemePref } from '../../lib/theme';
 import { startTotpEnroll, confirmTotpEnroll } from '../../lib/mfaEnroll';
 import { notify, confirmDialog } from './ui/feedback';
+import { openDeepLink } from './deepLink';
 
 interface Notification {
   id: string;
@@ -386,7 +387,9 @@ export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuPr
     await loadNotifications();
     try {
       await apiRequest('/notifications/read-all', { method: 'POST' });
-      setUnreadCount(0);
+      // Re-read rather than assuming zero — worklist entries are tasks the
+      // server keeps unread until they are done. See AccountPanel.
+      await loadNotifications();
     } catch (err) {
       console.error('Error marking notifications read:', err);
     }
@@ -404,15 +407,14 @@ export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuPr
     }
     if (n.link) {
       setOpen(false);
-      window.location.hash = n.link;
+      openDeepLink(n.link);
     }
   };
 
   const markAllRead = async () => {
     try {
       await apiRequest('/notifications/read-all', { method: 'POST' });
-      setNotifications(prev => prev.map(x => ({ ...x, read: true })));
-      setUnreadCount(0);
+      await loadNotifications();
     } catch (err) {
       console.error('Error marking all read:', err);
     }

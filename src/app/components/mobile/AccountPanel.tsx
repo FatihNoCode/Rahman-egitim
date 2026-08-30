@@ -4,6 +4,7 @@ import { useApp } from '../../App';
 import { notify } from '../ui/feedback';
 import { isNative } from '../../../lib/native';
 import { setUnreadCount as publishUnread } from './unreadStore';
+import { openDeepLink } from '../deepLink';
 import BottomSheet from './BottomSheet';
 
 interface Notification {
@@ -121,9 +122,10 @@ export default function AccountPanel({ onLogout }: AccountPanelProps) {
   const markAllRead = async () => {
     try {
       await apiRequest('/notifications/read-all', { method: 'POST' });
-      setNotifications((prev) => prev.map((x) => ({ ...x, read: true })));
-      setUnreadCount(0);
-      publishUnread(0);
+      const data = await apiRequest('/notifications');
+      setNotifications(data.notifications || []);
+      setUnreadCount(data.unreadCount || 0);
+      publishUnread(data.unreadCount || 0);
     } catch (err) {
       console.error('Error marking all read:', err);
     }
@@ -141,8 +143,15 @@ export default function AccountPanel({ onLogout }: AccountPanelProps) {
     await loadNotifications();
     try {
       await apiRequest('/notifications/read-all', { method: 'POST' });
-      setUnreadCount(0);
-      publishUnread(0);
+      // Re-read rather than assuming zero. Worklist entries — "kies een
+      // tijdslot", "openstaand schoolgeld" — are tasks, not messages, and the
+      // server deliberately leaves them unread: they clear when the thing is
+      // done, or when the reader taps the entry. Blanking the badge here would
+      // say "nothing needs you" to somebody with three things outstanding.
+      const data = await apiRequest('/notifications');
+      setNotifications(data.notifications || []);
+      setUnreadCount(data.unreadCount || 0);
+      publishUnread(data.unreadCount || 0);
     } catch (err) {
       console.error('Error marking notifications read:', err);
     }
@@ -160,7 +169,7 @@ export default function AccountPanel({ onLogout }: AccountPanelProps) {
     }
     if (n.link) {
       setShowNotifications(false);
-      window.location.hash = n.link;
+      openDeepLink(n.link);
     }
   };
 

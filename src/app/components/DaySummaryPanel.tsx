@@ -34,16 +34,13 @@ export interface BehaviorRecord {
 /**
  * Dagsamenvatting — one day, everything the school said about it.
  *
- * The parent's home screen used to carry four separate feeds: lesverslagen,
- * gedrag, huiswerk and mooie momenten. Three of those are the same thing seen
- * from three angles — what happened in Saturday's lesson — and splitting them
- * into three headings, three lists and three archives meant a parent had to
- * assemble the day themselves by matching dates across three boxes.
+ * The parent's home screen used to carry three separate feeds: lesverslagen,
+ * gedrag and huiswerk. They are the same thing seen from three angles — what
+ * happened in Saturday's lesson — and splitting them into three headings,
+ * three lists and three archives meant a parent had to assemble the day
+ * themselves by matching dates across three boxes.
  *
- * So the first three are one list now, grouped by the day they belong to. The
- * moments feed stays separate: it is the one thing here that is not about a
- * particular lesson, and folding good news into an admin summary is how good
- * news stops being read.
+ * So they are one list now, grouped by the day they belong to.
  *
  * A day leaves the list once everything in it is handled — the verslag read,
  * the remark read, the homework ticked or its deadline past — and lands in the

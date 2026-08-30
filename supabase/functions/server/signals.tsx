@@ -807,13 +807,6 @@ export interface FeedInput {
   /** Days after which an open case counts as overdue. */
   caseSlaDays?: number;
   /**
-   * Whether this teacher has shared a moment in the last 7 days. When false a
-   * gentle weekly nudge to share one is added.
-   */
-  sharedMomentRecently?: boolean;
-  /** ISO-week string (e.g. `2026-W35`) that keys the weekly share nudge. */
-  isoWeek?: string;
-  /**
    * Sick notes parents filed for one of this teacher's classes, for a lesson
    * today or later: { id, studentName, lessonDate }. Informational.
    */
@@ -934,21 +927,6 @@ export function buildTodayFeed(input: FeedInput): FeedItem[] {
       bodyNl: title ? `${title} op ${event.date}.` : `Er staat een evenement gepland op ${event.date}.`,
       bodyTr: title ? `${event.date} tarihinde ${title}.` : `${event.date} tarihinde bir etkinlik planlandı.`,
       link: '#agenda',
-    });
-  }
-
-  // A weekly nudge to share a mooi moment — the one message home that is not
-  // about a problem. Only when nothing has been shared in the last week, and
-  // keyed on the ISO week so ticking it off clears it until next week.
-  if (input.sharedMomentRecently === false && input.isoWeek) {
-    items.push({
-      key: `share_moment:${input.isoWeek}`,
-      level: 'low',
-      titleNl: 'Deel een mooi moment',
-      titleTr: 'Güzel bir an paylaşın',
-      bodyNl: 'U heeft deze week nog geen mooi moment met ouders gedeeld. Eén korte zin is genoeg.',
-      bodyTr: 'Bu hafta henüz velilerle güzel bir an paylaşmadınız. Kısa bir cümle yeterli.',
-      link: '#signals',
     });
   }
 
@@ -1452,11 +1430,6 @@ export interface ParentFeedInput {
    * the caller to graded-and-fresh: { attemptId, studentId, title, gradedAt }.
    */
   newGrades?: Array<{ attemptId: string; studentId: string; title?: string; gradedAt?: string }>;
-  /**
-   * Recently shared moments that include one of these children, already
-   * filtered by the caller to fresh: { id, studentIds, text, createdAt }.
-   */
-  newMoments?: Array<{ id: string; studentIds?: string[]; text?: string; createdAt?: string }>;
 }
 
 export function buildParentFeed(input: ParentFeedInput): FeedItem[] {
@@ -1600,25 +1573,9 @@ export function buildParentFeed(input: ParentFeedInput): FeedItem[] {
         link: `#grades:${child.id}`,
       });
     }
-
-    // 6. A moment a teacher shared about this child. The one entry in the whole
-    //    feed that is good news — kept low so it never sits above something
-    //    that needs doing, but shown so a parent who opens the app sees it.
-    for (const moment of list(input.newMoments).filter((m) => list(m?.studentIds).includes(child.id))) {
-      const text = String(moment.text || '').trim();
-      items.push({
-        key: `parent_moment:${moment.id}:${child.id}`,
-        level: 'low',
-        titleNl: `${named}een mooi moment gedeeld door de docent`,
-        titleTr: `${named}öğretmen güzel bir an paylaştı`,
-        bodyNl: text || 'De docent heeft een mooi moment met u gedeeld.',
-        bodyTr: text || 'Öğretmen sizinle güzel bir an paylaştı.',
-        link: `#overview:${child.id}`,
-      });
-    }
   }
 
-  // 7. Events on the school agenda. School-level, so one entry per event rather
+  // 6. Events on the school agenda. School-level, so one entry per event rather
   //    than one per child. The caller has already filtered to upcoming events
   //    inside the "coming up" window, so this ages out on its own.
   for (const event of list(input.events)) {

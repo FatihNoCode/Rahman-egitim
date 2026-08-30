@@ -15,7 +15,7 @@
 // So the split moved one level down. There is exactly **one demo lestype**,
 // and every tester works inside it. What each tester gets privately is their
 // own **classes** — and the pupils, lessons, attendance, behaviour, homework,
-// exams, moments and cases that hang off those classes. Everything the school
+// exams and cases that hang off those classes. Everything the school
 // owns as a whole (the school record, the school year, the agenda, the
 // boekhouding settings, the exam bank) is shared, because a lestype that each
 // tester saw a different version of would not be one lestype.
@@ -68,7 +68,7 @@ const GLOBAL_INDEX_KEYS = [
 // The same problem one level down. These lists are keyed by school id — and
 // the school id is no longer remapped, so a sandbox's entries have to be
 // appended to the shared list rather than written over it.
-const SCHOOL_INDEX_PREFIXES = ['moment_ids', 'case_ids'];
+const SCHOOL_INDEX_PREFIXES = ['case_ids'];
 
 // Everything a *discard* has to sweep the sandbox's ids out of. It is wider
 // than the list a provision appends to, because it also has to clean up after
@@ -231,7 +231,6 @@ function collectTemplate(rows: Row[]) {
       case 'exam_live':                     return classIds.has(v?.classId);
       case 'exam_live_codes':               return liveExamIds.has(seg[1]);
       case 'exam_attempt':                  return seg.slice(1).some((x) => studentIds.has(x));
-      case 'moment':                        return (v?.studentIds || []).some((sid: string) => studentIds.has(sid));
       case 'case':                          return (v?.studentIds || []).some((sid: string) => studentIds.has(sid));
       case 'oudergesprek':                  return classIds.has(v?.classId);
       default:                              return false;
@@ -446,7 +445,7 @@ export async function resetDemoSandbox(
  * of what belongs to whom.
  *
  * The shared index lists have to be cleaned too, or a discarded sandbox leaves
- * its ids behind in the lestype's class/student/moment registries and every
+ * its ids behind in the lestype's class/student/case registries and every
  * later read of them fetches rows that are no longer there.
  */
 export async function discardDemoSandbox(testerId: string) {

@@ -11,8 +11,7 @@ import RoleSwitchPill from './RoleSwitchPill';
 import ActionCenter, { type ActionItem } from './ActionCenter';
 import MomentsFeed from './MomentsFeed';
 import HomeworkView from './HomeworkView';
-import LessonReportsPanel from './LessonReportsPanel';
-import BehaviorPanel from './BehaviorPanel';
+import DaySummaryPanel from './DaySummaryPanel';
 import GradeDetail, { type Grade } from './GradeDetail';
 import Modal from './ui/modal';
 import { notify } from './ui/feedback';
@@ -167,10 +166,12 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   // On the website the profile form lives inside the UserMenu dropdown, so the
   // "vul uw telefoonnummer aan" task opens it through this signal.
   const [profileSignal, setProfileSignal] = useState(0);
-  // Forces the agenda (and the homework list) to refetch. The calendar's own
-  // background poll is deliberately slow — see AgendaCalendar — so the
-  // "Vernieuwen" button on the start page is what a parent uses when they want
-  // an answer *now*.
+  // Forces the agenda (and the homework list) to refetch, after something on
+  // this page changed data the calendar is showing. The start page no longer
+  // has a "Vernieuwen" button: the calendar refetches on mount, on window
+  // focus, when the app comes back to the foreground and on a background poll,
+  // and it reports each of those through onRefreshed — which is what pulls the
+  // worklist and the day summary along with it.
   const [agendaRefresh, setAgendaRefresh] = useState(0);
   // Where the avatar came from, so tapping it a second time goes back there
   // rather than doing nothing. See openAccount below.
@@ -542,6 +543,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       setAbsenceDate('');
       setAbsenceReason('');
       setActionRefresh((n) => n + 1);
+      setAgendaRefresh((n) => n + 1);
     } catch (error: any) {
       console.error('Error reporting absence:', error);
       notify.error(error.message || 'Error reporting absence');
@@ -573,6 +575,8 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       const conferData = await apiRequest('/oudergesprekken').catch(() => ({ sessions: [] }));
       setConferSessions(conferData.sessions || []);
       setActionRefresh((n) => n + 1);
+      // A booked slot is an agenda entry, so the calendar has to be told.
+      setAgendaRefresh((n) => n + 1);
     } catch (err: any) {
       const msg = err.message || '';
       if (msg.includes('already booked') || msg.includes('Already booked')) {
@@ -744,20 +748,39 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           // The greeting used to sit here on every tab. It's now said once, on
           // the cold-start splash, so it lands as a welcome rather than as a
           // header the user scrolls past a dozen times a day.
-          <div className="mb-4 flex items-start justify-between gap-3">
+          // One header row, not two. The child switcher used to be a full-width
+          // band under this line; shrunk to a pill (see ChildSwitcher) it fits
+          // beside the role pill and the avatar, and on the home tab — where
+          // there is no title to show — it takes the whole of the space the
+          // title would have used. An account with only one role renders no
+          // role pill, so the switcher simply grows into that room too.
+          <div className="mb-4 flex items-center justify-between gap-2">
             {/* The home tab shows no title — "Ouderpaneel" only restated where
                 the user already is. Other destinations still name themselves,
-                and carry the child's name underneath: the switcher that used
-                to answer "whose grades are these" on every tab now only
+                and carry the child's name underneath: the switcher only
                 appears on home, so each destination has to say it itself. */}
-            <div className="min-w-0 flex-1">
-              <h1 className="text-2xl font-bold leading-tight text-gray-800">
-                {activeTab === 'overview' ? '' : byId[activeTab]?.label ?? ''}
-              </h1>
-              {activeTab !== 'overview' && students.length > 1 && selectedChild && (
-                <p className="mt-0.5 truncate text-sm text-gray-500">{selectedChild.name}</p>
-              )}
-            </div>
+            {activeTab === 'overview' && students.length > 1 ? (
+              <ChildSwitcher
+                children={students}
+                selectedId={selectedChildId}
+                onSelect={(id) => {
+                  setSelectedChildId(id);
+                  logAction('Kind wisselen', students.find((s) => s.id === id)?.name || id);
+                }}
+                schoolNames={schoolNames}
+                language={language}
+                className="flex-1"
+              />
+            ) : (
+              <div className="min-w-0 flex-1">
+                <h1 className="text-2xl font-bold leading-tight text-gray-800">
+                  {activeTab === 'overview' ? '' : byId[activeTab]?.label ?? ''}
+                </h1>
+                {activeTab !== 'overview' && students.length > 1 && selectedChild && (
+                  <p className="mt-0.5 truncate text-sm text-gray-500">{selectedChild.name}</p>
+                )}
+              </div>
+            )}
             {/* Only renders for accounts that hold more than one role. */}
             <RoleSwitchPill language={language} />
             <AccountAvatarButton onOpen={openAccount} />
@@ -802,11 +825,12 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           </div>
         ) : (
           <>
-            {/* Child switcher (only when there is more than one child, and in
-                the app only on home — it was following the reader onto every
-                tab, where it took up the top of a screen they had already
-                chosen a child for). */}
-            {(!app || activeTab === 'overview') && (
+            {/* Child switcher (only when there is more than one child). In the
+                app it lives in the header row above; on the website there is no
+                such row, so it sits here, on the home tab only — it was
+                following the reader onto every tab, where it took up the top of
+                a screen they had already chosen a child for. */}
+            {!app && (
             <ChildSwitcher
               children={students}
               selectedId={selectedChildId}
@@ -819,87 +843,32 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             />
             )}
 
-            {/* Selected child header + the things a parent actually opens the
-                app to do. Overview only: the billing and oudergesprekken tabs
-                already say which child they're about, and repeating the card
-                there just pushed their content down.
+            {/* The two things a parent opens this screen to *do*.
 
-                The two buttons here used to be the whole of it — ziekmelding
-                and statistieken, side by side, in the same weight as each
-                other. Everything else a family comes for (huiswerk, cijfers,
-                facturatie) was reachable only through the tab bar, which on
-                the website is a strip of grey text above the fold and in the
-                app is a row of icons at the bottom. So the home screen now
-                names those destinations too, as a row of tiles under the
-                child's name. */}
+                This was briefly a dashboard: the child's name and class, a
+                statistics button, and a row of four tiles duplicating the tab
+                bar directly below it. A panel that mostly links to the
+                navigation already on screen is a panel that pushes the actual
+                news down a screen and a half, so it is back to the two actions
+                that are not reachable any other way. */}
             {selectedChild && activeTab === 'overview' && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    {/* With two or more children the sticky switcher directly
-                        above is already saying the name — repeating it here is
-                        the kind of duplication that teaches people to stop
-                        reading headings. With one child there is no switcher,
-                        so the name is stated here instead. */}
-                    {students.length < 2 && (
-                      <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">{selectedChild.name}</h2>
-                    )}
-                    <p className="text-sm text-gray-500">
-                      {t.class}: {selectedChild.className || '-'}
-                      {selectedChild.schoolId && schoolNames[selectedChild.schoolId] ? ` · ${schoolNames[selectedChild.schoolId]}` : ''}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => loadStats(selectedChild.id)}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
-                  >
-                    <BarChart3 className="h-4 w-4" />
-                    {t.viewStats}
-                  </button>
-                </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {([
-                    {
-                      id: 'absence',
-                      label: t.reportAbsence,
-                      icon: Thermometer,
-                      tone: 'bg-orange-50 text-orange-700 hover:bg-orange-100',
-                      onClick: () => openAbsenceModal(selectedChild.id),
-                    },
-                    {
-                      id: 'huiswerk',
-                      label: language === 'tr' ? 'Ödevler' : 'Huiswerk',
-                      icon: BookOpen,
-                      tone: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
-                      onClick: () => setActiveTab('huiswerk'),
-                    },
-                    {
-                      id: 'grades',
-                      label: language === 'tr' ? 'Notlar' : 'Cijfers',
-                      icon: GraduationCap,
-                      tone: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100',
-                      onClick: () => setActiveTab('grades'),
-                    },
-                    {
-                      id: 'billing',
-                      label: language === 'tr' ? 'Ödemeler' : 'Facturatie',
-                      icon: Receipt,
-                      tone: 'bg-violet-50 text-violet-700 hover:bg-violet-100',
-                      onClick: () => setActiveTab('billing'),
-                    },
-                  ] as const).map((action) => (
-                    <button
-                      key={action.id}
-                      type="button"
-                      onClick={action.onClick}
-                      className={`flex flex-col items-start gap-1.5 rounded-xl p-3 text-left text-sm font-semibold transition ${action.tone}`}
-                    >
-                      <action.icon className="h-5 w-5" />
-                      <span className="leading-tight">{action.label}</span>
-                    </button>
-                  ))}
-                </div>
+              <div className="mb-4 grid grid-cols-2 gap-2 sm:mb-6">
+                <button
+                  type="button"
+                  onClick={() => openAbsenceModal(selectedChild.id)}
+                  className="flex items-center gap-2 rounded-xl bg-orange-50 p-3 text-left text-sm font-semibold text-orange-700 transition hover:bg-orange-100"
+                >
+                  <Thermometer className="h-5 w-5 shrink-0" />
+                  <span className="leading-tight">{t.reportAbsence}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadStats(selectedChild.id)}
+                  className="flex items-center gap-2 rounded-xl bg-blue-50 p-3 text-left text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+                >
+                  <BarChart3 className="h-5 w-5 shrink-0" />
+                  <span className="leading-tight">{t.viewStats}</span>
+                </button>
               </div>
             )}
           </>
@@ -1188,7 +1157,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           alwaysShow
           childrenList={students}
           filterChildId={selectedChildId}
-          onRefresh={() => setAgendaRefresh((n) => n + 1)}
           onDismiss={dismissActionItem}
         />
 
@@ -1374,16 +1342,16 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
         {/* ── Van school ──────────────────────────────────────────────
             Everything below the worklist is the school talking to this family
-            rather than asking something of them, and each kind of message now
-            gets its own named section.
+            rather than asking something of them.
 
-            They used to run together: the lesverslagen were rows inside the
-            worklist's footer, and gedrag followed straight after the moments
-            with nothing between them. That put two — soon three — identical
-            grey "Archief" buttons within a screen of each other, none of them
-            saying what it held, so the reader could not tell which list they
-            were about to unfold. A heading per section, and a named archive
-            button inside each, is the whole fix. */}
+            There were four feeds here: lesverslagen, gedrag, huiswerk and
+            mooie momenten, each with its own heading and its own grey
+            "Archief" button, all within a screen of each other. The first
+            three are the same Saturday seen from three angles, so they are one
+            list now, grouped by day — see DaySummaryPanel. The moments feed
+            stays on its own: it is the one thing here that is not about a
+            particular lesson, and good news folded into an admin summary is
+            good news nobody reads. */}
         <div className="mb-2 mt-6 flex items-center gap-2 border-t border-gray-200 pt-5">
           <h2 className="text-base font-semibold text-gray-500">
             {language === 'tr' ? 'Okuldan' : 'Van school'}
@@ -1404,33 +1372,28 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           filterStudentId={selectedChild.id}
           limit={5}
           hideWhenEmpty
+          allowArchive
         />
 
-        {/* What was covered in the lesson. Its own section now, with its own
-            heading and its own named archive. */}
-        <LessonReportsPanel
+        {/* Lesverslag, gedrag en huiswerk, per dag. */}
+        <DaySummaryPanel
           language={language}
           apiRequest={apiRequest}
           lessons={lessons}
-          standalone
-        />
-
-        {/* What the teacher wrote about this child's behaviour. Used to be a
-            calendar square; a remark about your child should not have to be
-            hunted for by date. `apiRequest` is what lets a read remark be
-            filed away instead of standing on the home screen all year. */}
-        <BehaviorPanel
-          language={language}
-          apiRequest={apiRequest}
           behaviorList={behaviorList}
+          childId={selectedChild.id}
+          childClassId={selectedChild.classId}
+          completion={homeworkCompletion}
+          onToggle={toggleHomeworkCompletion}
           childName={students.length > 1 ? selectedChild.name : undefined}
+          refreshKey={agendaRefresh}
         />
 
         {/* Agenda: lesson days, vacations, events and booked oudergesprekken.
             Homework, lesverslagen and gedrag used to be here too; all three
             now have a place where they can be seen without first guessing the
-            right day — see HomeworkView, LessonReportsPanel and
-            BehaviorPanel. */}
+            right day — see HomeworkView and the day summary
+            above. */}
         <div className="mb-4 mt-6 border-t border-gray-200 pt-5 sm:mb-6">
           <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-emerald-800 sm:text-xl">
             <CalendarDays className="h-5 w-5" />
@@ -1446,6 +1409,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               role="parent"
               conferences={myBookedConferences}
               focus={agendaFocus}
+              onRefreshed={() => setActionRefresh((n) => n + 1)}
             />
           )}
         </div>

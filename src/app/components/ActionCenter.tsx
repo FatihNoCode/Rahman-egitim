@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { Archive, CheckCircle2, ChevronRight, RefreshCw } from 'lucide-react';
+import { Archive, CheckCircle2, ChevronRight } from 'lucide-react';
 import { childAccent, childInitial } from './childIdentity';
 import LoadingState from './ui/LoadingState';
 import { useMinimumLoading } from '../hooks/useMinimumLoading';
@@ -85,8 +85,6 @@ interface ActionCenterProps {
    * exactly one child; the switcher is one tap away for the other.
    */
   filterChildId?: string;
-  /** Also refresh whatever else the caller shows, when "Vernieuwen" is tapped. */
-  onRefresh?: () => void;
   /** Rendered inside the section, after the feed entries. */
   footer?: ReactNode;
   /** Keep the section on screen even with no feed entries. */
@@ -117,7 +115,6 @@ export default function ActionCenter({
   showAllClear = false,
   childrenList = [],
   filterChildId,
-  onRefresh,
   footer,
   alwaysShow = false,
   onDismiss,
@@ -127,7 +124,6 @@ export default function ActionCenter({
     ? {
         title: 'Sizden bekleyenler',
         allClear: 'Şu anda yapmanız gereken bir şey yok.',
-        refresh: 'Yenile',
         open: 'Aç',
         // Named, not a bare "Arşiv": the parent's home screen carries three
         // of these buttons within a screen height of each other (this one,
@@ -139,7 +135,6 @@ export default function ActionCenter({
     : {
         title: 'Wat om uw aandacht vraagt',
         allClear: 'Er staat op dit moment niets open.',
-        refresh: 'Vernieuwen',
         open: 'Openen',
         archive: 'Archief · meldingen',
         hideArchive: 'Archief meldingen verbergen',
@@ -175,11 +170,6 @@ export default function ActionCenter({
   useEffect(() => {
     load();
   }, [load, refreshKey]);
-
-  const refresh = () => {
-    load();
-    onRefresh?.();
-  };
 
   // Every per-child entry the server builds carries the student id in its key
   // and its link (`parent_billing:<id>`, `#billing:<id>`). An entry that names
@@ -283,16 +273,12 @@ export default function ActionCenter({
 
   return (
     <div className="mb-4 sm:mb-6">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <h2 className="text-lg sm:text-xl font-semibold text-emerald-800">{text.title}</h2>
-        <button
-          onClick={refresh}
-          className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 transition"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          {text.refresh}
-        </button>
-      </div>
+      {/* No "Vernieuwen" button. It asked the reader to maintain the screen
+          by hand — and the answer to "is this still current?" should never be
+          a question the app puts back to the user. The list now refetches
+          whenever the agenda does (mount, window focus, returning to the app,
+          and its background poll); see ParentDashboard's onRefreshed wiring. */}
+      <h2 className="mb-3 text-lg sm:text-xl font-semibold text-emerald-800">{text.title}</h2>
 
       {showLoading && <LoadingState compact size={32} />}
 

@@ -69,6 +69,17 @@ interface AgendaCalendarProps {
    * work — the date alone would compare equal and do nothing.
    */
   focus?: { date: string; nonce: number } | null;
+  /**
+   * Fired after every successful load, including the background poll and the
+   * focus/visibility refetches.
+   *
+   * The parent's start page used to carry a "Vernieuwen" button so a reader
+   * could force the worklist and the day summary to catch up with the
+   * calendar. Asking someone to press a button to make a screen tell the truth
+   * is not a feature; the calendar already knows when it has new data, so it
+   * says so and the rest of the page follows it.
+   */
+  onRefreshed?: () => void;
 }
 
 const DAY_NAMES_SHORT_NL = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
@@ -102,6 +113,7 @@ export default function AgendaCalendar({
   language, apiRequest, refreshKey, role,
   conferences,
   focus,
+  onRefreshed,
 }: AgendaCalendarProps) {
   const showHomework = role === 'teacher';
 
@@ -133,6 +145,10 @@ export default function AgendaCalendar({
   // this a slow earlier response lands *after* a newer one and quietly puts
   // stale lessons back on the calendar. Only the newest request may write.
   const loadSeq = useRef(0);
+  // Through a ref so an inline callback from the parent cannot rebuild loadAll
+  // on every render — which would re-arm the poll and the listeners each time.
+  const refreshedRef = useRef(onRefreshed);
+  refreshedRef.current = onRefreshed;
 
   const loadAll = useCallback(() => {
     const seq = ++loadSeq.current;
@@ -161,6 +177,7 @@ export default function AgendaCalendar({
         (clsRes?.classes || []).forEach((c: any) => { clsMap[c.id] = c.name; });
         setClassesById(clsMap);
       }
+      refreshedRef.current?.();
     }).catch(err => console.error('Load agenda calendar error:', err))
       .finally(() => { if (seq === loadSeq.current) setLoading(false); });
   }, [apiRequest, showHomework, role]);

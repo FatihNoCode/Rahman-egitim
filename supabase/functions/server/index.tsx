@@ -2,7 +2,7 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import * as kv from "./kv_store.tsx";
-import { provisionDemoSandbox, resetDemoSandbox, discardDemoSandbox, sandboxContext } from "./demo_sandbox.tsx";
+import { provisionDemoSandbox, resetDemoSandbox, discardDemoSandbox, sandboxContext, sandboxNeedsRepair } from "./demo_sandbox.tsx";
 import { createClient } from "npm:@supabase/supabase-js";
 import {
   computeStudentSignals,
@@ -1149,6 +1149,17 @@ app.post("/make-server-6679cacd/signin", async (c) => {
       return c.json({ error: 'ACCOUNT_PENDING' }, 403);
     }
 
+    // A demo tester whose sandbox predates the shared-lestype layout still
+    // points at a school of their own that no longer exists — every screen
+    // they open would be empty. Rebuilding it here, at sign-in, is the one
+    // moment it is safe to do implicitly: the session has not made a data
+    // request yet, so nothing has ids swapped out from under it. It is a
+    // one-shot repair, not a general provisioning path — once the record
+    // names the shared lestype this branch never runs again.
+    if (userData?.isDemoTester && await sandboxNeedsRepair(data.user.id)) {
+      userData = await repairDemoTester(data.user.id, userData);
+    }
+
     // Update last check-in for parents
     if (userData?.role === 'parent') {
       userData = { ...userData, lastCheckIn: new Date().toISOString() };
@@ -1307,6 +1318,11 @@ function applyActiveRole(userData: any, role: string) {
 // taken away — and it leaves the active `role` alone.
 async function syncDerivedRoles(userId: string, userData: any) {
   if (!userData || userData.status !== 'approved') return userData;
+  // A demo tester's roles are exactly what a superadmin assigned — never more.
+  // Deriving them from data would re-add the teacher role the moment their
+  // sandbox happens to have a class in it, which is precisely the bug that put
+  // a role switcher in front of a tester who was only ever given "ouder".
+  if (userData.isDemoTester) return userData;
 
   const before: string[] =
     Array.isArray(userData.roles) && userData.roles.length > 0 ? userData.roles : [userData.role];
@@ -1346,6 +1362,39 @@ async function syncDerivedRoles(userId: string, userData: any) {
   const updated = { ...userData, roles, roleContext };
   await kv.set(`user:${userId}`, updated);
   return updated;
+}
+
+// One-shot repair for a tester provisioned under the previous demo layout,
+// where each of them owned a whole school (see demo_sandbox.tsx). Rebuilds
+// their classes inside the shared lestype and rewrites the record to match.
+// Returns the record unchanged if anything goes wrong: a failed repair must
+// not turn into a failed sign-in.
+async function repairDemoTester(testerId: string, userData: any) {
+  try {
+    const roles = (Array.isArray(userData.roles) && userData.roles.length
+      ? userData.roles
+      : [userData.role]).filter(isPortalRole) as PortalRole[];
+    if (roles.length === 0) return userData;
+
+    await resetDemoSandbox(testerId, sandboxRolesFor(roles), testerLabel(userData.email));
+    const roleContext = await buildDemoRoleContext(roles, testerId);
+    const activeRole = roles.includes(userData.role) ? userData.role : roles[0];
+    const ctx = roleContext[activeRole] || {};
+    const repaired = {
+      ...userData,
+      roles,
+      roleContext,
+      role: activeRole,
+      schoolId: ctx.schoolId,
+      classId: ctx.classId,
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`user:${testerId}`, repaired);
+    return repaired;
+  } catch (err) {
+    console.log('Repair demo tester error:', err);
+    return userData;
+  }
 }
 
 app.post("/make-server-6679cacd/switch-role", async (c) => {
@@ -1407,8 +1456,22 @@ function isPortalRole(v: unknown): v is PortalRole {
   return v === 'parent' || v === 'teacher' || v === 'admin';
 }
 
-// A tester's roles all point at their own sandbox, never at the template.
-// See demo_sandbox.tsx for why the shared school stopped being a workspace.
+// What the sandbox links the tester to. Only the roles they were actually
+// given: writing `teacher_classes` for a parent-only tester is how one ended
+// up with a teacher role, and a role switcher, they were never assigned.
+// An admin needs neither list — they see the lestype through their schoolId.
+function sandboxRolesFor(roles: PortalRole[]) {
+  return { teacher: roles.includes('teacher'), parent: roles.includes('parent') };
+}
+
+// Names a tester's classes inside the shared lestype, so a list of them does
+// not read as five rows of "Darul Furkan Erkek".
+function testerLabel(email: string | undefined) {
+  return String(email || '').split('@')[0] || 'tester';
+}
+
+// A tester's roles point at their own classes inside the shared demo lestype.
+// See demo_sandbox.tsx for what is private and what is not.
 async function buildDemoRoleContext(roles: PortalRole[], testerId: string) {
   const box = await sandboxContext(testerId);
   const ctx: Record<string, any> = {};
@@ -1472,10 +1535,16 @@ app.post("/make-server-6679cacd/demo-testers", async (c) => {
       userId = data.user.id;
     }
 
-    // Give the tester their own copy of the demo school before their session
-    // can point at it. Deterministic and additive, so re-adding an existing
-    // tester repairs their sandbox rather than building a second one.
-    await provisionDemoSandbox(userId);
+    // Give the tester their own classes inside the shared demo lestype before
+    // their session can point at them. Deterministic and additive, so
+    // re-adding an existing tester repairs their sandbox rather than building
+    // a second one.
+    //
+    // The roles go in because they decide what the tester is *linked* to: a
+    // parent-only tester must not be handed a `teacher_classes` list, which is
+    // what syncDerivedRoles would otherwise read back as "this person is also
+    // a teacher".
+    await provisionDemoSandbox(userId, sandboxRolesFor(roles as PortalRole[]), testerLabel(email));
 
     const roleContext = await buildDemoRoleContext(roles as PortalRole[], userId);
     const activeRole = roles[0];
@@ -1641,7 +1710,9 @@ app.patch("/make-server-6679cacd/demo-testers/:id", async (c) => {
     const roles = Array.isArray(rawRoles) ? rawRoles.filter(isPortalRole) : [];
     if (roles.length === 0) return c.json({ error: 'At least one role is required' }, 400);
 
-    await provisionDemoSandbox(id);
+    // Re-provisioned with the new roles, so a role taken away also takes away
+    // the class/child link that would otherwise hand it straight back.
+    await provisionDemoSandbox(id, sandboxRolesFor(roles as PortalRole[]), testerLabel(existing.email));
     const roleContext = await buildDemoRoleContext(roles as PortalRole[], id);
     const activeRole = roles.includes(existing.role) ? existing.role : roles[0];
     const ctx = roleContext[activeRole] || {};
@@ -1712,7 +1783,33 @@ app.post("/make-server-6679cacd/demo-testers/:id/reset", async (c) => {
     const existing = await getUserData(id);
     if (!existing?.isDemoTester) return c.json({ error: 'Not a demo tester' }, 404);
 
-    const box = await resetDemoSandbox(id);
+    const existingRoles = (Array.isArray(existing.roles) && existing.roles.length
+      ? existing.roles
+      : [existing.role]).filter(isPortalRole) as PortalRole[];
+    const box = await resetDemoSandbox(
+      id,
+      sandboxRolesFor(existingRoles),
+      testerLabel(existing.email),
+    );
+
+    // The ids under a tester move when their sandbox is rebuilt — and they
+    // moved wholesale when the demo went from one school per tester to one
+    // shared lestype. Rewriting the record here is what lets a reset repair a
+    // tester provisioned under the old shape instead of leaving their session
+    // pointing at a school that no longer exists.
+    const roleContext = await buildDemoRoleContext(existingRoles, id);
+    const activeRole = existingRoles.includes(existing.role) ? existing.role : existingRoles[0];
+    const ctx = roleContext[activeRole] || {};
+    await kv.set(`user:${id}`, {
+      ...existing,
+      roles: existingRoles,
+      roleContext,
+      role: activeRole,
+      schoolId: ctx.schoolId,
+      classId: ctx.classId,
+      updatedAt: new Date().toISOString(),
+    });
+
     return c.json({ success: true, recordCount: box.recordCount });
   } catch (err) {
     console.log('Reset demo sandbox error:', err);
@@ -10465,6 +10562,61 @@ app.post("/make-server-6679cacd/moments", async (c) => {
 // The feed. A parent sees their own children's moments; staff see the ones
 // from the classes they teach, so a teacher can check what has already been
 // said before adding to it.
+// Which moments this account has read and filed away.
+//
+// Deliberately not under /moments/:id — that route would swallow "read" as a
+// moment id. Per account rather than per child, like the lesverslag and gedrag
+// marks: a compliment about a child is read by the family, not by the pupil,
+// and a parent who read it on their phone should not be told it is new again
+// by the tablet.
+//
+// A moment is written once and then stands on the home screen for the rest of
+// the year, which is how a feed of good news becomes wallpaper. Archiving is
+// the fix; nothing is ever deleted by it.
+app.get("/make-server-6679cacd/moments-read", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const marks = await kv.getByPrefix(`moment_read:${user.id}:`);
+    const read = marks
+      .filter((m: any) => m && m.momentId)
+      .map((m: any) => String(m.momentId));
+
+    return c.json({ read });
+  } catch (err) {
+    console.log('Get moment read marks error:', err);
+    return c.json({ error: 'Failed to get moment read marks' }, 500);
+  }
+});
+
+app.post("/make-server-6679cacd/moments-read", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+
+    const { momentId, read = true } = await c.req.json();
+    // No access check is needed: the key is scoped to the caller's own id, so
+    // the worst a wrong id can do is hide a moment from the person who sent
+    // it. The pattern is here to keep one account from writing unbounded keys.
+    if (typeof momentId !== 'string' || !/^[\w-]{1,64}$/.test(momentId)) {
+      return c.json({ error: 'Invalid momentId' }, 400);
+    }
+
+    const key = `moment_read:${user.id}:${momentId}`;
+    if (read) {
+      await kv.set(key, { momentId, userId: user.id, readAt: new Date().toISOString() });
+    } else {
+      await kv.del(key);
+    }
+
+    return c.json({ ok: true });
+  } catch (err) {
+    console.log('Mark moment read error:', err);
+    return c.json({ error: 'Failed to mark moment read' }, 500);
+  }
+});
+
 app.get("/make-server-6679cacd/moments", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);

@@ -1,10 +1,14 @@
 import { useEffect, useRef } from 'react';
 import logoUrl from '../../../imports/logo.svg';
-import Spinner from '../ui/Spinner';
 
-// Cold-start screen. A spinner says "wait"; a greeting typing itself out says
-// "welcome back" — and it fills exactly the same time the session check needs,
-// so nothing is actually slower.
+// Cold-start screen. A greeting typing itself out says "welcome back" — and it
+// fills exactly the same time the session check needs, so nothing is actually
+// slower.
+//
+// Deliberately without the waw spinner every other loading state uses. The
+// greeting is already the whole message of this screen; a spinner underneath
+// it turned a welcome back into a wait, which is the one thing this screen
+// exists not to be. The spinner stays everywhere else.
 //
 // The name comes from localStorage rather than the session, because the whole
 // point is to show it *while* the session is still loading. It's written on
@@ -153,10 +157,6 @@ export default function GreetingSplash({ language, name, onDone }: GreetingSplas
           </p>
         )}
       </div>
-      {/* The greeting is the point of this screen, but it is still a wait —
-          the same waw every other loading state uses says so, small and under
-          the line rather than competing with it. */}
-      <Spinner size={32} label="Yükleniyor... / Laden..." />
     </div>
   );
 }

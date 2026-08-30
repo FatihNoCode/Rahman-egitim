@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useApp, isTestAccount } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, AlertTriangle, BarChart3, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen, CalendarDays, ChevronRight, Thermometer } from 'lucide-react';
+import { Euro, Moon, AlertTriangle, BarChart3, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen, CalendarDays, ChevronRight, CalendarX2 } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
@@ -830,12 +830,17 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                 that are not reachable any other way. */}
             {selectedChild && activeTab === 'overview' && (
               <div className="mb-4 grid grid-cols-2 gap-2 sm:mb-6">
+                {/* A crossed-out day, not a thermometer. The report is about a
+                    lesson the child will miss, and the reason is often not
+                    illness at all — a wedding, a trip, a family day. A
+                    thermometer told every one of those parents they were
+                    filling in the wrong form. */}
                 <button
                   type="button"
                   onClick={() => openAbsenceModal(selectedChild.id)}
                   className="flex items-center gap-2 rounded-xl bg-orange-50 p-3 text-left text-sm font-semibold text-orange-700 transition hover:bg-orange-100"
                 >
-                  <Thermometer className="h-5 w-5 shrink-0" />
+                  <CalendarX2 className="h-5 w-5 shrink-0" />
                   <span className="leading-tight">{t.reportAbsence}</span>
                 </button>
                 <button

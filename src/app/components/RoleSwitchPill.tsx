@@ -71,7 +71,9 @@ export default function RoleSwitchPill({ language }: { language: Language }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 shadow-sm transition active:scale-95"
+        // h-10, matching the child pill and the account avatar it shares a
+        // line with. See ChildSwitcher.
+        className="flex h-10 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 shadow-sm transition active:scale-95"
       >
         {busy ? (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-emerald-600" />

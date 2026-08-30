@@ -77,10 +77,13 @@ export default function ChildSwitcher({
         onClick={() => (isToggle ? onSelect(others[0].id) : setOpen((v) => !v))}
         aria-expanded={isToggle ? undefined : open}
         aria-label={isToggle ? text.switchTo(others[0].name) : text.switchAny}
-        className={`flex w-full min-w-0 items-center gap-2 rounded-full border ${accent.border} ${accent.surface} py-1 pl-1 pr-2.5 text-left transition active:scale-[0.98]`}
+        // h-10 on the nose: this pill, the role pill and the account avatar
+        // sit on one line, and three controls of three different heights read
+        // as a mistake even when nobody can say which one is wrong.
+        className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-full border ${accent.border} ${accent.surface} pl-1 pr-3 text-left transition active:scale-[0.98]`}
       >
         <span
-          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${accent.solid}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${accent.solid}`}
         >
           {childInitial(selected.name)}
         </span>

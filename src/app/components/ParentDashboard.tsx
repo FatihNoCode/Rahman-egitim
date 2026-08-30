@@ -2,20 +2,23 @@ import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useApp, isTestAccount } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, AlertTriangle, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen } from 'lucide-react';
+import { Euro, Moon, AlertTriangle, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen, ChevronRight } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
 import ChildSwitcher from './ChildSwitcher';
 import RoleSwitchPill from './RoleSwitchPill';
-import ActionCenter from './ActionCenter';
+import ActionCenter, { type ActionItem } from './ActionCenter';
 import MomentsFeed from './MomentsFeed';
 import HomeworkView from './HomeworkView';
 import LessonReportsPanel from './LessonReportsPanel';
+import BehaviorPanel from './BehaviorPanel';
+import GradeDetail, { type Grade } from './GradeDetail';
 import Modal from './ui/modal';
 import { notify } from './ui/feedback';
 import LoadError from './ui/load-error';
 import Spinner from './ui/Spinner';
+import LoadingState from './ui/LoadingState';
 import { isAppLayout } from '../../lib/native';
 import { logAction } from '../../lib/deviceLog';
 import MobileNav from './mobile/MobileNav';
@@ -151,7 +154,11 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   // Grades only appear here once a teacher publishes them — see the toets
   // live-exam workflow. Kept separate from billing/lessons since it comes
   // from a different part of the server and loads independently per child.
-  const [grades, setGrades] = useState<any[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  // Which published toets the parent has opened. A mark on its own says a
+  // child did moderately and nothing about what to practise; the questions
+  // behind it are the part a family can act on.
+  const [openGrade, setOpenGrade] = useState<Grade | null>(null);
   const [loadingGrades, setLoadingGrades] = useState(false);
   // Bumped whenever something happens that could resolve a worklist entry — a
   // ziekmelding filed, a slot booked. The list re-fetches instead of leaving a
@@ -168,6 +175,13 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   // Where the avatar came from, so tapping it a second time goes back there
   // rather than doing nothing. See openAccount below.
   const [tabBeforeAccount, setTabBeforeAccount] = useState<string>('overview');
+  // A day the agenda has been asked to show — see the `#agenda-event:` link
+  // the worklist builds. The nonce is what makes opening the same event twice
+  // scroll to it twice.
+  const [agendaFocus, setAgendaFocus] = useState<{ date: string; nonce: number } | null>(null);
+  // The schoolgeld reminder, read as a dialog rather than lived with as a
+  // permanent row. Holds the child it is about.
+  const [paymentNotice, setPaymentNotice] = useState<{ childId: string; body: string } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -435,7 +449,20 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     setActiveTab(MOBILE_ACCOUNT_ID);
   };
 
-  const handleActionNavigate = (link: string) => {
+  // Tells the server an entry has been read and filed. Optimistic — the
+  // worklist has already moved it — so a failed write only means it comes
+  // back on the next refresh, never that the tap did nothing.
+  const dismissActionItem = (key: string) => {
+    apiRequest('/signals/dismiss', {
+      method: 'POST',
+      body: JSON.stringify({ key, dismissed: true }),
+    }).catch(() => {});
+  };
+
+  // Returns true when the entry is *finished by being opened* — an
+  // announcement, a reminder — so the worklist can archive it. See
+  // ActionCenter's onNavigate.
+  const handleActionNavigate = (link: string, item: ActionItem): boolean | void => {
     const [target, arg] = link.replace(/^#/, '').split(':');
 
     if (target === 'report-absence') {
@@ -446,6 +473,26 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
       if (app) openAccount();
       else setProfileSignal((n) => n + 1);
       return;
+    }
+    // An event announcement has nothing to do — it is news. Opening it puts
+    // the day on the agenda with the details already unfolded underneath,
+    // and files the announcement away.
+    if (target === 'agenda-event') {
+      setActiveTab('overview');
+      if (arg) setAgendaFocus({ date: arg, nonce: Date.now() });
+      return true;
+    }
+    // Same for the schoolgeld reminder: read it in full, once, and it moves
+    // to the archive instead of sitting at the top of the home screen for the
+    // rest of the term. The dialog links on to the facturatie tab for anyone
+    // who wants the payment details.
+    if (item.key.startsWith('parent_payment_due')) {
+      if (arg && students.some((s) => s.id === arg)) setSelectedChildId(arg);
+      setPaymentNotice({
+        childId: arg || selectedChildId,
+        body: language === 'tr' ? item.bodyTr : item.bodyNl,
+      });
+      return true;
     }
     // Every per-child entry carries the child it is about. Without this a
     // family with two children could tap "openstaand schoolgeld" under one
@@ -558,9 +605,13 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   };
 
   if (loading) {
+    // The branded waw, not a bare "Laden..." line. This is the very first
+    // screen after signing in, and a word sitting still on an empty page
+    // reads as a stall — the same loader every other panel uses says the
+    // app is working.
     return (
       <div className="size-full flex items-center justify-center">
-        <div className="text-lg text-emerald-800">{t.loading}</div>
+        <LoadingState label={t.loading} size={48} />
       </div>
     );
   }
@@ -1020,26 +1071,57 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               </p>
             ) : (
               <div className="space-y-2">
-                {grades.map((g: any) => {
+                <p className="text-xs text-gray-500">
+                  {language === 'tr'
+                    ? 'Soruları, verilen cevapları ve her sorunun puanını görmek için bir sınava dokunun.'
+                    : 'Tik op een toets om de vragen, de gegeven antwoorden en de punten per vraag te zien.'}
+                </p>
+                {grades.map((g) => {
                   const pct = g.maxScore > 0 ? Math.round((g.score / g.maxScore) * 100) : null;
                   const tone = pct === null ? 'bg-gray-100 text-gray-500' : pct < 50 ? 'bg-red-100 text-red-700' : pct < 70 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
+                  const hasDetail = (g.questions || []).length > 0;
                   return (
-                    <div key={`${g.examId}:${g.code}`} className="flex items-center justify-between gap-3 border border-gray-100 rounded-lg p-3">
+                    <button
+                      key={`${g.examId}:${g.code}`}
+                      type="button"
+                      onClick={() => hasDetail && setOpenGrade(g)}
+                      className={`flex w-full items-center justify-between gap-3 rounded-lg border border-gray-100 p-3 text-left ${
+                        hasDetail ? 'transition hover:border-emerald-300 hover:bg-emerald-50/40' : 'cursor-default'
+                      }`}
+                    >
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-800 truncate">{g.examName}</p>
+                        <p className="truncate text-sm font-semibold text-gray-800">{g.examName}</p>
                         <p className="text-xs text-gray-400">
                           {g.className}
                           {g.submittedAt ? ` · ${new Date(g.submittedAt).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')}` : ''}
                         </p>
                       </div>
-                      <span className={`shrink-0 text-sm font-bold px-3 py-1.5 rounded-full ${tone}`}>
-                        {g.score} / {g.maxScore || '—'}{pct !== null ? ` (${pct}%)` : ''}
+                      <span className="flex shrink-0 items-center gap-1">
+                        <span className={`rounded-full px-3 py-1.5 text-sm font-bold ${tone}`}>
+                          {g.score} / {g.maxScore || '—'}{pct !== null ? ` (${pct}%)` : ''}
+                        </span>
+                        {hasDetail && <ChevronRight className="h-4 w-4 text-gray-300" />}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             )}
+
+            <Modal
+              open={!!openGrade}
+              onClose={() => setOpenGrade(null)}
+              title={openGrade?.examName}
+              subtitle={[
+                selectedChild?.name,
+                openGrade?.submittedAt
+                  ? new Date(openGrade.submittedAt).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')
+                  : null,
+              ].filter(Boolean).join(' · ')}
+              closeLabel={language === 'tr' ? 'Kapat' : 'Sluiten'}
+            >
+              {openGrade && <GradeDetail grade={openGrade} language={language} />}
+            </Modal>
           </div>
         )}
 
@@ -1060,6 +1142,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           childrenList={students}
           filterChildId={selectedChildId}
           onRefresh={() => setAgendaRefresh((n) => n + 1)}
+          onDismiss={dismissActionItem}
           footer={
             <LessonReportsPanel
               language={language}
@@ -1068,6 +1151,40 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
             />
           }
         />
+
+        {/* The schoolgeld reminder, read once. It used to be a permanent row
+            on the home screen that no parent could clear — money owed is not a
+            task the app can see completed, so the entry outlived its own
+            usefulness and taught people to ignore that part of the screen.
+            Read here, filed in the archive, with the way through to the
+            payment details still one tap away. */}
+        <Modal
+          open={!!paymentNotice}
+          onClose={() => setPaymentNotice(null)}
+          title={language === 'tr' ? 'Ödenmemiş okul ücreti' : 'Openstaand schoolgeld'}
+          subtitle={students.find((s) => s.id === paymentNotice?.childId)?.name}
+          closeLabel={language === 'tr' ? 'Kapat' : 'Sluiten'}
+          footer={
+            <button
+              type="button"
+              onClick={() => {
+                setPaymentNotice(null);
+                setActiveTab('billing');
+              }}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+            >
+              <Receipt className="h-4 w-4" />
+              {language === 'tr' ? 'Ödeme özetine git' : 'Naar het betaaloverzicht'}
+            </button>
+          }
+        >
+          <p className="text-sm leading-relaxed text-gray-700">{paymentNotice?.body}</p>
+          <p className="mt-3 text-xs text-gray-400">
+            {language === 'tr'
+              ? 'Bu hatırlatma arşive taşındı. Ayrıntıları istediğiniz zaman Ödemeler sekmesinden görebilirsiniz.'
+              : 'Deze herinnering is naar het archief verplaatst. De details blijven staan onder Facturatie.'}
+          </p>
+        </Modal>
 
         <Modal
           open={!!(showStats && stats)}
@@ -1226,10 +1343,20 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
           hideWhenEmpty
         />
 
-        {/* Agenda: lesson days, vacations, events, behaviour and booked
-            oudergesprekken. Homework and lesverslagen used to be here too;
-            both now have a place where they can be seen without first
-            guessing the right day — see HomeworkView and LessonReportsPanel. */}
+        {/* What the teacher wrote about this child's behaviour. Used to be a
+            calendar square; a remark about your child should not have to be
+            hunted for by date. */}
+        <BehaviorPanel
+          language={language}
+          behaviorList={behaviorList}
+          childName={students.length > 1 ? selectedChild.name : undefined}
+        />
+
+        {/* Agenda: lesson days, vacations, events and booked oudergesprekken.
+            Homework, lesverslagen and gedrag used to be here too; all three
+            now have a place where they can be seen without first guessing the
+            right day — see HomeworkView, LessonReportsPanel and
+            BehaviorPanel. */}
         <div className="mb-4 sm:mb-6">
           <h2 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-3">
             {language === 'tr' ? 'Ajanda' : 'Agenda'}
@@ -1242,8 +1369,8 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               apiRequest={apiRequest}
               refreshKey={agendaRefresh}
               role="parent"
-              behaviorList={behaviorList}
               conferences={myBookedConferences}
+              focus={agendaFocus}
             />
           )}
         </div>

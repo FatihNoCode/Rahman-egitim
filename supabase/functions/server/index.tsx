@@ -1931,10 +1931,17 @@ app.post("/make-server-6679cacd/notifications/read-all", async (c) => {
 
     const ids: string[] = await kv.get(`user_notifications:${user.id}`) || [];
     const notifications = await kv.mget(ids.map((id: string) => `notification:${id}`));
-    for (let i = 0; i < ids.length; i++) {
-      if (notifications[i] && !notifications[i].read) {
-        await kv.set(`notification:${ids[i]}`, { ...notifications[i], read: true });
-      }
+    // Keyed off each row's own id, never off its position in the result.
+    // kv.mget is a `select ... in (keys)` — Postgres returns those rows in
+    // whatever order it likes and collapses duplicates, so `notifications[i]`
+    // is not `ids[i]`. Pairing them by index wrote notification A's body under
+    // notification B's key: some entries came back unread on the next poll
+    // (their row was never touched) and others silently became a copy of a
+    // different message. This is the bug behind "I read them and the badge
+    // came straight back".
+    for (const n of notifications) {
+      if (!n?.id || n.read) continue;
+      await kv.set(`notification:${n.id}`, { ...n, read: true });
     }
     return c.json({ success: true });
   } catch (err) {
@@ -3013,7 +3020,7 @@ app.post("/make-server-6679cacd/students", async (c) => {
     const { schoolId, error: schoolError } = await resolveSchoolContext(c, userData);
     if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
-    const { name, parentEmail, classId } = await c.req.json();
+    const { name, parentEmail, classId, birthDate } = await c.req.json();
     const studentId = crypto.randomUUID();
 
     let parentId = null;
@@ -3064,6 +3071,7 @@ app.post("/make-server-6679cacd/students", async (c) => {
       parentEmail: parentEmail || null,
       classId,
       schoolId,
+      birthDate: birthDate || null,
       createdAt: new Date().toISOString()
     };
 
@@ -3098,7 +3106,7 @@ app.put("/make-server-6679cacd/students/:studentId", async (c) => {
     if (schoolError) return c.json({ error: schoolError }, schoolError === 'Unauthorized' ? 403 : 400);
 
     const studentId = c.req.param('studentId');
-    const { name, parentEmail, classId } = await c.req.json();
+    const { name, parentEmail, classId, birthDate } = await c.req.json();
 
     const existingStudent = await kv.get(`student:${studentId}`);
     if (!existingStudent) {
@@ -3195,6 +3203,10 @@ app.put("/make-server-6679cacd/students/:studentId", async (c) => {
       parentId,
       parentEmail: parentEmail || null,
       classId: classId || null,
+      // Optional and only ever set from the roster. Left untouched when the
+      // caller does not send it, so an older client editing a name cannot
+      // silently wipe a date somebody else filled in.
+      birthDate: birthDate === undefined ? (existingStudent.birthDate || null) : (birthDate || null),
       updatedAt: new Date().toISOString()
     };
 
@@ -3611,9 +3623,30 @@ app.get("/make-server-6679cacd/students/:studentId/stats", async (c) => {
       }
     }
 
+    // Average toets result, as a percentage of the maximum. Only published
+    // sessions count — the same gate the parent's Cijfers tab is behind, so a
+    // roster can never rank children on a mark their family has not been
+    // shown yet. Computed here rather than in a route of its own: the roster
+    // already makes one call per child and a second round of them to sort a
+    // list would be indefensible.
+    let gradePctSum = 0;
+    let gradeCount = 0;
+    for (const a of await kv.getByPrefix('exam_attempt:')) {
+      if (a?.studentId !== studentId || !a.submittedAt) continue;
+      const max = (Number(a.autoMax) || 0) + (Number(a.openMax) || 0);
+      if (max <= 0) continue;
+      const live = await kv.get(`exam_live:${a.code}`);
+      if (live?.status !== 'published') continue;
+      const manual = Object.values(a.manualScores || {}).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0);
+      gradePctSum += (((Number(a.autoScore) || 0) + manual) / max) * 100;
+      gradeCount++;
+    }
+
     return c.json({
       absenceCount,
       avgBehavior: behaviorCount > 0 ? behaviorSum / behaviorCount : undefined,
+      avgGrade: gradeCount > 0 ? gradePctSum / gradeCount : undefined,
+      gradeCount,
     });
   } catch (err) {
     console.log('Get student stats error:', err);
@@ -4266,6 +4299,13 @@ app.post("/make-server-6679cacd/attendance", async (c) => {
     const attendanceClass = await kv.get(`class:${classId}`);
     const currentYear = attendanceClass?.schoolId ? await getCurrentSchoolYear(attendanceClass.schoolId) : null;
     for (const rec of records) {
+      // `present === undefined/null` is a register the teacher left blank for
+      // this child, not a child who was away. Telling a family their child was
+      // absent because nobody ticked anything is the one message we must never
+      // send: the register has to be filled in first. (The client refuses to
+      // save a partial register; this is the same rule on the server, for a
+      // phone running an older build.)
+      if (rec.present === undefined || rec.present === null) continue;
       if (rec.present) continue;
       const yearKey = `student_absence_notifications:${rec.studentId}:${currentYear?.id}`;
       const notificationIds: string[] = await kv.get(yearKey) || [];
@@ -4932,6 +4972,14 @@ app.put("/make-server-6679cacd/exams/:id", async (c) => {
     const userData = await getUserData(user.id);
     const schoolIds = await getUserSchoolIds(user.id, userData);
     if (!schoolIds.has(exam.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+    // Only the person who wrote it may change it. Everyone in the school can
+    // read a colleague's toets and take their own copy (see /duplicate) —
+    // what nobody can do is edit or delete someone else's work out from under
+    // them, which is the whole reason a shared library is safe to contribute
+    // to. Legacy exams with no createdBy stay editable by the school.
+    if (exam.createdBy && exam.createdBy !== user.id) {
+      return c.json({ error: 'Only the owner can edit this exam. Duplicate it to make your own version.' }, 403);
+    }
 
     const body = await c.req.json();
     const updated = { ...exam };
@@ -4957,6 +5005,9 @@ app.delete("/make-server-6679cacd/exams/:id", async (c) => {
     const userData = await getUserData(user.id);
     const schoolIds = await getUserSchoolIds(user.id, userData);
     if (!schoolIds.has(exam.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+    if (exam.createdBy && exam.createdBy !== user.id) {
+      return c.json({ error: 'Only the owner can delete this exam.' }, 403);
+    }
     await kv.del(`exam:${exam.id}`);
     const ids: string[] = await kv.get(`exam_ids:${exam.schoolId}`) || [];
     await kv.set(`exam_ids:${exam.schoolId}`, ids.filter((id: string) => id !== exam.id));
@@ -5155,6 +5206,96 @@ app.get("/make-server-6679cacd/exams/live/active", async (c) => {
   } catch (err) {
     console.log('Active exams error:', err);
     return c.json({ error: 'Failed to get active exams' }, 500);
+  }
+});
+
+// Every sitting of a toets this school has run — live, waiting to be marked,
+// marked, or published. The "actieve toetsen" bar only ever showed the live
+// ones, which meant an exam that ended while the teacher was walking back to
+// the staff room simply disappeared from the screen and had to be found again
+// through the exam it came from. This is the list of sittings itself, which is
+// what a teacher is actually looking for after the bell.
+app.get("/make-server-6679cacd/exams/sessions", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'teacher' && userData?.role !== 'admin') {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    const sessions = (await kv.getByPrefix('exam_live:')).filter((s: any) => s?.code && schoolIds.has(s.schoolId));
+    const examIds = [...new Set(sessions.map((s: any) => s.examId))];
+    const exams = examIds.length > 0 ? await kv.mget(examIds.map((id: string) => `exam:${id}`)) : [];
+    const examById = new Map(exams.filter((e: any) => e?.id).map((e: any) => [e.id, e]));
+
+    const out = [];
+    for (const session of sessions) {
+      const exam = examById.get(session.examId);
+      const attempts = (await kv.getByPrefix(`exam_attempt:${session.code}:`)).filter((a: any) => a?.studentId);
+      const totalQuestions = (exam?.questions || []).length;
+      const openQuestions = (exam?.questions || []).filter((q: any) => q.type === 'open');
+      out.push({
+        code: session.code,
+        examId: session.examId,
+        examName: exam?.name || '',
+        className: session.className,
+        status: session.status,
+        startedAt: session.startedAt,
+        closedAt: session.closedAt || null,
+        publishedAt: session.publishedAt || null,
+        startedBy: session.startedBy,
+        // "Mijn afgenomen toetsen" — the ones this teacher ran themselves.
+        mine: session.startedBy === user.id,
+        studentCount: attempts.length,
+        submittedCount: attempts.filter((a: any) => a.submittedAt).length,
+        // Whether anything is actually waiting on a human: an exam whose
+        // questions are all auto-marked needs no nakijken at all, and saying
+        // so is what stops "na te kijken" from becoming background noise.
+        openQuestionCount: openQuestions.length,
+        ungradedCount: openQuestions.length
+          ? attempts.filter((a: any) => a.submittedAt && !a.graded).length
+          : 0,
+        students: attempts.map((a: any) => ({
+          studentId: a.studentId,
+          studentName: a.studentName,
+          submitted: !!a.submittedAt,
+          answeredCount: a.submittedAt ? Object.keys(a.answers || {}).length : (a.answeredCount || 0),
+          totalQuestions,
+          autoScore: a.submittedAt ? a.autoScore : null,
+          autoMax: a.submittedAt ? a.autoMax : null,
+          endsAt: a.endsAt,
+        })),
+      });
+    }
+    out.sort((a: any, b: any) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')));
+    return c.json({ sessions: out });
+  } catch (err) {
+    console.log('Exam sessions error:', err);
+    return c.json({ error: 'Failed to get sessions' }, 500);
+  }
+});
+
+// One sitting, with the exam (answers included) and every attempt — the data
+// behind the nakijken screen.
+app.get("/make-server-6679cacd/exams/live/:code/results", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const code = c.req.param('code').toUpperCase();
+    const live = await kv.get(`exam_live:${code}`);
+    if (!live) return c.json({ error: 'Not found' }, 404);
+    const userData = await getUserData(user.id);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    if (!schoolIds.has(live.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+
+    const exam = await kv.get(`exam:${live.examId}`);
+    const attempts = (await kv.getByPrefix(`exam_attempt:${code}:`)).filter((a: any) => a?.studentId);
+    attempts.sort((a: any, b: any) => String(a.studentName || '').localeCompare(String(b.studentName || '')));
+    return c.json({ session: live, exam, attempts });
+  } catch (err) {
+    console.log('Session results error:', err);
+    return c.json({ error: 'Failed to get results' }, 500);
   }
 });
 
@@ -7214,6 +7355,104 @@ app.delete("/make-server-6679cacd/students/:studentId", async (c) => {
   } catch (err) {
     console.log('Delete student error:', err);
     return c.json({ error: 'Failed to delete student' }, 500);
+  }
+});
+
+// ============= STUDENT PROFILE =============
+
+// Everything one school knows about one child, in a single response.
+//
+// The teacher's class roster and the beheerder's leerlingenlijst used to open
+// the same child through four separate requests each, and each screen then
+// assembled its own half-answer: one showed homework but no grades, the other
+// grades but no lesson reports. This is the whole file — the record, the
+// register, the behaviour remarks, the homework, the published grades and the
+// moments a teacher shared — so both screens can show the same page and a
+// question about a child has one place to be answered.
+app.get("/make-server-6679cacd/students/:studentId/profile", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (!['admin', 'superadmin', 'teacher'].includes(userData?.role)) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const studentId = c.req.param('studentId');
+    const student = await kv.get(`student:${studentId}`);
+    if (!student) return c.json({ error: 'Student not found' }, 404);
+    // A teacher sees the children in their own classes; a beheerder sees their
+    // school. Same check the roster itself uses.
+    if (!student.classId || !(await userHasClassAccess(user.id, userData, student.classId))) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const cls = await kv.get(`class:${student.classId}`);
+    const parent = student.parentId ? await kv.get(`user:${student.parentId}`) : null;
+
+    // Register + behaviour + the lesson summary that belongs to the same day,
+    // so the profile can put them on one line instead of three lists the
+    // reader has to line up by eye.
+    const attendance: any[] = [];
+    for (const record of await kv.getByPrefix('attendance:')) {
+      if (record?.classId !== student.classId || !Array.isArray(record.records)) continue;
+      const mine = record.records.find((r: any) => r.studentId === studentId);
+      if (mine) attendance.push({ date: record.date, present: mine.present });
+    }
+
+    const behavior = (await kv.getByPrefix('behavior:'))
+      .filter((b: any) => b?.studentId === studentId)
+      .map((b: any) => ({ date: b.date, rating: b.rating, notes: b.notes || '' }));
+
+    const lessons = (await kv.getByPrefix(`lesson:${student.classId}:`))
+      .filter((l: any) => l?.date)
+      .map((l: any) => ({ id: `${l.classId}:${l.date}`, date: l.date, summary: l.summary }));
+
+    const homework = (await kv.getByPrefix('homework:'))
+      .filter((h: any) => h?.id && h.classId === student.classId)
+      .filter((h: any) => !Array.isArray(h.studentIds) || h.studentIds.length === 0 || h.studentIds.includes(studentId));
+    const completionByHomework: Record<string, boolean> = {};
+    for (const done of await kv.getByPrefix('homework_completion:')) {
+      if (done?.studentId === studentId && done.homeworkId) {
+        completionByHomework[done.homeworkId] = done.completed !== false;
+      }
+    }
+
+    const moments = (await kv.getByPrefix('moment:'))
+      .filter((m: any) => m?.id && (m.studentIds || []).includes(studentId))
+      .map((m: any) => ({ id: m.id, text: m.text, kind: m.kind, createdAt: m.createdAt, createdByName: m.createdByName }));
+
+    const absenceNotifications = [];
+    for (const n of await kv.getByPrefix('absence_notification:')) {
+      if (n?.studentId === studentId) {
+        absenceNotifications.push({ date: n.lessonDate, reason: n.reason || '', onTime: !!n.onTime });
+      }
+    }
+
+    return c.json({
+      student: {
+        id: student.id,
+        name: student.name,
+        classId: student.classId,
+        className: cls?.name || null,
+        birthDate: student.birthDate || null,
+        parentEmail: student.parentEmail || null,
+        parentName: parent?.name || null,
+        parentPhone: parent?.phone || null,
+        parentLastCheckIn: parent?.lastCheckIn || null,
+        createdAt: student.createdAt || null,
+      },
+      attendance,
+      behavior,
+      lessons,
+      homework,
+      completionByHomework,
+      moments,
+      absenceNotifications,
+    });
+  } catch (err) {
+    console.log('Student profile error:', err);
+    return c.json({ error: 'Failed to get student profile' }, 500);
   }
 });
 
@@ -9602,6 +9841,39 @@ function isoWeekOf(isoDate: string): string {
 }
 
 // The "what needs me today" feed for the signed-in user's role.
+// Move one worklist entry to the archive (or bring it back).
+//
+// A feed entry normally disappears by itself when the thing it describes is
+// resolved — that is the whole design of the parent worklist. Two kinds of
+// entry have nothing to resolve: an announcement ("er staat een evenement
+// gepland") and a reminder the family has read and understood. Those used to
+// sit on the home screen until the date passed, which trained people to scroll
+// past the spot where a real task appears. Reading them files them here.
+//
+// Keys are the feed's own stable keys, so an entry that is archived and then
+// legitimately regenerated (a *new* event) gets a new key and comes back.
+app.post("/make-server-6679cacd/signals/dismiss", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const { key, dismissed = true } = await c.req.json();
+    if (!key || typeof key !== 'string') return c.json({ error: 'Missing key' }, 400);
+
+    const listKey = `signals_dismissed:${user.id}`;
+    const current: string[] = (await kv.get(listKey)) || [];
+    let next = current.filter((k) => k !== key);
+    if (dismissed) next.unshift(key);
+    // Capped: the archive is a courtesy, not a permanent record, and a key
+    // whose entry can never be regenerated is dead weight.
+    if (next.length > 200) next = next.slice(0, 200);
+    await kv.set(listKey, next);
+    return c.json({ success: true, dismissed: next });
+  } catch (err) {
+    console.log('Dismiss signal error:', err);
+    return c.json({ error: 'Failed to update' }, 500);
+  }
+});
+
 app.get("/make-server-6679cacd/signals/today", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
@@ -9715,7 +9987,14 @@ app.get("/make-server-6679cacd/signals/today", async (c) => {
         newMoments,
       });
 
-      return c.json({ feed, generatedAt: new Date().toISOString() });
+      // Entries the parent has already dealt with move to the archive rather
+      // than vanishing: the message stays readable, it just stops occupying
+      // the top of the home screen. Marked here rather than filtered out, so
+      // the client can show both lists from one response.
+      const dismissed = new Set<string>(await kv.get(`signals_dismissed:${user.id}`) || []);
+      const marked = feed.map((item) => ({ ...item, dismissed: dismissed.has(item.key) }));
+
+      return c.json({ feed: marked, generatedAt: new Date().toISOString() });
     }
 
     const { classes, ctx } = await loadSignalScope(user.id, userData, c.req.header('X-School-Id') || undefined);
@@ -10280,6 +10559,35 @@ app.get("/make-server-6679cacd/students/:studentId/grades", async (c) => {
       const exam = await kv.get(`exam:${a.examId}`);
       if (!exam) continue;
       const manualTotal = Object.values(a.manualScores || {}).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0);
+
+      // The per-question breakdown, not just the total. A mark on its own
+      // tells a family nothing they can help with; "three of the four gaps in
+      // soera al-Fatiha" tells them exactly what to practise this week. Sent
+      // only for a published session, which is the same gate the total is
+      // behind — so this exposes no more than the teacher already released.
+      const perQuestion = a.perQuestion || {};
+      const questions = (exam.questions || []).map((q: any) => {
+        const points = Number(q.points) || 1;
+        const isOpen = q.type === 'open';
+        const auto = perQuestion[q.id] || null;
+        const awarded = isOpen
+          ? Number(a.manualScores?.[q.id]) || 0
+          : Number(auto?.points) || 0;
+        return {
+          id: q.id,
+          type: q.type,
+          prompt: q.prompt,
+          options: q.options || null,
+          points,
+          // null for an open question: "correct" is not a thing a written
+          // answer is — it has a score out of the maximum instead.
+          correct: isOpen ? null : (auto ? !!auto.correct : null),
+          awarded,
+          givenAnswer: a.answers?.[q.id] ?? null,
+          correctAnswer: isOpen ? null : (q.correct ?? null),
+        };
+      });
+
       grades.push({
         examId: exam.id,
         examName: exam.name,
@@ -10290,6 +10598,7 @@ app.get("/make-server-6679cacd/students/:studentId/grades", async (c) => {
         publishedAt: live.publishedAt || null,
         score: (a.autoScore || 0) + manualTotal,
         maxScore: (a.autoMax || 0) + (a.openMax || 0),
+        questions,
       });
     }
     grades.sort((x, y) => (y.publishedAt || '').localeCompare(x.publishedAt || ''));

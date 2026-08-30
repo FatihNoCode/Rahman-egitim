@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, X, Clock, Sun, PartyPopper, Calendar as CalendarIcon, BookOpen, Frown, Meh, Smile, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Clock, Sun, PartyPopper, Calendar as CalendarIcon, BookOpen, Users } from 'lucide-react';
 import LoadingState from './ui/LoadingState';
 import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
@@ -36,12 +36,6 @@ interface Homework {
   dueDate: string;
 }
 
-interface BehaviorRecord {
-  date: string;
-  rating: number;
-  notes: string;
-}
-
 export interface ConferenceItem {
   id: string;          // sessionId:slotIndex — unique per booked slot
   date: string;        // YYYY-MM-DD
@@ -61,10 +55,20 @@ interface AgendaCalendarProps {
   // deadline can be seen before the day it falls on, and lesson reports moved
   // into the worklist (LessonReportsPanel) — neither is on the calendar now.
   role?: 'admin' | 'superadmin' | 'teacher' | 'parent';
-  // Parent-only: the selected child's behaviour notes surface on their day.
-  behaviorList?: BehaviorRecord[];
+  // Behaviour used to surface here, on the day it was recorded. It has moved
+  // to its own panel on the parent's home screen (BehaviorPanel): a remark
+  // about a child is not an appointment, and filing it behind a calendar
+  // square meant the one thing a parent most wants to read was the one thing
+  // they had to guess the date of.
   // Booked oudergesprek slots (parent: own bookings; teacher: their classes).
   conferences?: ConferenceItem[];
+  /**
+   * Jump to a day and put it on screen. Used by the parent's worklist: an
+   * "er staat een evenement gepland" entry opens *the event*, not the tab it
+   * happens to live on. `nonce` is what makes a second tap on the same date
+   * work — the date alone would compare equal and do nothing.
+   */
+  focus?: { date: string; nonce: number } | null;
 }
 
 const DAY_NAMES_SHORT_NL = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
@@ -96,8 +100,8 @@ function addDays(d: Date, n: number) {
 
 export default function AgendaCalendar({
   language, apiRequest, refreshKey, role,
-  behaviorList,
   conferences,
+  focus,
 }: AgendaCalendarProps) {
   const showHomework = role === 'teacher';
 
@@ -115,6 +119,10 @@ export default function AgendaCalendar({
   // are visible at once.
   const [weekCursor, setWeekCursor] = useState(() => mondayOf(new Date()));
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  // The wrapper around both panels — the month grid and the day detail — so
+  // "show me this event" centres the pair rather than scrolling the detail
+  // off the bottom of the screen.
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   const monthNames = language === 'tr' ? MONTH_NAMES_TR : MONTH_NAMES_NL;
   const dayNamesShort = language === 'tr' ? DAY_NAMES_SHORT_TR : DAY_NAMES_SHORT_NL;
@@ -207,16 +215,6 @@ export default function AgendaCalendar({
     };
   }, [lesstructuren, vacationForDate, eventsForDate]);
 
-  const behaviorForDate = useMemo(() => {
-    return (ymd: string) => (behaviorList || []).find(b => b.date === ymd);
-  }, [behaviorList]);
-
-  const BehaviorIcon = ({ rating }: { rating: number }) => {
-    if (rating <= 2) return <Frown className="h-5 w-5 text-red-500" />;
-    if (rating <= 4) return <Meh className="h-5 w-5 text-amber-500" />;
-    return <Smile className="h-5 w-5 text-emerald-500" />;
-  };
-
   const homeworkForDate = useMemo(() => {
     return (ymd: string) => homework.filter(hw => hw.dueDate === ymd);
   }, [homework]);
@@ -224,6 +222,21 @@ export default function AgendaCalendar({
   const conferencesForDate = useMemo(() => {
     return (ymd: string) => (conferences || []).filter(cf => cf.date === ymd);
   }, [conferences]);
+
+  // Asked to show a specific day: select it, move the three-week window to
+  // the week it falls in, and bring both panels into view together.
+  useEffect(() => {
+    if (!focus?.date) return;
+    setSelectedDate(focus.date);
+    const d = new Date(`${focus.date}T00:00:00`);
+    if (!Number.isNaN(d.getTime())) setWeekCursor(mondayOf(d));
+    // After the state above has painted, otherwise the detail panel is still
+    // the empty "selecteer een datum" placeholder and centring lands wrong.
+    const id = setTimeout(() => {
+      rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
+    return () => clearTimeout(id);
+  }, [focus?.nonce, focus?.date]);
 
   const todayYmd = toYMD(new Date());
 
@@ -261,13 +274,12 @@ export default function AgendaCalendar({
     lesstructuur: lesstructuurForDate(selectedDate, new Date(selectedDate + 'T00:00:00').getDay()),
     events: eventsForDate(selectedDate),
     homework: homeworkForDate(selectedDate),
-    behavior: behaviorForDate(selectedDate),
     conferences: conferencesForDate(selectedDate),
   } : null;
   const showLoading = useMinimumLoading(loading);
   const hasSelectionData = !!(selected && (
     selected.vacation || selected.lesstructuur || selected.events.length > 0 ||
-    selected.homework.length > 0 || selected.behavior ||
+    selected.homework.length > 0 ||
     selected.conferences.length > 0
   ));
 
@@ -276,7 +288,7 @@ export default function AgendaCalendar({
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 items-start">
+    <div ref={rootRef} className="flex flex-col lg:flex-row gap-3 sm:gap-4 items-start scroll-mt-24">
     <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-2 sm:p-3 w-full lg:w-80 lg:shrink-0">
       <div className="flex items-center justify-between mb-2">
         <button
@@ -463,19 +475,6 @@ export default function AgendaCalendar({
                   </div>
                 ));
               })()}
-              {selected.behavior && (
-                <div className="flex items-start gap-2 bg-gray-50 rounded-lg p-3">
-                  <BehaviorIcon rating={selected.behavior.rating} />
-                  <div>
-                    <p className="text-xs font-semibold text-gray-600 mb-0.5">{language === 'tr' ? 'Davranış' : 'Gedrag'}</p>
-                    {selected.behavior.notes?.trim() ? (
-                      <p className="text-sm text-gray-700">{selected.behavior.notes}</p>
-                    ) : (
-                      <p className="text-xs text-gray-400">{language === 'tr' ? 'Ek açıklama yok' : 'Geen toelichting'}</p>
-                    )}
-                  </div>
-                </div>
-              )}
               {selected.homework.map(hw => {
                 const parts = (hw.description || '').split(' | ');
                 const text = language === 'tr' ? parts[0] : (parts[1] || parts[0]);

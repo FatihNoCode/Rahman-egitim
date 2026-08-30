@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Pencil, Plus, Trash2, ArrowLeft, X, Check, Frown, Meh, Smile, Circle } from 'lucide-react';
+import { Pencil, Plus, Trash2, ArrowLeft, X, Frown, Meh, Smile } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
+import StudentProfile from './StudentProfile';
 import LoadingState from './ui/LoadingState';
 import { useMinimumLoading } from '../hooks/useMinimumLoading';
 
@@ -21,6 +22,8 @@ interface Student {
   name: string;
   parentEmail?: string;
   classId?: string;
+  /** YYYY-MM-DD. Optional — the profile shows an age only when it is set. */
+  birthDate?: string | null;
 }
 
 interface StudentWithStats extends Student {
@@ -52,7 +55,6 @@ export default function ManageEntitiesView({
   const [classEditMode, setClassEditMode] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [selectedParentEmail, setSelectedParentEmail] = useState<string | null>(null);
-  const [studentDetails, setStudentDetails] = useState<any>(null);
   const [parentDetails, setParentDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const showLoadingDetails = useMinimumLoading(loadingDetails);
@@ -230,6 +232,7 @@ export default function ManageEntitiesView({
           name: editingStudent.name,
           parentEmail: editingStudent.parentEmail || null,
           classId: editingStudent.classId,
+          birthDate: editingStudent.birthDate || null,
         }),
       });
       setEditingStudent(null);
@@ -303,65 +306,12 @@ export default function ManageEntitiesView({
     }
   };
 
-  const loadStudentDetails = async (studentId: string) => {
-    setLoadingDetails(true);
-    setSelectedStudentId(studentId);
-    try {
-      const [attendanceRes, behaviorRes, homeworkRes, completionRes] = await Promise.all([
-        apiRequest(`/students/${studentId}/attendance-history`),
-        apiRequest(`/behavior/${studentId}`),
-        apiRequest(`/homework/student/${studentId}`),
-        apiRequest(`/homework/completion/${studentId}`),
-      ]);
-
-      const dataByDate: Record<string, any> = {};
-
-      if (attendanceRes.attendance) {
-        attendanceRes.attendance.forEach((record: any) => {
-          if (!dataByDate[record.date]) {
-            dataByDate[record.date] = { date: record.date, attendance: null, behavior: null, homework: [] };
-          }
-          dataByDate[record.date].attendance = record.present;
-        });
-      }
-
-      if (behaviorRes.behavior) {
-        behaviorRes.behavior.forEach((record: any) => {
-          if (!dataByDate[record.date]) {
-            dataByDate[record.date] = { date: record.date, attendance: null, behavior: null, homework: [] };
-          }
-          dataByDate[record.date].behavior = record.rating;
-        });
-      }
-
-      if (homeworkRes.homework) {
-        homeworkRes.homework.forEach((hw: any) => {
-          const dueDate = hw.dueDate.split('T')[0];
-          if (!dataByDate[dueDate]) {
-            dataByDate[dueDate] = { date: dueDate, attendance: null, behavior: null, homework: [] };
-          }
-          const completion = completionRes.completions?.[hw.id];
-          dataByDate[dueDate].homework.push({
-            ...hw,
-            completed: completion?.completed || false,
-            completedAt: completion?.completedAt || null,
-          });
-        });
-      }
-
-      // Convert to sorted array
-      const sortedData = Object.values(dataByDate).sort((a: any, b: any) =>
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
-
-      setStudentDetails(sortedData);
-    } catch (error) {
-      console.error('Error loading student details:', error);
-      notify.error(language === 'tr' ? 'Öğrenci bilgileri yüklenemedi!' : 'Kan de leerlinggegevens niet laden!');
-    } finally {
-      setLoadingDetails(false);
-    }
-  };
+  // Opening a child from the roster hands over to the shared profile — the
+  // same page the teacher's leerlingenlijst opens. This screen used to
+  // assemble its own half of that from four requests and render it as one
+  // grey card per calendar day; two screens describing the same child
+  // differently is worse than either of them.
+  const openStudent = (studentId: string) => setSelectedStudentId(studentId);
 
   const loadParentDetails = async (parentEmail: string) => {
     setLoadingDetails(true);
@@ -379,194 +329,13 @@ export default function ManageEntitiesView({
 
   // Student detail view
   if (selectedStudentId) {
-    const student = students.find(s => s.id === selectedStudentId);
-
-    // Compute summary stats from loaded records
-    const attSummary = studentDetails
-      ? studentDetails.reduce(
-          (acc: { present: number; late: number; total: number; hwDone: number; hwTotal: number; behaviorSum: number; behaviorCount: number }, d: any) => {
-            if (d.attendance === true) { acc.present++; acc.total++; }
-            else if (d.attendance === 'late') { acc.late++; acc.total++; }
-            else if (d.attendance === false) acc.total++;
-            if (d.behavior !== null) { acc.behaviorSum += d.behavior; acc.behaviorCount++; }
-            d.homework.forEach((hw: any) => { acc.hwTotal++; if (hw.completed) acc.hwDone++; });
-            return acc;
-          },
-          { present: 0, late: 0, total: 0, hwDone: 0, hwTotal: 0, behaviorSum: 0, behaviorCount: 0 }
-        )
-      : null;
-
-    const attLabel = (val: any) => {
-      if (val === true) return { label: language === 'tr' ? 'Var' : 'Aanwezig', color: 'text-emerald-600' };
-      if (val === 'late') return { label: language === 'tr' ? 'Geç' : 'Te laat', color: 'text-orange-500' };
-      if (val === false) return { label: language === 'tr' ? 'Yok' : 'Afwezig', color: 'text-red-600' };
-      return null;
-    };
-
     return (
-      <div>
-        <div className="flex items-center gap-4 mb-6">
-          <button
-            onClick={() => {
-              setSelectedStudentId(null);
-              setStudentDetails(null);
-            }}
-            className="flex items-center gap-2 text-emerald-600 hover:text-emerald-800 transition"
-          >
-            <ArrowLeft className="h-5 w-5" />
-            {text.back}
-          </button>
-          <h3 className="text-2xl font-bold text-emerald-800">{student?.name}</h3>
-        </div>
-
-        {/* Summary strip */}
-        {attSummary && (
-          <div className="grid grid-cols-4 gap-3 mb-5">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-emerald-700">{attSummary.present}/{attSummary.total}</p>
-              <p className="text-xs text-emerald-600 font-medium mt-0.5">
-                {language === 'tr' ? 'Var' : 'Aanwezig'}
-              </p>
-            </div>
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-orange-600">{attSummary.late}</p>
-              <p className="text-xs text-orange-500 font-medium mt-0.5">
-                {language === 'tr' ? 'Geç' : 'Te laat'}
-              </p>
-            </div>
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-purple-700">
-                {attSummary.behaviorCount > 0
-                  ? (attSummary.behaviorSum / attSummary.behaviorCount).toFixed(1)
-                  : '-'}
-              </p>
-              <p className="text-xs text-purple-600 font-medium mt-0.5">
-                {language === 'tr' ? 'Davranış' : 'Gedrag'}
-              </p>
-            </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-blue-700">{attSummary.hwDone}/{attSummary.hwTotal}</p>
-              <p className="text-xs text-blue-600 font-medium mt-0.5">
-                {language === 'tr' ? 'Ödev' : 'Huiswerk'}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {showLoadingDetails ? (
-          <LoadingState label={language === 'tr' ? 'Yükleniyor...' : 'Laden...'} />
-        ) :studentDetails && studentDetails.length > 0 ? (
-          <div className="space-y-4">
-            {studentDetails.map((dayData: any, index: number) => {
-              const isOverdue = new Date(dayData.date) < new Date();
-              const att = attLabel(dayData.attendance);
-              return (
-                <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
-                  <h4 className="font-semibold text-lg text-emerald-800 mb-3">
-                    {new Date(dayData.date).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </h4>
-
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    {/* Attendance */}
-                    <div className="bg-gray-50 p-3 rounded">
-                      <p className="text-sm font-medium text-gray-600 mb-1">
-                        {language === 'tr' ? 'Yoklama' : 'Aanwezigheid'}
-                      </p>
-                      {att ? (
-                        <p className={`font-semibold ${att.color}`}>{att.label}</p>
-                      ) : (
-                        <p className="text-gray-400 text-sm">-</p>
-                      )}
-                    </div>
-
-                    {/* Behavior */}
-                    <div className="bg-gray-50 p-3 rounded">
-                      <p className="text-sm font-medium text-gray-600 mb-1">
-                        {language === 'tr' ? 'Davranış' : 'Gedrag'}
-                      </p>
-                      {dayData.behavior !== null ? (
-                        <div className="flex items-center gap-2">
-                          {dayData.behavior <= 2 ? (
-                            <Frown className="h-5 w-5 text-red-500" />
-                          ) : dayData.behavior <= 4 ? (
-                            <Meh className="h-5 w-5 text-amber-500" />
-                          ) : (
-                            <Smile className="h-5 w-5 text-emerald-500" />
-                          )}
-                          <span className="font-semibold">{dayData.behavior}/5</span>
-                        </div>
-                      ) : (
-                        <p className="text-gray-400 text-sm">-</p>
-                      )}
-                    </div>
-
-                    {/* Homework status */}
-                    <div className="bg-gray-50 p-3 rounded">
-                      <p className="text-sm font-medium text-gray-600 mb-1">
-                        {language === 'tr' ? 'Ödev' : 'Huiswerk'}
-                      </p>
-                      {dayData.homework.length > 0 ? (
-                        <ul className="text-sm space-y-1">
-                          {dayData.homework.map((hw: any, idx: number) => {
-                            const hwOverdue = isOverdue && !hw.completed;
-                            return (
-                              <li key={idx} className="text-gray-700 flex items-start gap-2">
-                                <span className="flex-shrink-0">
-                                  {hw.completed ? (
-                                    <Check className="h-4 w-4 text-green-600" />
-                                  ) : hwOverdue ? (
-                                    <X className="h-4 w-4 text-red-600" />
-                                  ) : (
-                                    <Circle className="h-3.5 w-3.5 text-gray-400" />
-                                  )}
-                                </span>
-                                <span className={hw.completed ? 'line-through text-gray-500' : hwOverdue ? 'text-red-600 font-medium' : ''}>
-                                  {language === 'tr' ? hw.description.split(' | ')[0] : hw.description.split(' | ')[1] || hw.description.split(' | ')[0]}
-                                </span>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      ) : (
-                        <p className="text-gray-400 text-sm">-</p>
-                      )}
-                    </div>
-
-                    {/* Homework details */}
-                    <div className="bg-gray-50 p-3 rounded">
-                      <p className="text-sm font-medium text-gray-600 mb-1">
-                        {language === 'tr' ? 'Ödev detayı' : 'Huiswerk Details'}
-                      </p>
-                      {dayData.homework.length > 0 ? (
-                        <ul className="text-xs space-y-2">
-                          {dayData.homework.map((hw: any, idx: number) => (
-                            <li key={idx} className="text-gray-600 border-l-2 border-emerald-300 pl-2">
-                              {language === 'tr' ? hw.description.split(' | ')[0] : hw.description.split(' | ')[1] || hw.description.split(' | ')[0]}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-gray-400 text-sm">-</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <p className="text-gray-500">
-              {language === 'tr' ? 'Henüz kayıt bulunamadı' : 'Nog geen gegevens'}
-            </p>
-          </div>
-        )}
-      </div>
+      <StudentProfile
+        studentId={selectedStudentId}
+        language={language}
+        apiRequest={apiRequest}
+        onBack={() => setSelectedStudentId(null)}
+      />
     );
   }
 
@@ -962,7 +731,7 @@ export default function ManageEntitiesView({
                     )}
                     <td className="px-4 py-3 text-sm">
                       <button
-                        onClick={() => loadStudentDetails(student.id)}
+                        onClick={() => openStudent(student.id)}
                         className="text-emerald-600 hover:text-emerald-800 hover:underline font-medium text-left"
                       >
                         {student.name}
@@ -1071,6 +840,22 @@ export default function ManageEntitiesView({
                   value={editingStudent.parentEmail || ''}
                   onChange={(e) => setEditingStudent({ ...editingStudent, parentEmail: e.target.value })}
                   placeholder={language === 'tr' ? 'veli@email.com' : 'ouder@email.com'}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {language === 'tr' ? 'Doğum tarihi' : 'Geboortedatum'} ({text.optional})
+                </label>
+                {/* Optional on purpose: the school has run for years without
+                    it and a required field would block every other edit. When
+                    it is filled in, the leerlingprofiel can say how old a
+                    child is instead of leaving the reader to guess from the
+                    class. */}
+                <input
+                  type="date"
+                  value={editingStudent.birthDate || ''}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, birthDate: e.target.value || null })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>

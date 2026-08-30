@@ -5,7 +5,7 @@ import { getSupabaseClient } from '../lib/supabase';
 import LoginPage from './components/LoginPage';
 import HomePage from './components/HomePage';
 import ErrorBoundary from './components/ErrorBoundary';
-import { FeedbackHost } from './components/ui/feedback';
+import { FeedbackHost, confirmDialog } from './components/ui/feedback';
 import Spinner from './components/ui/Spinner';
 import OfflineNotice from './components/OfflineNotice';
 import { markSessionStart, clearSessionStart, isSessionExpired } from '../lib/session';
@@ -582,7 +582,11 @@ export default function App() {
     }
   }, [user, apiRequest]);
 
-  const handleLogout = async () => {
+  // The bare sign-out, with no question asked. Used by the flows that are
+  // already a decision (the session-expiry sweep below, "afmelden" on a
+  // screen the user cannot get past) rather than a button somebody can hit
+  // by accident.
+  const signOutNow = async () => {
     // Before the token is gone: detaching the device needs an authenticated
     // call, and after signOut there is nothing left to authenticate with.
     await unregisterPush(apiRequest);
@@ -597,6 +601,25 @@ export default function App() {
     setMfaChallenge(false);
   };
 
+  // What every "Uitloggen" button in the app calls. Signing out is one tap
+  // away on a phone, next to buttons people press all day, and the cost of a
+  // mis-tap is a re-login with a password most families keep in a drawer —
+  // so it asks first. Confirmed here rather than in each of the five places
+  // that render the button, so none of them can forget.
+  const handleLogout = async () => {
+    const ok = await confirmDialog({
+      title: language === 'tr' ? 'Çıkış yapılsın mı?' : 'Uitloggen?',
+      description:
+        language === 'tr'
+          ? 'Oturumunuz kapatılacak ve tekrar girmek için şifreniz gerekecek.'
+          : 'U wordt afgemeld en heeft uw wachtwoord nodig om weer in te loggen.',
+      confirmLabel: language === 'tr' ? 'Çıkış yap' : 'Uitloggen',
+      cancelLabel: language === 'tr' ? 'Vazgeç' : 'Annuleren',
+    });
+    if (!ok) return;
+    await signOutNow();
+  };
+
   // While the app is open, periodically enforce the session-lifetime cap so a
   // long-lived tab is logged out the moment it crosses the maximum age rather
   // than only on the next full reload.
@@ -604,7 +627,7 @@ export default function App() {
     if (!user) return;
     const interval = setInterval(() => {
       if (isSessionExpired()) {
-        handleLogout();
+        signOutNow();
       }
     }, 60 * 1000);
     return () => clearInterval(interval);

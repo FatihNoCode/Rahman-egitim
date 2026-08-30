@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { CheckCircle2, ChevronRight, RefreshCw } from 'lucide-react';
+import { Archive, CheckCircle2, ChevronRight, RefreshCw } from 'lucide-react';
 import { childAccent, childInitial } from './childIdentity';
 import LoadingState from './ui/LoadingState';
 import { useMinimumLoading } from '../hooks/useMinimumLoading';
@@ -38,13 +38,21 @@ export interface ActionItem {
   bodyTr: string;
   link?: string;
   count?: number;
+  /** Already read and filed — shown under "Archief" instead of at the top. */
+  dismissed?: boolean;
 }
 
 interface ActionCenterProps {
   language: 'tr' | 'nl';
   apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
-  /** '#billing' -> the billing tab, '#account' -> the account panel, … */
-  onNavigate?: (link: string) => void;
+  /**
+   * '#billing' -> the billing tab, '#account' -> the account panel, …
+   *
+   * Return true to say the entry is finished by being opened — an
+   * announcement, a reminder — and it moves to the archive. Everything else
+   * returns nothing and stays until the task behind it is actually done.
+   */
+  onNavigate?: (link: string, item: ActionItem) => boolean | void;
   /** Bumping this refetches — used after an action elsewhere resolves an item. */
   refreshKey?: number;
   /**
@@ -83,6 +91,16 @@ interface ActionCenterProps {
   footer?: ReactNode;
   /** Keep the section on screen even with no feed entries (a footer needs it). */
   alwaysShow?: boolean;
+  /**
+   * Called after an entry has been opened and dealt with, so the caller can
+   * file it away. Most entries need nothing here — they disappear when the
+   * task behind them is done. It exists for the two that have no task: an
+   * announcement and a reminder, which are finished the moment they are read.
+   *
+   * Optimistic on this side: the entry moves to the archive immediately and
+   * the request is sent in the background.
+   */
+  onDismiss?: (key: string) => void;
 }
 
 const LEVEL_STYLES: Record<Level, { border: string; dot: string }> = {
@@ -102,6 +120,7 @@ export default function ActionCenter({
   onRefresh,
   footer,
   alwaysShow = false,
+  onDismiss,
 }: ActionCenterProps) {
   const tr = language === 'tr';
   const text = tr
@@ -110,15 +129,24 @@ export default function ActionCenter({
         allClear: 'Şu anda yapmanız gereken bir şey yok.',
         refresh: 'Yenile',
         open: 'Aç',
+        archive: 'Arşiv',
+        hideArchive: 'Arşivi gizle',
       }
     : {
         title: 'Wat om uw aandacht vraagt',
         allClear: 'Er staat op dit moment niets open.',
         refresh: 'Vernieuwen',
         open: 'Openen',
+        archive: 'Archief',
+        hideArchive: 'Archief verbergen',
       };
 
   const [rawItems, setRawItems] = useState<ActionItem[]>([]);
+  const [showArchive, setShowArchive] = useState(false);
+  // Keys archived in this session. The server is the record; this is what
+  // keeps the entry from jumping back to the top between the tap and the
+  // next fetch.
+  const [justArchived, setJustArchived] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const showLoading = useMinimumLoading(loading);
   // A parent has one job on this screen and it is not diagnosing our server.
@@ -156,16 +184,25 @@ export default function ActionCenter({
   const otherChildIds = filterChildId
     ? childrenList.map((c) => c.id).filter((id) => id !== filterChildId)
     : [];
-  const items = otherChildIds.length
+  const visible = otherChildIds.length
     ? rawItems.filter((item) => {
         const haystack = `${item.key}:${item.link || ''}`;
         return !otherChildIds.some((id) => haystack.includes(id));
       })
     : rawItems;
 
+  const isArchived = (item: ActionItem) => item.dismissed || justArchived.has(item.key);
+  const items = visible.filter((item) => !isArchived(item));
+  const archived = visible.filter(isArchived);
+
+  const archive = (key: string) => {
+    setJustArchived((prev) => new Set(prev).add(key));
+    onDismiss?.(key);
+  };
+
   // Nothing to say, or nothing to say *yet* — either way, take up no room.
   if ((loading || failed) && !alwaysShow) return null;
-  if (items.length === 0 && !alwaysShow && !showAllClear) return null;
+  if (items.length === 0 && archived.length === 0 && !alwaysShow && !showAllClear) return null;
 
   const label = (item: ActionItem) => (tr ? item.titleTr : item.titleNl);
   const body = (item: ActionItem) => (tr ? item.bodyTr : item.bodyNl);
@@ -180,6 +217,64 @@ export default function ActionCenter({
     const haystack = `${item.key}:${item.link || ''}`;
     const i = childrenList.findIndex((c) => haystack.includes(c.id));
     return i < 0 ? null : { child: childrenList[i], accent: childAccent(i) };
+  };
+
+  const row = (item: ActionItem, inArchive: boolean) => {
+    const clickable = !!item.link && !!onNavigate;
+    const open = () => {
+      if (!clickable) return;
+      if (onNavigate!(item.link!, item) === true) archive(item.key);
+    };
+    return (
+      <div
+        key={item.key}
+        className={`bg-white border border-gray-200 rounded-xl ${
+          inArchive ? 'border-l-4 border-l-gray-300 opacity-80' : LEVEL_STYLES[item.level].border
+        } flex items-start gap-3 p-4`}
+      >
+        <span
+          className={`mt-2 w-2 h-2 rounded-full shrink-0 ${
+            inArchive ? 'bg-gray-300' : LEVEL_STYLES[item.level].dot
+          }`}
+        />
+        {(() => {
+          const owner = childFor(item);
+          if (!owner) return null;
+          return (
+            <span
+              title={owner.child.name}
+              className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${owner.accent.solid}`}
+            >
+              {childInitial(owner.child.name)}
+            </span>
+          );
+        })()}
+        <button
+          onClick={open}
+          disabled={!clickable}
+          className={`min-w-0 flex-1 text-left ${clickable ? 'cursor-pointer group' : 'cursor-default'}`}
+        >
+          <p className={`font-medium ${inArchive ? 'text-gray-500' : 'text-gray-800'} ${clickable ? 'group-hover:text-emerald-700' : ''}`}>
+            {label(item)}
+          </p>
+          <p className="text-sm text-gray-500 mt-1">{body(item)}</p>
+        </button>
+        {clickable && (
+          <button
+            onClick={open}
+            aria-label={text.open}
+            className={`self-center shrink-0 inline-flex items-center gap-1 text-sm font-medium px-3 py-2 rounded-lg transition ${
+              inArchive
+                ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+            }`}
+          >
+            <span className="hidden sm:inline">{text.open}</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -205,49 +300,22 @@ export default function ActionCenter({
       )}
 
       <div className="space-y-2">
-        {items.map((item) => {
-          const clickable = !!item.link && !!onNavigate;
-          return (
-            <div
-              key={item.key}
-              className={`bg-white border border-gray-200 rounded-xl ${LEVEL_STYLES[item.level].border} flex items-start gap-3 p-4`}
+        {items.map((item) => row(item, false))}
+
+        {archived.length > 0 && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowArchive((v) => !v)}
+              aria-expanded={showArchive}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-500 transition hover:bg-gray-50"
             >
-              <span className={`mt-2 w-2 h-2 rounded-full shrink-0 ${LEVEL_STYLES[item.level].dot}`} />
-              {(() => {
-                const owner = childFor(item);
-                if (!owner) return null;
-                return (
-                  <span
-                    title={owner.child.name}
-                    className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${owner.accent.solid}`}
-                  >
-                    {childInitial(owner.child.name)}
-                  </span>
-                );
-              })()}
-              <button
-                onClick={() => clickable && onNavigate!(item.link!)}
-                disabled={!clickable}
-                className={`min-w-0 flex-1 text-left ${clickable ? 'cursor-pointer group' : 'cursor-default'}`}
-              >
-                <p className={`font-medium text-gray-800 ${clickable ? 'group-hover:text-emerald-700' : ''}`}>
-                  {label(item)}
-                </p>
-                <p className="text-sm text-gray-500 mt-1">{body(item)}</p>
-              </button>
-              {clickable && (
-                <button
-                  onClick={() => onNavigate!(item.link!)}
-                  aria-label={text.open}
-                  className="self-center shrink-0 inline-flex items-center gap-1 text-sm font-medium px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition"
-                >
-                  <span className="hidden sm:inline">{text.open}</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          );
-        })}
+              <Archive className="h-3.5 w-3.5" />
+              {showArchive ? text.hideArchive : `${text.archive} (${archived.length})`}
+            </button>
+            {showArchive && <div className="mt-2 space-y-2">{archived.map((item) => row(item, true))}</div>}
+          </div>
+        )}
         {footer}
       </div>
     </div>

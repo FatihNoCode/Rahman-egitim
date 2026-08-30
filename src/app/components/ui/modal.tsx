@@ -61,7 +61,12 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      // p-3 on a phone, not p-4: the app's own scroll container uses px-3, so
+      // a 16px backdrop inset made every dialog land a few pixels narrower
+      // than the card it was opened from — small, but it reads as the page
+      // shrinking under you. Matched here so a dialog is exactly as wide as
+      // the content behind it.
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4"
       onClick={onClose}
       role="presentation"
     >

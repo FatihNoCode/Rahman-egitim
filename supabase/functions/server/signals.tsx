@@ -790,6 +790,8 @@ export interface FeedItem {
   bodyTr: string;
   link?: string;
   count?: number;
+  /** Filed in the reader's archive — see the /signals/dismiss route. */
+  dismissed?: boolean;
 }
 
 export interface FeedInput {
@@ -1629,7 +1631,12 @@ export function buildParentFeed(input: ParentFeedInput): FeedItem[] {
       titleTr: 'Planlanmış bir etkinlik var',
       bodyNl: title ? `${title} op ${event.date}.` : `Er staat een evenement gepland op ${event.date}.`,
       bodyTr: title ? `${event.date} tarihinde ${title}.` : `${event.date} tarihinde bir etkinlik planlandı.`,
-      link: '#overview',
+      // Carries the date, not just the tab. "Openen" used to point at the tab
+      // the reader was already on, so the entry could never be got rid of and
+      // sat on the home screen until the day passed. Now it scrolls the agenda
+      // into view with that day selected — the details are right there — and
+      // files the announcement in the archive on the way.
+      link: `#agenda-event:${event.date}`,
     });
   }
 

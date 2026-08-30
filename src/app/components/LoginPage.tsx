@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Lock, ArrowLeft, CheckCircle2, Circle, UserPlus, Eye, EyeOff, Clock, AlertTriangle, Sparkles } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, CheckCircle2, Circle, Eye, EyeOff, Clock, AlertTriangle } from 'lucide-react';
 import { translations } from './translations';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../../lib/supabase';
@@ -743,30 +743,6 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
             </div>
           )}
         </div>
-
-        {/* Only in the native app. On the website the header already carries
-            both of these, so repeating them at the foot of the sign-in card
-            was pure duplication. */}
-        {isAppLayout() && (
-          <>
-            <button
-              onClick={() => { window.location.href = '/elif-ba'; }}
-              className="w-full flex items-center justify-center gap-2 mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-sm transition text-sm sm:text-base"
-            >
-              <span lang="ar" dir="rtl" style={{ fontFamily: 'var(--font-arabic), serif', fontSize: 20 }}>أ ب</span>
-              {language === 'tr' ? 'Elif-Be öğren' : 'Elif-Ba leren'}
-              <Sparkles className="h-4 w-4" />
-            </button>
-
-            <button
-              onClick={() => { window.location.href = '/inschrijven'; }}
-              className="w-full flex items-center justify-center gap-2 mt-3 bg-white hover:bg-gray-50 text-emerald-700 font-semibold py-3 rounded-xl shadow-sm border border-gray-200 transition text-sm sm:text-base"
-            >
-              <UserPlus className="h-4 w-4" />
-              {language === 'tr' ? 'Çocuğumu/çocuklarımı kaydettirmek istiyorum' : 'Ik wil mijn kind(eren) inschrijven'}
-            </button>
-          </>
-        )}
 
         <div className="mt-4 flex items-center justify-center gap-2 text-xs">
           <a href="/privacy" className="text-gray-400 hover:text-gray-600 transition">

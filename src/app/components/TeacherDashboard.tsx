@@ -5,7 +5,8 @@ import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
 import { quranChapters } from '../../utils/quranData';
-import TeacherManageView from './TeacherManageView';
+import StudentsView from './StudentsView';
+import TabIntro from './ui/TabIntro';
 import AbsenceOverviewView from './AbsenceOverviewView';
 import DiplomaView from './DiplomaView';
 import AgendaCalendar from './AgendaCalendar';
@@ -71,7 +72,12 @@ interface TeacherDashboardProps {
 // at all rather than offered and then apologised for: a tab that opens a "do
 // this on a computer" card still costs a slot on a bar that has none to
 // spare.
-const DESKTOP_ONLY_TABS = ['beheer', 'diploma', 'toets'];
+// Only the diploma sheet is genuinely a desktop job now. The toets tab used
+// to be here too, but everything on it except the builder — go live, watch the
+// codes come in, mark, publish — is what a teacher does standing in the
+// classroom with a phone in their hand. The builder still sends itself to the
+// website (see ExamListView).
+const DESKTOP_ONLY_TABS = ['diploma'];
 
 /**
  * One collapsible step of the lesson registration.
@@ -148,21 +154,35 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   // request took, so a full class looked empty every time the tab opened.
   const [studentsLoading, setStudentsLoading] = useState(true);
   const showStudentsLoading = useMinimumLoading(studentsLoading);
-  const [studentsWithStats, setStudentsWithStats] = useState<any[]>([]);
+  // Every child this teacher teaches, across all of their classes — the
+  // roster tab spans them, unlike `students` above which is the one class the
+  // register is being filled in for.
+  const [rosterStudents, setRosterStudents] = useState<any[]>([]);
+  const [rosterLoading, setRosterLoading] = useState(false);
   const app = isAppLayout();
   const [activeTab, setActiveTab] = useHashTab<string>(
     'attendance',
     ['signals', 'attendance', 'meldingen', 'beheer', 'oudergesprekken', 'agenda', 'diploma', 'cases', 'toets', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   const [diplomaVisible, setDiplomaVisible] = useState(false);
+  // Grouped by what the tab is *about*, then by how often it is opened.
+  //   the lesson itself   — Start, Lesregistratie
+  //   the children        — Leerlingen, Toets
+  //   the school around it— Agenda, Ziekmeldingen, Oudergesprekken, Cases
+  //   once a year         — Diploma
+  // Leerlingen and Toets used to sit at the very bottom, behind "More", which
+  // is where a teacher was expected to find both the child's file and the
+  // marking screen.
   const [navOrder, setNavOrder] = useNavOrder('teacher', [
     'signals',
     'attendance',
+    'beheer',
+    'toets',
     'agenda',
     'meldingen',
     'oudergesprekken',
     'cases',
-    ...(app ? [] : ['toets', ...(diplomaVisible ? ['diploma'] : []), 'beheer']),
+    ...(app || !diplomaVisible ? [] : ['diploma']),
     MOBILE_PREFS_ID,
   ]);
   const [conferSessions, setConferSessions] = useState<any[]>([]);
@@ -336,8 +356,8 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
   };
 
   useEffect(() => {
-    if (activeTab === 'beheer' && students.length > 0) {
-      loadStudentStats();
+    if (activeTab === 'beheer' && rosterStudents.length === 0) {
+      loadRoster();
     }
     if (activeTab === 'oudergesprekken' || activeTab === 'agenda') {
       apiRequest('/oudergesprekken').then((d) => setConferSessions(d.sessions || [])).catch(() => {});
@@ -526,6 +546,23 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
       return;
     }
 
+    // Every child on the register, not just the ones the teacher happened to
+    // tap. A half-filled register is not a shorter register — it is one where
+    // the missing children have no answer at all, and their families were
+    // being told nothing about a lesson that was recorded as done. Saving is
+    // refused until the list is complete rather than filing the gaps as
+    // "present" behind the teacher's back.
+    const unmarked = students.filter((s) => attendanceRecords[s.id] === undefined);
+    if (unmarked.length > 0) {
+      setOpenStep(2);
+      notify.error(
+        language === 'tr'
+          ? `Şu öğrenciler için yoklama girilmedi: ${unmarked.map((s) => s.name).join(', ')}`
+          : `De aanwezigheid ontbreekt nog voor: ${unmarked.map((s) => s.name).join(', ')}`,
+      );
+      return;
+    }
+
     // Lesson summary is mandatory
     if (!lessonSummary.trim()) {
       setOpenStep(1);
@@ -691,46 +728,50 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
     }
   };
 
-  const loadStudentStats = async () => {
+  const loadRoster = async () => {
+    setRosterLoading(true);
     try {
-      const studentsWithStatsData = await Promise.all(
-        students.map(async (student: Student) => {
+      const data = await apiRequest('/students');
+      const all = data.students || [];
+      const withStats = await Promise.all(
+        all.map(async (student: Student) => {
           try {
             const statsData = await apiRequest(`/students/${student.id}/stats`);
             return {
               ...student,
               absenceCount: statsData.absenceCount || 0,
               avgBehavior: statsData.avgBehavior,
+              avgGrade: statsData.avgGrade,
             };
-          } catch (err) {
-            return { ...student, absenceCount: 0, avgBehavior: undefined };
+          } catch {
+            return { ...student, absenceCount: 0, avgBehavior: undefined, avgGrade: undefined };
           }
-        })
+        }),
       );
-      setStudentsWithStats(studentsWithStatsData);
+      setRosterStudents(withStats);
     } catch (error) {
-      console.error('Error loading student stats:', error);
+      console.error('Error loading roster:', error);
+    } finally {
+      setRosterLoading(false);
     }
   };
 
-  // Ordered most- to least-frequently used: attendance is a daily task,
-  // agenda and absence reports are checked often, conferences and roster
-  // management are comparatively occasional.
+  // Grouped by subject, then by frequency — see the navOrder comment above.
   const navItems = [
     // Start / Ana Sayfa, the same first tab every role lands on — see
     // SHARED_NAV in navPrefs. What it shows here is the teacher's day.
     sharedNavItem('home', language, 'signals'),
     { id: 'attendance', label: language === 'tr' ? 'Ders kaydı' : 'Lesregistratie', shortLabel: language === 'tr' ? 'Ders' : 'Les', icon: ClipboardList },
+    // The tab id stays `beheer` — it is in saved nav orders and in URL hashes —
+    // but nothing about the destination was ever "beheer": it opens the
+    // leerlingenlijst. Named and iconed for what it shows.
+    { id: 'beheer', label: language === 'tr' ? 'Öğrenciler' : 'Leerlingen', icon: UsersRound },
+    { id: 'toets', label: language === 'tr' ? 'Sınav' : 'Toets', icon: FileText },
     sharedNavItem('agenda', language),
     sharedNavItem('meldingen', language),
     sharedNavItem('oudergesprekken', language),
     sharedNavItem('cases', language),
-    { id: 'toets', label: language === 'tr' ? 'Sınav' : 'Toets', icon: FileText },
     ...(diplomaVisible ? [{ id: 'diploma', label: 'Diploma', icon: Award }] : []),
-    // The tab id stays `beheer` — it is in saved nav orders and in URL hashes —
-    // but nothing about the destination was ever "beheer": it opens the class
-    // roster. Named and iconed for what it shows.
-    { id: 'beheer', label: language === 'tr' ? 'Sınıflar' : 'Klassen', icon: UsersRound },
   ];
 
   // App layout: the sidebar's destinations plus Preferences become the
@@ -857,6 +898,11 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
             {/* ─── COMBINED ATTENDANCE + BEHAVIOR + HOMEWORK TAB ─── */}
             {activeTab === 'attendance' && (
               <div>
+                <TabIntro>
+                  {language === 'tr'
+                    ? 'Bir dersin kaydı: ders özeti, yoklama ve davranış, isterseniz ödev. Kaydettiğinizde veliler ders özetini görür ve devamsızlıklar işlenir.'
+                    : 'Hier legt u één les vast: de samenvatting, de aanwezigheid en het gedrag, en eventueel huiswerk. Bij opslaan zien ouders de samenvatting en worden de afwezigheden verwerkt.'}
+                </TabIntro>
                 {/* Date + Class row */}
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-4 sm:mb-6">
                   <div className="flex-1 min-w-0">
@@ -1426,38 +1472,34 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
 
             {/* ─── MELDINGEN TAB ─── */}
             {activeTab === 'meldingen' && (
+              <>
+              <TabIntro>
+                {language === 'tr'
+                  ? 'Velilerin önceden gönderdiği hastalık bildirimleri. Yoklamayı girerken bir bildirim olup olmadığını burada kontrol edebilirsiniz.'
+                  : 'De ziekmeldingen die ouders vooraf hebben doorgegeven. Hier ziet u of een afwezigheid al gemeld was toen u de aanwezigheid invulde.'}
+              </TabIntro>
               <AbsenceOverviewView
                 language={language}
                 apiRequest={apiRequest}
                 classId={selectedClass}
               />
+              </>
             )}
 
-            {/* ─── BEHEER TAB ─── */}
-            {/* A row per student with attendance, behaviour and the parent's
-                contact details side by side. That comparison across columns is
-                the whole point of the screen, and it is the first thing a
-                phone-width layout destroys. */}
+            {/* ─── LEERLINGEN TAB ─── */}
+            {/* Was a class picker leading to a wide comparison table that only
+                fitted on a desktop. It is now a searchable list of the
+                children this teacher teaches, one row each, opening the same
+                profile a beheerder opens — which reads fine on a phone, so
+                the tab no longer sends anyone to a computer. */}
             {activeTab === 'beheer' && (
-              app ? (
-                <DesktopOnly
-                  language={language}
-                  title={language === 'tr' ? 'Sınıflar' : 'Klassen'}
-                  reason={
-                    language === 'tr'
-                      ? 'Sınıflar ekranı, her öğrenci için devamsızlık, davranış ve veli bilgilerini yan yana gösterir. Bu karşılaştırma telefon ekranında kayboluyor, bu yüzden bu ekran web sitesinde kalıyor.'
-                      : 'Het klassenoverzicht zet per leerling de aanwezigheid, het gedrag en de oudergegevens naast elkaar. Juist die vergelijking gaat op een telefoonscherm verloren, dus dit scherm blijft op de website.'
-                  }
-                  tab="beheer"
-                />
-              ) : (
-                <TeacherManageView
-                  classes={classes}
-                  students={studentsWithStats}
-                  language={language}
-                  apiRequest={apiRequest}
-                />
-              )
+              <StudentsView
+                students={rosterStudents}
+                classes={classes}
+                language={language}
+                apiRequest={apiRequest}
+                loading={rosterLoading}
+              />
             )}
 
             {/* ─── OUDERGESPREKKEN TAB ─── */}
@@ -1521,9 +1563,9 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
               </div>
             )}
 
-            {/* ─── TOETS TAB ─── website only, see DESKTOP_ONLY_TABS ─── */}
-            {activeTab === 'toets' && !app && (
-              <ExamListView language={language} apiRequest={apiRequest} classes={classes} />
+            {/* ─── TOETS TAB ─── */}
+            {activeTab === 'toets' && (
+              <ExamListView language={language} apiRequest={apiRequest} classes={classes} currentUserId={user?.id || ''} />
             )}
 
             {/* ─── SIGNALS TAB ─── */}
@@ -1553,7 +1595,14 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
 
             {/* ─── CASES TAB ─── */}
             {activeTab === 'cases' && (
-              <CasesView language={language} apiRequest={apiRequest} role="teacher" currentUserId={user?.id || ''} />
+              <>
+                <TabIntro>
+                  {language === 'tr'
+                    ? 'Bir öğrenci hakkında süregelen bir dosya: tekrar eden davranış sorunları veya endişeler. Gerekirse yöneticiye iletebilirsiniz.'
+                    : 'Een lopend dossier over een leerling — terugkerend gedrag of zorgen. U kunt een case doorzetten naar de beheerder als het uw handen te boven gaat.'}
+                </TabIntro>
+                <CasesView language={language} apiRequest={apiRequest} role="teacher" currentUserId={user?.id || ''} />
+              </>
             )}
 
             {/* ─── AGENDA TAB ─── */}

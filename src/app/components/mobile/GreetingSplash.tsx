@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import logoUrl from '../../../imports/logo.svg';
+import Spinner from '../ui/Spinner';
 
 // Cold-start screen. A spinner says "wait"; a greeting typing itself out says
 // "welcome back" — and it fills exactly the same time the session check needs,
@@ -152,7 +153,10 @@ export default function GreetingSplash({ language, name, onDone }: GreetingSplas
           </p>
         )}
       </div>
-      <span className="sr-only">Yükleniyor... / Laden...</span>
+      {/* The greeting is the point of this screen, but it is still a wait —
+          the same waw every other loading state uses says so, small and under
+          the line rather than competing with it. */}
+      <Spinner size={32} label="Yükleniyor... / Laden..." />
     </div>
   );
 }

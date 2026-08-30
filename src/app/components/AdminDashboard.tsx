@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { ArrowLeft, Layers, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle, MessageCircleQuestion, Moon } from 'lucide-react';
+import { ArrowLeft, Layers, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle, MessageCircleQuestion, Moon, GraduationCap } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import booksLogo from '../../imports/logo.svg';
@@ -27,6 +27,8 @@ import RoleSwitchPill from './RoleSwitchPill';
 import DesktopOnly from './mobile/DesktopOnly';
 import CasesView from './CasesView';
 import SignalsView from './SignalsView';
+import StudentsView from './StudentsView';
+import TabIntro from './ui/TabIntro';
 import {
   useNavOrder,
   mobileExtraNavItems,
@@ -66,6 +68,8 @@ interface Student {
 interface StudentWithStats extends Student {
   absenceCount?: number;
   avgBehavior?: number;
+  /** Average published toets result, as a percentage. */
+  avgGrade?: number;
 }
 
 interface AdminDashboardProps {
@@ -89,10 +93,14 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
     // The website opens on the class register; the app doesn't have one, so it
     // lands on Start like every other role.
     app ? 'signals' : 'entities',
-    ['signals', 'entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'vragen', 'oudergesprekken', 'agenda', 'communicatie', 'cases', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
+    ['signals', 'leerlingen', 'entities', 'users', 'import', 'meldingen', 'boekhouding', 'inschrijvingen', 'vragen', 'oudergesprekken', 'agenda', 'communicatie', 'cases', 'settings', MOBILE_ACCOUNT_ID, MOBILE_PREFS_ID] as const,
   );
   const [navOrder, setNavOrder] = useNavOrder('admin', [
     'signals',
+    // Leerlingen sits high and works on a phone: "how is this child doing" is
+    // the question a beheerder is most often stopped in the hallway with, and
+    // it used to have no answer that did not start with picking a class.
+    'leerlingen',
     ...(app ? [] : DESKTOP_ONLY_TABS),
     'meldingen',
     'boekhouding',
@@ -164,7 +172,11 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
   };
 
   useEffect(() => {
-    if (activeTab === 'entities' && students.length > 0 && students[0].absenceCount === undefined) {
+    if (
+      (activeTab === 'entities' || activeTab === 'leerlingen')
+      && students.length > 0
+      && students[0].absenceCount === undefined
+    ) {
       loadStudentStats();
     }
   }, [activeTab]);
@@ -261,9 +273,10 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
               ...student,
               absenceCount: statsData.absenceCount || 0,
               avgBehavior: statsData.avgBehavior,
+              avgGrade: statsData.avgGrade,
             };
           } catch (err) {
-            return { ...student, absenceCount: 0, avgBehavior: undefined };
+            return { ...student, absenceCount: 0, avgBehavior: undefined, avgGrade: undefined };
           }
         })
       );
@@ -277,6 +290,11 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
     // Start / Ana Sayfa — the same landing tab as every other role, showing a
     // beheerder's signals rather than a parent's children.
     sharedNavItem('home', language, 'signals'),
+    // Leerlingen is the way *into* a child; Klassen beheer is the way to
+    // change the structure around them (create a class, move a group, assign
+    // a teacher). Two different jobs that used to share one tab, where the
+    // common one was buried under the rare one.
+    { id: 'leerlingen', label: language === 'tr' ? 'Öğrenciler' : 'Leerlingen', icon: GraduationCap },
     { id: 'entities', label: language === 'tr' ? 'Sınıf yönetimi' : 'Klassen beheer', shortLabel: language === 'tr' ? 'Sınıflar' : 'Klassen', icon: Layers },
     { id: 'users', label: language === 'tr' ? 'Kullanıcılar' : 'Gebruikers', icon: Users },
     { id: 'import', label: language === 'tr' ? 'İçe aktar' : 'Importeren', icon: Upload },
@@ -458,6 +476,15 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
               sideways past the edge of the screen, and both are edited far
               more comfortably sitting down. So the tab stays, and says where
               the work happens. */}
+          {activeTab === 'leerlingen' && (
+            <StudentsView
+              students={students}
+              classes={classes}
+              language={language}
+              apiRequest={apiRequest}
+            />
+          )}
+
           {activeTab === 'entities' && (
             app ? (
               <DesktopOnly
@@ -471,6 +498,12 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
                 tab="entities"
               />
             ) : (
+            <>
+            <TabIntro>
+              {language === 'tr'
+                ? 'Yapıyı burada değiştirirsiniz: sınıf açma, öğretmen atama, öğrenci ekleme ve sınıflar arasında taşıma. Tek bir öğrenciyi görmek için Öğrenciler sekmesini kullanın.'
+                : 'Hier verandert u de structuur: klassen aanmaken, een docent koppelen, leerlingen toevoegen of verplaatsen. Wilt u één leerling bekijken, gebruik dan het tabblad Leerlingen.'}
+            </TabIntro>
             <ManageEntitiesView
               classes={classes}
               teachers={teachers}
@@ -480,6 +513,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
               apiRequest={apiRequest}
               onDataChange={loadData}
             />
+            </>
             )
           )}
 
@@ -654,11 +688,18 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
           )}
 
           {activeTab === 'boekhouding' && (
+            <>
+            <TabIntro>
+              {language === 'tr'
+                ? 'Öğrenci başına okul ücreti ve diğer kalemler: kimin ne ödediği, ne kadar açık kaldığı ve hatırlatma gönderme.'
+                : 'Per leerling het schoolgeld en de overige posten: wie wat betaald heeft, wat er nog openstaat, en het versturen van herinneringen.'}
+            </TabIntro>
             <BoekhoudingView
               students={students}
               language={language}
               apiRequest={apiRequest}
             />
+            </>
           )}
 
           {activeTab === 'meldingen' && (
@@ -705,11 +746,18 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
           )}
 
           {activeTab === 'signals' && (
+            <>
+            <TabIntro>
+              {language === 'tr'
+                ? 'Bugün dikkatinizi bekleyenler: girilmemiş yoklamalar, bekleyen kayıtlar, takipsiz devamsızlıklar. Liste kendiliğinden kısalır — bir iş bitince oradan kaybolur.'
+                : 'Wat vandaag om uw aandacht vraagt: niet ingevulde presenties, wachtende inschrijvingen, afwezigheden zonder opvolging. De lijst wordt vanzelf korter — een punt verdwijnt zodra het geregeld is.'}
+            </TabIntro>
             <SignalsView
               language={language}
               apiRequest={apiRequest}
               onNavigate={(link) => setActiveTab(link.replace('#', ''))}
             />
+            </>
           )}
 
           {activeTab === 'cases' && (

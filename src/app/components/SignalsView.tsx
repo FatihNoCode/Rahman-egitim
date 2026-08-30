@@ -219,7 +219,7 @@ export default function SignalsView({ language, apiRequest, onNavigate, app = fa
   const tr = language === 'tr';
   const text = tr
     ? {
-        title: 'Bugün Dikkat Gerektirenler',
+        title: 'Bugün dikkat gerektirenler',
         intro: 'Sistem, devam, davranış, sınav ve ödev verilerini tarar ve yalnızca ilgi gerektiren durumları gösterir.',
         todo: 'Yapılacaklar',
         atRisk: 'İlgi gerektiren öğrenciler',

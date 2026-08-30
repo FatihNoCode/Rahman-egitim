@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X, Clock, Sun, PartyPopper, Calendar as CalendarIcon, BookOpen, Users } from 'lucide-react';
 import LoadingState from './ui/LoadingState';
 import { useMinimumLoading } from '../hooks/useMinimumLoading';
+import { localDay } from '../../lib/localDate';
 
 interface Lesstructuur {
   id: string;
@@ -130,7 +131,12 @@ export default function AgendaCalendar({
   // plans over, and the week in focus sits in the middle so both directions
   // are visible at once.
   const [weekCursor, setWeekCursor] = useState(() => mondayOf(new Date()));
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  // Opens on today. The panel used to start empty, showing "select a date" —
+  // under a grid where today is already outlined and is what the reader came
+  // for. That made the app's most-looked-at card a prompt to do the one thing
+  // the app could have done itself, and cost a tap every single visit. The
+  // close button still clears it, so the empty state remains reachable.
+  const [selectedDate, setSelectedDate] = useState<string | null>(() => localDay());
   // The wrapper around both panels — the month grid and the day detail — so
   // "show me this event" centres the pair rather than scrolling the detail
   // off the bottom of the screen.
@@ -474,7 +480,7 @@ export default function AgendaCalendar({
                     <div className="flex items-center gap-2 mb-1">
                       <Users className="w-4 h-4 text-teal-600 shrink-0" />
                       <p className="text-sm font-semibold text-teal-800">
-                        {language === 'tr' ? 'Veli Görüşmesi' : 'Oudergesprek'}
+                        {language === 'tr' ? 'Veli görüşmesi' : 'Oudergesprek'}
                         {className ? ` · ${className}` : ''}
                       </p>
                     </div>

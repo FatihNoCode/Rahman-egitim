@@ -52,7 +52,7 @@ export default function CasesView({ language, apiRequest, role, currentUserId }:
     intro: role === 'teacher'
       ? 'Öğrenciler hakkında bir vaka oluşturun ve gerekirse yerel yöneticiye iletin.'
       : 'Öğretmenlerin size ilettiği vakaları görüntüleyin ve durumlarını güncelleyin.',
-    newCase: 'Yeni Vaka',
+    newCase: 'Yeni vaka',
     students: 'Öğrenciler',
     parentContactHint: 'Veli e-postası ve telefonu, seçilen öğrenci(ler)e göre sistemden otomatik alınır.',
     explanation: 'Ne oldu?',
@@ -61,9 +61,9 @@ export default function CasesView({ language, apiRequest, role, currentUserId }:
     desiredActionPlaceholder: 'Ne yapılmasını istiyorsunuz?',
     parentEmail: 'Veli e-postası',
     parentPhone: 'Veli telefonu',
-    create: 'Vaka Oluştur',
+    create: 'Vaka oluştur',
     cancel: 'İptal',
-    forward: 'Yöneticiye İlet',
+    forward: 'Yöneticiye ilet',
     statusLabel: 'Durum',
     statuses: { open: 'Açık', forwarded: 'İletildi', viewed: 'Görüldü', planned: 'Planlandı', fixed: 'Çözüldü', archived: 'Arşivlendi' } as Record<string, string>,
     markViewed: 'Görüldü olarak işaretle',

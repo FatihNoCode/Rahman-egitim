@@ -83,7 +83,7 @@ const t = {
     appearanceSystem: 'Sistem',
     appearanceLight: 'Açık',
     appearanceDark: 'Koyu',
-    logout: 'Çıkış Yap',
+    logout: 'Çıkış yap',
     name: 'Ad',
     phone: 'Telefon numarası',
     save: 'Kaydet',

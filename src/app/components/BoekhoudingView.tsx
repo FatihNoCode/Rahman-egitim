@@ -5,6 +5,7 @@ import LoadError from './ui/load-error';
 import LoadingState from './ui/LoadingState';
 import { useMinimumLoading } from '../hooks/useMinimumLoading';
 import { matches } from '../../lib/search';
+import { formatEuro } from '../../lib/money';
 
 interface Student {
   id: string;
@@ -91,7 +92,7 @@ const CATEGORY_LABELS: Record<string, { nl: string; tr: string }> = {
   tas: { nl: 'Tas', tr: 'Çanta' },
   quran: { nl: 'Quran', tr: 'Kuran' },
   elifbe: { nl: 'Elif-be', tr: 'Elif-be' },
-  temel: { nl: 'Temel Bilgileri', tr: 'Temel bilgileri' },
+  temel: { nl: 'Temel bilgileri', tr: 'Temel bilgileri' },
 };
 
 interface PaymentLogEntry {
@@ -525,15 +526,15 @@ export default function BoekhoudingView({ students, classes = [], language, apiR
           <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-xl border border-gray-200 bg-white p-3">
               <p className="text-xs text-gray-500">{nl('Beklenen', 'Verwacht')}</p>
-              <p className="text-lg font-bold text-gray-800">€{totals.due.toFixed(2)}</p>
+              <p className="text-lg font-bold text-gray-800">{formatEuro(totals.due, language)}</p>
             </div>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
               <p className="text-xs text-emerald-700">{nl('Ödenen', 'Betaald')}</p>
-              <p className="text-lg font-bold text-emerald-800">€{totals.paid.toFixed(2)}</p>
+              <p className="text-lg font-bold text-emerald-800">{formatEuro(totals.paid, language)}</p>
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
               <p className="text-xs text-amber-700">{nl('Açık', 'Openstaand')}</p>
-              <p className="text-lg font-bold text-amber-800">€{totals.outstanding.toFixed(2)}</p>
+              <p className="text-lg font-bold text-amber-800">{formatEuro(totals.outstanding, language)}</p>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white p-3">
               <p className="text-xs text-gray-500">{nl('Tam ödeyen / hiç ödemeyen', 'Volledig / niets betaald')}</p>
@@ -644,18 +645,18 @@ export default function BoekhoudingView({ students, classes = [], language, apiR
                         </td>
                         <td className="border border-gray-200 px-3 py-2 text-gray-500">{r.className || '—'}</td>
                         <td className="border border-gray-200 px-3 py-2 text-right text-gray-700 whitespace-nowrap">
-                          €{r.schoolPaid.toFixed(2)} <span className="text-gray-400">/ €{r.schoolDue.toFixed(2)}</span>
+                          {formatEuro(r.schoolPaid, language)} <span className="text-gray-400">/ {formatEuro(r.schoolDue, language)}</span>
                         </td>
                         <td className="border border-gray-200 px-3 py-2 text-gray-500">
                           {r.extras.length === 0
                             ? '—'
                             : r.extras
-                                .map(e => `${categoryLabel(e.category)} €${e.paid.toFixed(2)}/€${e.due.toFixed(2)}`)
+                                .map(e => `${categoryLabel(e.category)} ${formatEuro(e.paid, language)}/${formatEuro(e.due, language)}`)
                                 .join(', ')}
                         </td>
-                        <td className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-700 whitespace-nowrap">€{r.paid.toFixed(2)}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-700 whitespace-nowrap">{formatEuro(r.paid, language)}</td>
                         <td className={`border border-gray-200 px-3 py-2 text-right font-semibold whitespace-nowrap ${r.outstanding > 0 ? 'text-amber-700' : 'text-gray-300'}`}>
-                          €{r.outstanding.toFixed(2)}
+                          {formatEuro(r.outstanding, language)}
                         </td>
                         <td className="border border-gray-200 px-3 py-2">
                           <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${statusStyle[r.status]}`}>
@@ -668,8 +669,8 @@ export default function BoekhoudingView({ students, classes = [], language, apiR
                   <tfoot>
                     <tr className="bg-emerald-700 font-semibold text-white">
                       <td colSpan={4} className="border border-emerald-700 px-3 py-2 text-right">{nl('Toplam', 'Totaal')}</td>
-                      <td className="border border-emerald-700 px-3 py-2 text-right whitespace-nowrap">€{totals.paid.toFixed(2)}</td>
-                      <td className="border border-emerald-700 px-3 py-2 text-right whitespace-nowrap">€{totals.outstanding.toFixed(2)}</td>
+                      <td className="border border-emerald-700 px-3 py-2 text-right whitespace-nowrap">{formatEuro(totals.paid, language)}</td>
+                      <td className="border border-emerald-700 px-3 py-2 text-right whitespace-nowrap">{formatEuro(totals.outstanding, language)}</td>
                       <td className="border border-emerald-700 px-3 py-2"></td>
                     </tr>
                   </tfoot>
@@ -903,7 +904,7 @@ export default function BoekhoudingView({ students, classes = [], language, apiR
                           </td>
                           <td className="border border-gray-200 px-3 py-2 font-medium text-gray-800">{studentName(entry.studentId)}</td>
                           <td className="border border-gray-200 px-3 py-2 text-gray-700">{categoryLabel(entry.category)}</td>
-                          <td className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-700">€{Number(entry.amount).toFixed(2)}</td>
+                          <td className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-700">{formatEuro(entry.amount, language)}</td>
                           <td className="border border-gray-200 px-3 py-2 text-gray-500">{entry.note || '—'}</td>
                           <td className="border border-gray-200 px-3 py-2 text-center whitespace-nowrap">
                             <button onClick={() => startEditLogEntry(entry)} className="text-gray-400 hover:text-emerald-600 mr-2" title={nl('Düzenle', 'Bewerken')}>
@@ -922,7 +923,7 @@ export default function BoekhoudingView({ students, classes = [], language, apiR
                   <tfoot>
                     <tr className="bg-emerald-700 text-white font-semibold">
                       <td colSpan={3} className="border border-emerald-700 px-3 py-2 text-right">{nl('Toplam', 'Totaal')}</td>
-                      <td className="border border-emerald-700 px-3 py-2 text-right">€{logTotal.toFixed(2)}</td>
+                      <td className="border border-emerald-700 px-3 py-2 text-right">{formatEuro(logTotal, language)}</td>
                       <td colSpan={2} className="border border-emerald-700 px-3 py-2"></td>
                     </tr>
                   </tfoot>
@@ -1016,7 +1017,7 @@ export default function BoekhoudingView({ students, classes = [], language, apiR
                   { key: 'tas', labelNl: 'Tas', labelTr: 'Çanta' },
                   { key: 'quran', labelNl: 'Quran', labelTr: 'Kuran' },
                   { key: 'elifbe', labelNl: 'Elif-be', labelTr: 'Elif-be' },
-                  { key: 'temel', labelNl: 'Temel Bilgileri', labelTr: 'Temel bilgileri' },
+                  { key: 'temel', labelNl: 'Temel bilgileri', labelTr: 'Temel bilgileri' },
                 ] as const).map(({ key, labelNl, labelTr }) => (
                   <div key={key} className="flex items-center gap-3">
                     <label className="flex-1 text-sm text-gray-600">{language === 'tr' ? labelTr : labelNl}</label>

@@ -143,7 +143,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
       {/* Create new conference */}
       <div className="bg-gray-50 p-4 sm:p-6 rounded-lg mb-6">
         <h3 className="text-lg sm:text-xl font-semibold text-emerald-800 mb-4">
-          {language === 'tr' ? 'Yeni veli görüşmesi oluştur' : 'Nieuw Oudergesprek Aanmaken'}
+          {language === 'tr' ? 'Yeni veli görüşmesi oluştur' : 'Nieuw oudergesprek aanmaken'}
         </h3>
 
         <p className="text-sm text-gray-500 mb-4">
@@ -236,7 +236,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
       <div>
         <div className="flex items-center justify-between gap-3 mb-4">
           <h3 className="text-lg sm:text-xl font-semibold text-emerald-800">
-            {language === 'tr' ? 'Mevcut veli görüşmeleri' : 'Bestaande Oudergesprekken'}
+            {language === 'tr' ? 'Mevcut veli görüşmeleri' : 'Bestaande oudergesprekken'}
           </h3>
           {sessions.length > 0 && (
             <button
@@ -246,7 +246,7 @@ export default function OudergesprekkenView({ language, apiRequest }: Oudergespr
             >
               {deletingAll
                 ? (language === 'tr' ? 'Siliniyor...' : 'Verwijderen...')
-                : (language === 'tr' ? 'Tümünü sil' : 'Alles Verwijderen')}
+                : (language === 'tr' ? 'Tümünü sil' : 'Alles verwijderen')}
             </button>
           )}
         </div>

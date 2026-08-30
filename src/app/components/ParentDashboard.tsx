@@ -23,6 +23,7 @@ import MobileNav from './mobile/MobileNav';
 import AccountPanel from './mobile/AccountPanel';
 import AccountAvatarButton from './mobile/AccountAvatarButton';
 import SettingsPanel from './mobile/SettingsPanel';
+import { formatEuro } from '../../lib/money';
 import {
   useNavOrder,
   mobileExtraNavItems,
@@ -65,7 +66,7 @@ const CATEGORY_LABELS: Record<string, { nl: string; tr: string }> = {
   tas: { nl: 'Tas', tr: 'Çanta' },
   quran: { nl: 'Quran', tr: 'Kuran' },
   elifbe: { nl: 'Elif-be', tr: 'Elif-be' },
-  temel: { nl: 'Temel Bilgileri', tr: 'Temel bilgileri' },
+  temel: { nl: 'Temel bilgileri', tr: 'Temel bilgileri' },
 };
 
 interface BoekhoudingSettings {
@@ -967,7 +968,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                         <p className="text-xs text-emerald-200 font-medium uppercase tracking-wide">
                           {language === 'tr' ? 'Toplam ödenen' : 'Totaal betaald'}
                         </p>
-                        <p className="text-2xl sm:text-3xl font-bold">€{totalPaid.toFixed(2)} <span className="text-base font-normal text-emerald-200">/ €{totalDue.toFixed(2)}</span></p>
+                        <p className="text-2xl sm:text-3xl font-bold">{formatEuro(totalPaid, language)} <span className="text-base font-normal text-emerald-200">/ {formatEuro(totalDue, language)}</span></p>
                       </div>
                     </div>
 
@@ -1001,7 +1002,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                                 </span>
                               </div>
                               <p className="text-lg font-bold text-gray-800 mt-1">
-                                €{paid.toFixed(2)} <span className="text-sm font-normal text-gray-400">/ €{due.toFixed(2)}</span>
+                                {formatEuro(paid, language)} <span className="text-sm font-normal text-gray-400">/ {formatEuro(due, language)}</span>
                               </p>
                             </div>
                           );
@@ -1018,7 +1019,28 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                           {language === 'tr' ? 'Henüz ödeme kaydı yok' : 'Nog geen betalingen geregistreerd'}
                         </p>
                       ) : (
-                        <div className="overflow-x-auto">
+                        <>
+                        {/* A four-column table on a 402pt phone had every cell
+                            wrapping mid-phrase ("Eerste" / "termijn"), which is
+                            the shape a spreadsheet takes when it is shown on
+                            something that is not a spreadsheet. On a phone the
+                            same rows read as a list; the table stays for the
+                            widths that can actually hold it. */}
+                        <ul className="space-y-2 sm:hidden">
+                          {billingPayments.map((p) => (
+                            <li key={p.id} className="rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2.5">
+                              <div className="flex items-baseline justify-between gap-3">
+                                <span className="truncate text-sm font-semibold text-gray-800">{categoryLabel(p.category)}</span>
+                                <span className="shrink-0 text-sm font-bold text-emerald-700">{formatEuro(p.amount, language)}</span>
+                              </div>
+                              <p className="mt-0.5 text-xs text-gray-400">
+                                {new Date(p.date).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')}
+                                {p.note ? ` · ${p.note}` : ''}
+                              </p>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="hidden overflow-x-auto sm:block">
                           <table className="w-full border-collapse text-sm">
                             <thead>
                               <tr className="bg-emerald-50">
@@ -1043,13 +1065,14 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                                     {new Date(p.date).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')}
                                   </td>
                                   <td className="border border-gray-200 px-3 py-2 text-gray-700">{categoryLabel(p.category)}</td>
-                                  <td className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-700">€{Number(p.amount).toFixed(2)}</td>
+                                  <td className="border border-gray-200 px-3 py-2 text-right font-semibold text-emerald-700">{formatEuro(p.amount, language)}</td>
                                   <td className="border border-gray-200 px-3 py-2 text-gray-500">{p.note || '—'}</td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
                         </div>
+                        </>
                       )}
                     </div>
                   </div>
@@ -1088,7 +1111,12 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                       }`}
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-800">{g.examName}</p>
+                        {/* Was `truncate`. The score pill is ~150px of a 340px
+                            row, so a one-line name got cut mid-word — two
+                            exams from the same series were indistinguishable
+                            ("Elif-ba ve Sure Sinavi - A..."). Two lines fit
+                            every name in the data and cost one row of height. */}
+                        <p className="line-clamp-2 text-sm font-semibold text-gray-800">{g.examName}</p>
                         <p className="text-xs text-gray-400">
                           {g.className}
                           {g.submittedAt ? ` · ${new Date(g.submittedAt).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')}` : ''}
@@ -1379,7 +1407,7 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                             onClick={() => setBookingSessionId(isExpanded ? null : session.id)}
                             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-semibold"
                           >
-                            {language === 'tr' ? 'Zaman dilimi seç' : 'Kies Tijdslot'}
+                            {language === 'tr' ? 'Zaman dilimi seç' : 'Kies tijdslot'}
                           </button>
                         )}
                       </div>

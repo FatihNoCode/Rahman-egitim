@@ -218,6 +218,14 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // The browser's own "Fill out this field" bubble was the one piece of the
+    // login screen that never spoke Dutch or Turkish, and it named no field.
+    if (!email.trim() || !password) {
+      setError(!email.trim() ? t.emailRequired : t.passwordRequired);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -481,21 +489,28 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleForgotPassword} className="space-y-4">
+              <form onSubmit={handleForgotPassword} noValidate className="space-y-4">
                 <p className="text-sm text-gray-500">
                   {language === 'tr'
                     ? 'E-posta adresinizi girin, size şifre sıfırlama bağlantısı göndereceğiz.'
                     : 'Vul uw e-mailadres in en we sturen u een link om uw wachtwoord te resetten.'}
                 </p>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t.email}</label>
+                  <label htmlFor="forgot-email" className="block text-sm font-medium text-gray-700 mb-1.5">{t.email}</label>
                   <div className="relative">
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <input
+                      id="forgot-email"
                       type="email"
                       value={forgotEmail}
                       onChange={e => setForgotEmail(e.target.value)}
                       required
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      inputMode="email"
+                      enterKeyHint="go"
                       className="w-full pl-10 pr-4 py-2.5 border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition text-sm"
                     />
                   </div>
@@ -575,53 +590,66 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
             <div className="flex-1 h-px bg-gray-200" />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-4">
+          <form onSubmit={handleSubmit} noValidate className="space-y-3.5 sm:space-y-4">
             {isSignup && (
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+                    <label htmlFor="auth-firstname" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                       {t.firstName}
                     </label>
                     <input
+                      id="auth-firstname"
                       type="text"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       required
+                      autoComplete="given-name"
+                      autoCapitalize="words"
+                      enterKeyHint="next"
                       className="w-full px-3 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+                    <label htmlFor="auth-lastname" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                       {t.lastName}
                     </label>
                     <input
+                      id="auth-lastname"
                       type="text"
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       required
+                      autoComplete="family-name"
+                      autoCapitalize="words"
+                      enterKeyHint="next"
                       className="w-full px-3 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+                  <label htmlFor="auth-phone" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                     {t.phone}
                   </label>
                   <input
+                    id="auth-phone"
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     required
+                    autoComplete="tel"
+                    inputMode="tel"
+                    enterKeyHint="next"
                     placeholder="+31 6 00000000"
                     className="w-full px-3 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+                  <label htmlFor="auth-school" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                     {language === 'tr' ? 'Lokasyon' : 'Locatie'}
                   </label>
                   <select
+                    id="auth-school"
                     value={schoolId}
                     onChange={(e) => setSchoolId(e.target.value)}
                     required
@@ -636,40 +664,54 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
               </>
             )}
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="auth-email" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                 {t.email}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
+                  id="auth-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  autoComplete={isSignup ? 'email' : 'username'}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  inputMode="email"
+                  enterKeyHint="next"
                   className="w-full pl-10 pr-4 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="auth-password" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                 {t.password}
               </label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
+                  id="auth-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={8}
+                  autoComplete={isSignup ? 'new-password' : 'current-password'}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  enterKeyHint={isSignup ? 'next' : 'go'}
                   className="w-full pl-10 pr-10 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  tabIndex={-1}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label={showPassword ? t.hidePassword : t.showPassword}
+                  aria-pressed={showPassword}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -692,24 +734,31 @@ export default function LoginPage({ onLogin, language, setLanguage, mfaChallenge
 
             {isSignup && (
               <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+                <label htmlFor="auth-confirm-password" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                   {t.confirmPassword}
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <input
+                    id="auth-confirm-password"
                     type={showConfirmPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
                     minLength={8}
+                    autoComplete="new-password"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="go"
                     className="w-full pl-10 pr-10 py-2.5 text-sm sm:text-base border border-gray-200 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword((v) => !v)}
-                    tabIndex={-1}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    aria-label={showConfirmPassword ? t.hidePassword : t.showPassword}
+                    aria-pressed={showConfirmPassword}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center text-gray-400 hover:text-gray-600"
                   >
                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>

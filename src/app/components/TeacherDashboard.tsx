@@ -1311,7 +1311,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                           <div className="bg-gray-50 p-4 rounded-lg space-y-3">
                             <div>
                               <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-                                {language === 'tr' ? 'Sure seç' : 'Selecteer Soera'}
+                                {language === 'tr' ? 'Sure seç' : 'Selecteer soera'}
                               </label>
                               <select
                                 value={selectedSurah}
@@ -1338,14 +1338,14 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                                 className="w-4 h-4"
                               />
                               <span className="text-xs sm:text-sm font-medium text-gray-700">
-                                {language === 'tr' ? 'Tüm sure' : 'Hele Soera'}
+                                {language === 'tr' ? 'Tüm sure' : 'Hele soera'}
                               </span>
                             </label>
                             {!isWholeSurah && (
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
                                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                                    {language === 'tr' ? 'Ayetten' : 'Van Ayat'}
+                                    {language === 'tr' ? 'Ayetten' : 'Van ayat'}
                                   </label>
                                   <input
                                     type="number"
@@ -1358,7 +1358,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                                 </div>
                                 <div>
                                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                                    {language === 'tr' ? 'Ayete' : 'Tot Ayat'}
+                                    {language === 'tr' ? 'Ayete' : 'Tot ayat'}
                                   </label>
                                   <input
                                     type="number"
@@ -1380,7 +1380,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                             <div className="grid grid-cols-2 gap-3">
                               <div>
                                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                                  {language === 'tr' ? 'Sayfadan' : 'Van Pagina'}
+                                  {language === 'tr' ? 'Sayfadan' : 'Van pagina'}
                                 </label>
                                 <input
                                   type="number"
@@ -1393,7 +1393,7 @@ export default function TeacherDashboard({ onLogout }: TeacherDashboardProps) {
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                                  {language === 'tr' ? 'Sayfaya (opsiyonel)' : 'Tot Pagina (optioneel)'}
+                                  {language === 'tr' ? 'Sayfaya (opsiyonel)' : 'Tot pagina (optioneel)'}
                                 </label>
                                 <input
                                   type="number"

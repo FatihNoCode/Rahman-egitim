@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { WifiOff } from 'lucide-react';
+import { Wifi, WifiOff } from 'lucide-react';
 import type { Language } from '../App';
 
 // A standing "you are offline" bar.
@@ -74,7 +74,11 @@ export default function OfflineNotice({ language }: { language: Language }) {
         } text-white`}
         style={{ animation: 'offline-drop 260ms cubic-bezier(0.32, 0.72, 0, 1)' }}
       >
-        <WifiOff className="h-4 w-4 shrink-0" />
+        {/* "Weer online" under a crossed-out wifi icon says both things at
+            once; the icon is the half people read first. */}
+        {online
+          ? <Wifi className="h-4 w-4 shrink-0" />
+          : <WifiOff className="h-4 w-4 shrink-0" />}
         <div className="min-w-0">
           <p className="text-sm font-semibold leading-tight">{online ? text.back : text.offline}</p>
           {!online && <p className="text-xs leading-tight text-white/70">{text.hint}</p>}

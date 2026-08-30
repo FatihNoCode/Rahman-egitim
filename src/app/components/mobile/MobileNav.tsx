@@ -355,7 +355,14 @@ export default function MobileNav({ items, active, onChange, language, floating 
                     strokeWidth={isActive ? 2.4 : 1.9}
                   />
                   <span
-                    className={`w-full truncate px-0.5 text-center text-[10px] font-semibold leading-none tracking-tight transition-colors duration-200 ${
+                    /* leading-none gave the line a box exactly one font-size
+                       tall, and `truncate` clips whatever leaves it. At 10px
+                       that box ends at the cap height, so in Turkish the tab
+                       bar read "Odemeler" and "Odev" — the diaereses on Ö were
+                       being sliced off the top while the same words rendered
+                       correctly everywhere else. A normal line-height gives
+                       the accents somewhere to be. */
+                    className={`w-full truncate px-0.5 text-center text-[10px] font-semibold leading-[1.3] tracking-tight transition-colors duration-200 ${
                       isActive ? 'text-emerald-700' : 'text-gray-500'
                     }`}
                   >

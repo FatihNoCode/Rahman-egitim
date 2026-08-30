@@ -48,7 +48,7 @@ const T = {
     notifications: 'Bildirimler',
     noNotifications: 'Bildirim yok',
     markAllRead: 'Tümü okundu',
-    logout: 'Çıkış Yap',
+    logout: 'Çıkış yap',
     back: 'Geri',
   },
 };

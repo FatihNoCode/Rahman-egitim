@@ -104,7 +104,7 @@ const t = {
   },
   tr: {
     langLabel: 'NL',
-    title: 'Gizlilik Politikası',
+    title: 'Gizlilik politikası',
     updated: `Son güncelleme: ${LAST_UPDATED}`,
     back: '← Geri',
     intro:

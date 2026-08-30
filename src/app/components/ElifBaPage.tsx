@@ -2843,7 +2843,7 @@ function buildStages(): Stage[] {
   const TASK_GAMES: { game: GameType; emoji: string; title: string; titleTr: string; desc: string; descTr: string }[] = [
     { game: 'listen-pick',     emoji: '👂', title: 'Luister & Kies', titleTr: 'Dinle & Seç', desc: 'Hoor de letter, kies de goede',  descTr: 'Harfi duy, doğrusunu seç' },
     { game: 'balloon-pop',     emoji: '🎈', title: 'Ballonnen!',     titleTr: 'Balonlar!',   desc: 'Pop de juiste ballon!',          descTr: 'Doğru balonu patlat!' },
-    { game: 'name-match',      emoji: '🔤', title: 'Naam Quiz',      titleTr: 'İsim Testi',  desc: 'Wat is de naam van de letter?',  descTr: 'Harfin adı ne?' },
+    { game: 'name-match',      emoji: '🔤', title: 'Naam quiz',      titleTr: 'İsim testi',  desc: 'Wat is de naam van de letter?',  descTr: 'Harfin adı ne?' },
     { game: 'whack-a-mole',    emoji: '🔨', title: 'Meppen!',        titleTr: 'Vur!',        desc: 'Sla de goede letter!',           descTr: 'Doğru harfe vur!' },
     { game: 'falling-letters', emoji: '🧺', title: 'Vangen!',        titleTr: 'Yakala!',     desc: 'Vang de vallende letters!',      descTr: 'Düşen harfleri yakala!' },
     { game: 'memory',          emoji: '🃏', title: 'Geheugen',       titleTr: 'Hafıza',      desc: 'Vind de passende paren',         descTr: 'Eşleri bul' },
@@ -2921,7 +2921,7 @@ function buildStages(): Stage[] {
   add({ id: 'c-tanwin-l', sectionId: 3, letters: B2, game: 'sign-learn', signs: TANWIN, emoji: '🎶',
     title: 'Tanwin', titleTr: 'Tenvin', description: 'An, un, in', descriptionTr: 'An, un, in' });
   add({ id: 'c-tanwin-r', sectionId: 3, letters: LETTERS, game: 'sign-read', signs: TANWIN, emoji: '🎯',
-    title: 'Tanwin Quiz', titleTr: 'Tenvin Testi', description: 'Welke tanwin zie je?', descriptionTr: 'Hangi tenvin?' });
+    title: 'Tanwin quiz', titleTr: 'Tenvin testi', description: 'Welke tanwin zie je?', descriptionTr: 'Hangi tenvin?' });
   add({ id: 'c-read-mix', sectionId: 3, letters: LETTERS, game: 'sign-read', signs: [SUKOON, SHADDA, HARAKAT_SIGNS[0], TANWIN[0]], emoji: '🧩',
     title: 'Alle tekens', titleTr: 'Tüm işaretler', description: 'Herken elk teken', descriptionTr: 'Her işareti tanı' });
 

@@ -52,7 +52,7 @@ const t = {
     genericError: 'Er is een fout opgetreden',
   },
   tr: {
-    compose: 'Yeni Mesaj',
+    compose: 'Yeni mesaj',
     sentBox: 'Gönderilenler',
     recipients: 'Alıcılar',
     selectAll: 'Tümünü seç',

@@ -580,7 +580,7 @@ export default function AdminDashboard({ onLogout, onExitAdminMode }: AdminDashb
                 <div className="bg-white rounded-xl shadow-lg p-6">
                   <h3 className="text-xl sm:text-2xl font-semibold text-emerald-800 mb-4">{t.schoolYear}</h3>
                   <div className="bg-emerald-50 p-4 rounded-lg mb-4">
-                    <p className="text-sm text-gray-600">{language === 'tr' ? 'Mevcut eğitim yılı' : 'Huidig Schooljaar'}</p>
+                    <p className="text-sm text-gray-600">{language === 'tr' ? 'Mevcut eğitim yılı' : 'Huidig schooljaar'}</p>
                     <p className="text-2xl font-bold text-emerald-800">{currentYear.name}</p>
                     <p className="text-xs text-gray-500 mt-1">
                       {language === 'tr' ? 'Başlangıç' : 'Start'}: {new Date(currentYear.startDate).toLocaleDateString()}

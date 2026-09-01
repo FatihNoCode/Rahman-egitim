@@ -331,6 +331,26 @@ export default function MobileNav({ items, active, onChange, language, floating 
                   // users need this too. Re-selecting the current tab is a
                   // no-op, so the duplicate click after a tap is harmless.
                   onClick={() => (slot.kind === 'more' ? openMore() : pick(slot.item.id))}
+                  // More is the one slot that activates on release rather than
+                  // on press, which left it depending on the track's capture
+                  // and `moved` bookkeeping to decide whether a gesture was a
+                  // tap — and on Android that bookkeeping is what a stray
+                  // `pointercancel` breaks. Opening from the button's own
+                  // pointerup gives it a trigger that owes nothing to the
+                  // track: the event reaches here first, and it only ever
+                  // fires when the finger both went down and came up on this
+                  // button. The track's pointerup/pointercancel and the
+                  // click below remain as they were; openMore is idempotent,
+                  // and closeMore already ignores anything arriving within
+                  // 400ms of an open, so a duplicate cannot close the sheet
+                  // it just opened.
+                  onPointerUp={
+                    slot.kind === 'more'
+                      ? () => {
+                          if (!moved.current && reorderIndex === null) openMore();
+                        }
+                      : undefined
+                  }
                   // min-w-0 is load-bearing twice over: without it a flex item
                   // refuses to shrink below its content, so long labels like
                   // "Oudergesprekken" widen their slot (pushing neighbours out

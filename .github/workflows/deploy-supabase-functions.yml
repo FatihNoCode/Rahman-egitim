@@ -15,7 +15,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Pinned, not `latest`. `latest` resolves through the CLI's prerelease
       # line (v2.110.0-beta.*), and a broken beta takes this deploy down with
       # it — which is exactly how the 7eef12a deploy failed while the Pages

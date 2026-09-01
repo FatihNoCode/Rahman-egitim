@@ -10576,8 +10576,9 @@ app.get("/make-server-6679cacd/exams/:id/analysis", async (c) => {
   }
 });
 
-// Published grades for one student — the parent Grades tab, and also usable
-// by the teacher/admin to see the same thing a parent sees. Only attempts
+// Published grades for one student — the parent Grades tab, and the teacher /
+// admin view of the same student. A parent gets the mark only; the
+// per-question breakdown is added for staff (see below). Only attempts
 // belonging to a *published* live session are returned: grading (or even a
 // finished review) is not visible to parents until the teacher explicitly
 // publishes it, and a grade can still be corrected afterwards since this
@@ -10588,7 +10589,8 @@ app.get("/make-server-6679cacd/students/:studentId/grades", async (c) => {
     if (error) return c.json({ error }, 401);
     const studentId = c.req.param('studentId');
     const userData = await getUserData(user.id);
-    if (userData?.role === 'parent') {
+    const isParent = userData?.role === 'parent';
+    if (isParent) {
       const childrenIds = await kv.get(`parent_children:${user.id}`) || [];
       if (!childrenIds.includes(studentId)) return c.json({ error: 'Unauthorized' }, 403);
     } else if (!['teacher', 'admin', 'superadmin'].includes(userData?.role)) {
@@ -10605,11 +10607,13 @@ app.get("/make-server-6679cacd/students/:studentId/grades", async (c) => {
       if (!exam) continue;
       const manualTotal = Object.values(a.manualScores || {}).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0);
 
-      // The per-question breakdown, not just the total. A mark on its own
-      // tells a family nothing they can help with; "three of the four gaps in
-      // soera al-Fatiha" tells them exactly what to practise this week. Sent
-      // only for a published session, which is the same gate the total is
-      // behind — so this exposes no more than the teacher already released.
+      // The per-question breakdown, for staff only. Parents get the mark and
+      // nothing under it: the questions, the answers the child gave and the
+      // points per question are a teaching record, not something a family
+      // reads. Withheld here rather than merely hidden in the parent UI, so
+      // an exam's contents never leave the server for a parent's device at
+      // all — a hidden field is still a field anyone can read off the wire,
+      // and this one is the exam paper itself.
       const perQuestion = a.perQuestion || {};
       const questions = (exam.questions || []).map((q: any) => {
         const points = Number(q.points) || 1;
@@ -10643,7 +10647,7 @@ app.get("/make-server-6679cacd/students/:studentId/grades", async (c) => {
         publishedAt: live.publishedAt || null,
         score: (a.autoScore || 0) + manualTotal,
         maxScore: (a.autoMax || 0) + (a.openMax || 0),
-        questions,
+        ...(isParent ? {} : { questions }),
       });
     }
     grades.sort((x, y) => (y.publishedAt || '').localeCompare(x.publishedAt || ''));

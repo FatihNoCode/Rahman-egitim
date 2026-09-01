@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useApp, isTestAccount } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, AlertTriangle, BarChart3, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen, CalendarDays, ChevronRight, CalendarX2 } from 'lucide-react';
+import { Euro, Moon, AlertTriangle, BarChart3, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen, CalendarDays, CalendarX2 } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
@@ -10,7 +10,7 @@ import ChildSwitcher from './ChildSwitcher';
 import RoleSwitchPill from './RoleSwitchPill';
 import HomeworkView from './HomeworkView';
 import DaySummaryPanel from './DaySummaryPanel';
-import GradeDetail, { type Grade } from './GradeDetail';
+import { type Grade } from './GradeDetail';
 import Modal from './ui/modal';
 import { notify } from './ui/feedback';
 import LoadError from './ui/load-error';
@@ -154,10 +154,6 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   // live-exam workflow. Kept separate from billing/lessons since it comes
   // from a different part of the server and loads independently per child.
   const [grades, setGrades] = useState<Grade[]>([]);
-  // Which published toets the parent has opened. A mark on its own says a
-  // child did moderately and nothing about what to practise; the questions
-  // behind it are the part a family can act on.
-  const [openGrade, setOpenGrade] = useState<Grade | null>(null);
   const [loadingGrades, setLoadingGrades] = useState(false);
   // On the website the profile form lives inside the UserMenu dropdown, so the
   // "vul uw telefoonnummer aan" task opens it through this signal.
@@ -1092,23 +1088,18 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
               </p>
             ) : (
               <div className="space-y-2">
-                <p className="text-xs text-gray-500">
-                  {language === 'tr'
-                    ? 'Soruları, verilen cevapları ve her sorunun puanını görmek için bir sınava dokunun.'
-                    : 'Tik op een toets om de vragen, de gegeven antwoorden en de punten per vraag te zien.'}
-                </p>
                 {grades.map((g) => {
                   const pct = g.maxScore > 0 ? Math.round((g.score / g.maxScore) * 100) : null;
                   const tone = pct === null ? 'bg-gray-100 text-gray-500' : pct < 50 ? 'bg-red-100 text-red-700' : pct < 70 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
-                  const hasDetail = (g.questions || []).length > 0;
                   return (
-                    <button
+                    /* A row, not a button. The per-question breakdown behind
+                       these used to open here; it is a teaching record and
+                       stays with the teacher, so a row that still looked
+                       tappable — hover, a chevron, a pointer — would only be
+                       promising something that no longer happens. */
+                    <div
                       key={`${g.examId}:${g.code}`}
-                      type="button"
-                      onClick={() => hasDetail && setOpenGrade(g)}
-                      className={`flex w-full items-center justify-between gap-3 rounded-lg border border-gray-100 p-3 text-left ${
-                        hasDetail ? 'transition hover:border-emerald-300 hover:bg-emerald-50/40' : 'cursor-default'
-                      }`}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-100 p-3 text-left"
                     >
                       <div className="min-w-0">
                         {/* Was `truncate`. The score pill is ~150px of a 340px
@@ -1122,32 +1113,14 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                           {g.submittedAt ? ` · ${new Date(g.submittedAt).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')}` : ''}
                         </p>
                       </div>
-                      <span className="flex shrink-0 items-center gap-1">
-                        <span className={`rounded-full px-3 py-1.5 text-sm font-bold ${tone}`}>
-                          {g.score} / {g.maxScore || '—'}{pct !== null ? ` (${pct}%)` : ''}
-                        </span>
-                        {hasDetail && <ChevronRight className="h-4 w-4 text-gray-300" />}
+                      <span className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-bold ${tone}`}>
+                        {g.score} / {g.maxScore || '—'}{pct !== null ? ` (${pct}%)` : ''}
                       </span>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
             )}
-
-            <Modal
-              open={!!openGrade}
-              onClose={() => setOpenGrade(null)}
-              title={openGrade?.examName}
-              subtitle={[
-                selectedChild?.name,
-                openGrade?.submittedAt
-                  ? new Date(openGrade.submittedAt).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'nl-NL')
-                  : null,
-              ].filter(Boolean).join(' · ')}
-              closeLabel={language === 'tr' ? 'Kapat' : 'Sluiten'}
-            >
-              {openGrade && <GradeDetail grade={openGrade} language={language} />}
-            </Modal>
           </div>
         )}
 

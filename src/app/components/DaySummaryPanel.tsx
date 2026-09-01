@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, BookOpen, Check, CheckCircle2, ChevronRight, FileText, Frown, Meh, Smile } from './EmojiIcons';
+import { Archive, ChevronRight } from 'lucide-react';
+import { BookOpen, Check, CheckCircle2, FileText, Frown, Meh, Smile } from './EmojiIcons';
 import Modal from './ui/modal';
 import type { HomeworkItem } from './HomeworkView';
 

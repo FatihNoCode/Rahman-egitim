@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Loader2 } from 'lucide-react';
-import { Clock, CheckCircle2 } from './EmojiIcons';
+import { Loader2, Clock, CheckCircle2 } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import booksLogo from '../../imports/logo.svg';
 import { missingWordInstruction } from './toets/examText';

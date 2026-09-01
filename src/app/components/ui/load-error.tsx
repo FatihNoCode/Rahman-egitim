@@ -1,4 +1,4 @@
-import { AlertTriangle, RefreshCw } from '../EmojiIcons';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 /**
  * What a list shows when it could not be fetched.

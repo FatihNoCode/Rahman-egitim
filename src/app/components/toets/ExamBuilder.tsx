@@ -1,6 +1,5 @@
 import { useState, useRef, useLayoutEffect } from 'react';
-import { Loader2 } from 'lucide-react';
-import { Undo2, Redo2, Plus, Trash2, GripVertical, BookOpen, Copy, ChevronUp, ChevronDown, AlertTriangle, Check, Sparkles } from '../EmojiIcons';
+import { Loader2, Undo2, Redo2, Plus, Trash2, GripVertical, BookOpen, Copy, ChevronUp, ChevronDown, AlertTriangle, Check, Sparkles } from 'lucide-react';
 import { useHistory } from './useHistory';
 import { ExamDraft, ExamQuestion, QuestionType } from './examTypes';
 import { notify } from '../ui/feedback';

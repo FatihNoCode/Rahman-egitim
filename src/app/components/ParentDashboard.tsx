@@ -1,9 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Euro, Moon, AlertTriangle, BarChart3, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen, CalendarDays, CalendarX2 } from 'lucide-react';
 import { useApp, isTestAccount } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, AlertTriangle, BarChart3, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen, CalendarDays, CalendarX2 } from './EmojiIcons';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';

@@ -1,4 +1,4 @@
-import { Info } from '../EmojiIcons';
+import { Info } from 'lucide-react';
 
 /**
  * One line saying what a destination is for.

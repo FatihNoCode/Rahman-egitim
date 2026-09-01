@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Archive, ChevronDown, ChevronUp, Check, CheckCircle2, Circle, RefreshCw, RotateCcw, TrendingDown, CalendarX, BookX, ClipboardList, History, Smile, Users } from './EmojiIcons';
+import { Archive, ChevronDown, ChevronUp, Check, CheckCircle2, Circle, RefreshCw, RotateCcw, TrendingDown, CalendarX, BookX, ClipboardList, History, Users } from 'lucide-react';
+import { Smile } from './EmojiIcons';
 
 /**
  * "Wat vraagt vandaag om aandacht" — the prioritised worklist.

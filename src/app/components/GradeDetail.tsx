@@ -1,4 +1,4 @@
-import { Check, X, PenLine } from './EmojiIcons';
+import { Check, X, PenLine } from 'lucide-react';
 
 export interface GradeQuestion {
   id: string;

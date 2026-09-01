@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Check, X, Users as UsersIcon, Search, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from './EmojiIcons';
+import { Pencil, Check, X, Users as UsersIcon, Search, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { notify } from './ui/feedback';
 import LoadError from './ui/load-error';
 import LoadingState from './ui/LoadingState';

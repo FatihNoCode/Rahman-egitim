@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldCheck } from 'lucide-react';
-import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, Sun, Moon, SunMoon } from './EmojiIcons';
+import { ShieldCheck, User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, Sun, Moon, SunMoon } from 'lucide-react';
 import { useApp, supabase } from '../App';
 import { getThemePref, setThemePref, subscribeTheme, type ThemePref } from '../../lib/theme';
 import { startTotpEnroll, confirmTotpEnroll } from '../../lib/mfaEnroll';

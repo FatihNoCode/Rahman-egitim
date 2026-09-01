@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { ArrowLeft, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle, MessageCircleQuestion, Moon, GraduationCap } from './EmojiIcons';
+import { ArrowLeft, Users, Upload, Wallet, ClipboardList, Send, Settings, AlertTriangle, MessageCircleQuestion, Moon, GraduationCap } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import booksLogo from '../../imports/logo.svg';

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Shield } from 'lucide-react';
-import { Globe, PlayCircle, Info, ChevronRight, ChevronDown, GripVertical, LayoutGrid, Lock, LifeBuoy, Share2, Copy, Trash2, Sun, Moon, SunMoon, Bell, Check } from '../EmojiIcons';
+import { Shield, Globe, PlayCircle, Info, ChevronRight, ChevronDown, GripVertical, LayoutGrid, Lock, LifeBuoy, Share2, Copy, Trash2, Sun, Moon, SunMoon, Bell, Check } from 'lucide-react';
 import { useApp } from '../../App';
 import { getThemePref, setThemePref, subscribeTheme, type ThemePref } from '../../../lib/theme';
 import { type MobileNavItem, VISIBLE_SLOTS } from './navPrefs';

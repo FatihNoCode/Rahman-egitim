@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';
 import { translations } from './translations';
-import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2, BarChart3, GraduationCap, BookOpen, CalendarCheck, Send, Activity, AlertTriangle, ExternalLink, MessageCircleQuestion, Copy, KeyRound } from './EmojiIcons';
+import { Plus, School, ArrowRight, RefreshCw, Inbox as InboxIcon, MapPin, ArrowLeft, Users, Check, X, Trash2, BarChart3, GraduationCap, BookOpen, CalendarCheck, Send, Activity, AlertTriangle, ExternalLink, MessageCircleQuestion, Copy, KeyRound } from 'lucide-react';
 import UserMenu from './UserMenu';
 import Sidebar from './Sidebar';
 import InboxView from './InboxView';

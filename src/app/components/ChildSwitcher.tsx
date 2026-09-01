@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, ChevronDown, ArrowLeftRight } from './EmojiIcons';
+import { Check, ChevronDown, ArrowLeftRight } from 'lucide-react';
 import { childAccent, childInitial } from './childIdentity';
 import type { Language } from '../App';
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, XCircle, PartyPopper } from './EmojiIcons';
+import { Eye, EyeOff, XCircle, PartyPopper } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { notify } from './ui/feedback';
 import { validatePassword } from '../../lib/password';

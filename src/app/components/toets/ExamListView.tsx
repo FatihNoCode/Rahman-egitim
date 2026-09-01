@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { BarChart2, Check, CheckCircle2, ChevronDown, Copy, FileText, Info, Pencil, Play, Plus, Printer, Radio, Send, StopCircle, Trash2, X } from '../EmojiIcons';
+import { BarChart2, Check, CheckCircle2, ChevronDown, Copy, FileText, Info, Pencil, Play, Plus, Printer, Radio, Send, StopCircle, Trash2, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import ExamBuilder from './ExamBuilder';
 import ExamPrintView from './ExamPrintView';

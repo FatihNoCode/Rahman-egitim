@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { useForceLightTheme } from '../../lib/theme';
 import SiteHeader from './SiteHeader';
-import { Mail, MessageSquare, X } from './EmojiIcons';
+import { Mail, MessageSquare, X } from 'lucide-react';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-6679cacd`;
 

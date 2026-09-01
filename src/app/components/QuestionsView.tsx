@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, MessageCircleQuestion, RefreshCw, Send, Check, Trash2, Clock, CornerDownLeft } from './EmojiIcons';
+import { Mail, MessageCircleQuestion, RefreshCw, Send, Check, Trash2, Clock, CornerDownLeft } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
 import LoadError from './ui/load-error';
 import Spinner from './ui/Spinner';

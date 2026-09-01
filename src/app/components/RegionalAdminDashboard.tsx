@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Users, School, GraduationCap, BookOpen, CalendarCheck, UserPlus, Send, ArrowLeft } from './EmojiIcons';
+import { Users, School, GraduationCap, BookOpen, CalendarCheck, UserPlus, Send, ArrowLeft } from 'lucide-react';
 import booksLogo from '../../imports/logo.svg';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';

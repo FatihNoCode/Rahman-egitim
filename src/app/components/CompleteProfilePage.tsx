@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { UserCircle2 } from './EmojiIcons';
+import { UserCircle2 } from 'lucide-react';
 import type { Language } from '../App';
 import logoUrl from '../../imports/logo.svg';
 

@@ -1,4 +1,4 @@
-import { Monitor, ExternalLink } from '../EmojiIcons';
+import { Monitor, ExternalLink } from 'lucide-react';
 import { isNative } from '../../../lib/native';
 import type { Language } from '../../App';
 

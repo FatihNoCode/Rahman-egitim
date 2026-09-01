@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Award, Download, Star, FileText, CheckCircle2, Settings2, ChevronLeft, ChevronRight, Layers } from './EmojiIcons';
+import { Award, Download, Star, FileText, CheckCircle2, Settings2, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 import { useApp } from '../App';
 import { notify } from './ui/feedback';
 import Spinner from './ui/Spinner';

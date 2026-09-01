@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Wifi, WifiOff } from './EmojiIcons';
+import { Wifi, WifiOff } from 'lucide-react';
 import type { Language } from '../App';
 
 // A standing "you are offline" bar.

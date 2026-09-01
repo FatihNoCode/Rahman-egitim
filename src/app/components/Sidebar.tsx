@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { LucideIcon } from 'lucide-react';
-import { ChevronLeft, ChevronRight } from './EmojiIcons';
+import { LucideIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export interface SidebarItem {
   id: string;

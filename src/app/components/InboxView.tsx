@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Inbox as InboxIcon, RefreshCw, Paperclip } from './EmojiIcons';
+import { Inbox as InboxIcon, RefreshCw, Paperclip } from 'lucide-react';
 import LoadError from './ui/load-error';
 import Spinner from './ui/Spinner';
 

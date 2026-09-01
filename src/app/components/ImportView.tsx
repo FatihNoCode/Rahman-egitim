@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, Upload, Plus, Trash2, Table as TableIcon, FileSpreadsheet } from './EmojiIcons';
+import { Download, Upload, Plus, Trash2, Table as TableIcon, FileSpreadsheet } from 'lucide-react';
 import { notify } from './ui/feedback';
 
 interface ImportRow {
@@ -241,7 +241,7 @@ export default function ImportView({ language, apiRequest, onDataChange }: Impor
                 r.status === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
               }`}
             >
-              {text.rowLabel} {r.row}: {r.status === 'success' ? '✅' : `❌ ${r.error}`}
+              {text.rowLabel} {r.row}: {r.status === 'success' ? '✓' : `✗ ${r.error}`}
             </div>
           ))}
         </div>

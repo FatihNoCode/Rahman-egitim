@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock } from './EmojiIcons';
+import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import LoadError from './ui/load-error';
 import LoadingState from './ui/LoadingState';
 import { useMinimumLoading } from '../hooks/useMinimumLoading';

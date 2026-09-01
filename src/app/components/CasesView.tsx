@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Send, Archive, Check, X, FolderOpen, ChevronDown, ChevronUp } from './EmojiIcons';
+import { Plus, Send, Archive, Check, X, FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { notify, confirmDialog } from './ui/feedback';
 import LoadError from './ui/load-error';
 import LoadingState from './ui/LoadingState';

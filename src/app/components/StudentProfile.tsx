@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BookOpen, Check, ChevronRight, Circle, FileText, Frown, GraduationCap, Mail, Meh, Phone, Smile, UserRound, X } from './EmojiIcons';
+import { ArrowLeft, BookOpen, Check, ChevronRight, Circle, FileText, GraduationCap, Mail, Phone, UserRound, X } from 'lucide-react';
+import { Frown, Meh, Smile } from './EmojiIcons';
 import LoadingState from './ui/LoadingState';
 import LoadError from './ui/load-error';
 import Modal from './ui/modal';

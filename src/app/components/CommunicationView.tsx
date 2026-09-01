@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Send, Paperclip, X, Inbox, Mail, CheckSquare, Square } from './EmojiIcons';
+import { Send, Paperclip, X, Inbox, Mail, CheckSquare, Square } from 'lucide-react';
 import { matchesAny } from '../../lib/search';
 import LoadError from './ui/load-error';
 import LoadingState from './ui/LoadingState';

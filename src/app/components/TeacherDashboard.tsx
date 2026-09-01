@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { Moon, ClipboardList, UsersRound, Award, Check, AlertTriangle, X, Frown, Meh, Smile, FileText, ChevronDown } from './EmojiIcons';
+import { Moon, ClipboardList, UsersRound, Award, Check, AlertTriangle, X, FileText, ChevronDown } from 'lucide-react';
+import { Frown, Meh, Smile } from './EmojiIcons';
 import booksLogo from '../../imports/logo.svg';
 import { useApp } from '../App';
 import { useHashTab } from '../useHashTab';

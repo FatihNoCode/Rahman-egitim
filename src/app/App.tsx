@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, createContext, useContext, lazy, Suspense } from 'react';
-import { Mail } from './components/EmojiIcons';
+import { Mail } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../lib/supabase';
 import LoginPage from './components/LoginPage';

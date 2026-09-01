@@ -401,7 +401,6 @@ export default function AgendaCalendar({
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-200 inline-block" />{language === 'tr' ? 'Ders günü' : 'Lesdag'}</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-amber-100 border border-amber-200 inline-block" />{language === 'tr' ? 'Tatil' : 'Vakantie'}</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-purple-100 border border-purple-200 inline-block" />{language === 'tr' ? 'Etkinlik' : 'Evenement'}</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-white border border-gray-200 inline-block" />{language === 'tr' ? 'Ders yok' : 'Geen les'}</span>
         </div>
         <div className="flex flex-wrap gap-x-2.5 gap-y-1">
           {showHomework && (

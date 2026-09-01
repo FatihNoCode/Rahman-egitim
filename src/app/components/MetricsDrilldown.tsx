@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronRight, Users, GraduationCap, CalendarDays, MessageSquare, ClipboardCheck, Building2 } from './EmojiIcons';
+import { ChevronRight, Users, GraduationCap, CalendarDays, MessageSquare, ClipboardCheck, Building2 } from 'lucide-react';
 import LoadingState from './ui/LoadingState';
 import Spinner from './ui/Spinner';
 import { useMinimumLoading } from '../hooks/useMinimumLoading';

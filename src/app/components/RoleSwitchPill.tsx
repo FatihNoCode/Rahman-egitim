@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Check, ChevronDown, Loader2, ShieldCheck, Map, Building2, GraduationCap, Users } from 'lucide-react';
+import { Loader2, ShieldCheck } from 'lucide-react';
+import { Check, ChevronDown, Map, Building2, GraduationCap, Users } from './EmojiIcons';
 import { useApp, type TestRole, type Language } from '../App';
 import { notify } from './ui/feedback';
 

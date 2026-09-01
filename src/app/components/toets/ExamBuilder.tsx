@@ -1,5 +1,6 @@
 import { useState, useRef, useLayoutEffect } from 'react';
-import { Undo2, Redo2, Plus, Trash2, GripVertical, BookOpen, Loader2, Copy, ChevronUp, ChevronDown, AlertTriangle, Check } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { Undo2, Redo2, Plus, Trash2, GripVertical, BookOpen, Copy, ChevronUp, ChevronDown, AlertTriangle, Check, Sparkles } from '../EmojiIcons';
 import { useHistory } from './useHistory';
 import { ExamDraft, ExamQuestion, QuestionType } from './examTypes';
 import { notify } from '../ui/feedback';
@@ -9,6 +10,7 @@ interface ExamBuilderProps {
   initial: ExamDraft;
   onSave: (draft: ExamDraft) => Promise<void>;
   onCancel: () => void;
+  apiRequest: (endpoint: string, options?: RequestInit) => Promise<any>;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -25,7 +27,7 @@ async function fetchAyah(surah: number, ayah: number): Promise<string | null> {
   }
 }
 
-export default function ExamBuilder({ language, initial, onSave, onCancel }: ExamBuilderProps) {
+export default function ExamBuilder({ language, initial, onSave, onCancel, apiRequest }: ExamBuilderProps) {
   const tr = language === 'tr';
   const text = {
     name: tr ? 'Sınav adı' : 'Naam toets',
@@ -37,6 +39,34 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
     timeLimit: tr ? 'Süre limiti (dakika, boş = limitsiz)' : 'Tijdslimiet (minuten, leeg = geen limiet)',
     template: tr ? 'Şablon olarak kaydet' : 'Opslaan als sjabloon',
     addQuestion: tr ? 'Soru ekle' : 'Vraag toevoegen',
+    aiTitle: tr ? 'Yapay zeka ile soru taslağı' : 'Vragen laten voorstellen',
+    aiTopic: tr ? 'Konu' : 'Onderwerp',
+    aiTopicHint: tr
+      ? 'Örnek: abdestin farzları, Fatiha suresinin anlamı'
+      : 'Bijvoorbeeld: de voorwaarden van de wassing, de betekenis van soera Al-Fatiha',
+    aiCount: tr ? 'Kaç soru' : 'Aantal vragen',
+    aiType: tr ? 'Soru türü' : 'Vraagtype',
+    aiGenerate: tr ? 'Soru öner' : 'Vragen voorstellen',
+    aiNeedTopic: tr ? 'Önce bir konu yazın' : 'Vul eerst een onderwerp in',
+    aiAdded: (n: number) =>
+      tr
+        ? `${n} soru taslağı eklendi — kontrol edip puanlarını girin.`
+        : `${n} ${n === 1 ? 'voorstel' : 'voorstellen'} toegevoegd — controleer ze en vul de punten in.`,
+    aiDisclaimer: tr
+      ? 'Taslaklar Google Gemini ile üretilir. Öğrenci bilgisi gönderilmez. Kaydetmeden önce her soruyu kontrol edin.'
+      : 'De voorstellen komen van Google Gemini. Er worden geen leerlinggegevens verstuurd. Controleer elke vraag voordat u opslaat.',
+    aiQuotaUser: tr
+      ? 'Bugünkü soru öneri hakkınız doldu. Yarın tekrar deneyin.'
+      : 'Uw dagelijkse aantal voorstellen is op. Probeer het morgen opnieuw.',
+    aiQuotaProject: tr
+      ? 'Okulun bugünkü yapay zeka hakkı doldu. Yarın tekrar deneyin.'
+      : 'Het dagelijkse tegoed van de school is op. Probeer het morgen opnieuw.',
+    aiQuotaMinute: tr
+      ? 'Çok hızlı gitti — bir dakika sonra tekrar deneyin.'
+      : 'Even te snel achter elkaar — probeer het over een minuut opnieuw.',
+    aiUnavailable: tr
+      ? 'Yapay zeka şu anda yanıt vermiyor. Sorularınızı elle ekleyebilirsiniz.'
+      : 'De AI reageert nu niet. U kunt de vragen gewoon zelf toevoegen.',
     prompt: tr ? 'Soru metni' : 'Vraagtekst',
     points: tr ? 'Puan' : 'Punten',
     pointsForQuestion: tr ? 'Bu soru kaç puan değerinde?' : 'Hoeveel punten is deze vraag waard?',
@@ -86,6 +116,13 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
   const [saving, setSaving] = useState(false);
   const [verseLoading, setVerseLoading] = useState<string | null>(null);
   const [verseInputs, setVerseInputs] = useState<Record<string, { surah: string; ayah: string; words?: string[] }>>({});
+  const [aiTopic, setAiTopic] = useState('');
+  const [aiCount, setAiCount] = useState(5);
+  // Quran-gap questions are built from the verse the teacher picks, word by
+  // word, so there is nothing for a model to draft there — the type is left
+  // out of this list rather than offered and then quietly refused.
+  const [aiType, setAiType] = useState<Exclude<QuestionType, 'qurangap'>>('mc');
+  const [aiBusy, setAiBusy] = useState(false);
 
   const spellLang = draft.language === 'tr' ? 'tr' : 'nl';
 
@@ -247,6 +284,44 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
       [options[i], options[j]] = [options[j], options[i]];
     }
     updateQuestion(q.id, { prompt, options, correct: options.indexOf(answer) });
+  };
+
+  // Draft questions land at the bottom of the toets as ordinary questions the
+  // teacher can edit, reorder or delete. They arrive without points on
+  // purpose: the save gate below already refuses a question worth nothing, so
+  // the teacher has to look at every suggestion before it can ship.
+  const generateQuestions = async () => {
+    if (!aiTopic.trim()) { notify.error(text.aiNeedTopic); return; }
+    setAiBusy(true);
+    try {
+      const res = await apiRequest('/exams/generate', {
+        method: 'POST',
+        body: JSON.stringify({
+          topic: aiTopic.trim(),
+          count: aiCount,
+          type: aiType,
+          level: draft.level,
+          language: draft.language,
+        }),
+      });
+      const incoming: ExamQuestion[] = Array.isArray(res?.questions) ? res.questions : [];
+      if (incoming.length === 0) { notify.error(text.aiUnavailable); return; }
+      set((d) => ({ ...d, questions: [...d.questions, ...incoming] }));
+      notify.success(text.aiAdded(incoming.length));
+    } catch (err: any) {
+      const code = String(err?.message || '');
+      const message =
+        code === 'AI_QUOTA_USER' ? text.aiQuotaUser
+        : code === 'AI_QUOTA_PROJECT' ? text.aiQuotaProject
+        : code === 'AI_QUOTA_MINUTE' ? text.aiQuotaMinute
+        // AI_NOT_CONFIGURED, AI_UNAVAILABLE and AI_UNPARSEABLE all mean the
+        // same thing to a teacher standing in front of a class: it is not
+        // working right now, and typing the question yourself still is.
+        : text.aiUnavailable;
+      notify.error(message);
+    } finally {
+      setAiBusy(false);
+    }
   };
 
   // Questions still missing a points value. Kept as a set so the offending
@@ -559,6 +634,55 @@ export default function ExamBuilder({ language, initial, onSave, onCancel }: Exa
       {questions.length === 0 && (
         <p className="text-sm text-gray-400 text-center py-6">{text.noQuestions}</p>
       )}
+
+      {/* Laat de AI een paar vragen voorstellen */}
+      <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-4 space-y-3">
+        <p className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+          <Sparkles className="h-3.5 w-3.5" />{text.aiTitle}
+        </p>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">{text.aiTopic}</label>
+          <input
+            value={aiTopic}
+            onChange={(e) => setAiTopic(e.target.value)}
+            placeholder={text.aiTopicHint}
+            maxLength={500}
+            lang={draft.language}
+            className={inputCls}
+          />
+        </div>
+        <div className="flex items-end gap-2 flex-wrap">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{text.aiType}</label>
+            <select
+              value={aiType}
+              onChange={(e) => setAiType(e.target.value as Exclude<QuestionType, 'qurangap'>)}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
+            >
+              {(['mc', 'yesno', 'gap', 'open'] as const).map((type) => (
+                <option key={type} value={type}>{text.types[type]}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{text.aiCount}</label>
+            <input
+              type="number" min={1} max={10} value={aiCount}
+              onChange={(e) => setAiCount(Math.min(10, Math.max(1, Number(e.target.value) || 1)))}
+              className="w-20 px-3 py-2 text-sm border border-gray-300 rounded-lg"
+            />
+          </div>
+          <button
+            onClick={generateQuestions}
+            disabled={aiBusy}
+            className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2.5 rounded-lg transition disabled:opacity-50"
+          >
+            {aiBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {text.aiGenerate}
+          </button>
+        </div>
+        <p className="text-[11px] text-gray-400">{text.aiDisclaimer}</p>
+      </div>
 
       {/* Add question */}
       <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-4">

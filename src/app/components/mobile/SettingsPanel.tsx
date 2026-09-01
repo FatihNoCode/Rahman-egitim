@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Globe, PlayCircle, Shield, Info, ChevronRight, ChevronDown, GripVertical, LayoutGrid, Lock, LifeBuoy, Share2, Copy, Trash2, Sun, Moon, SunMoon, Bell, Check } from 'lucide-react';
+import { Shield } from 'lucide-react';
+import { Globe, PlayCircle, Info, ChevronRight, ChevronDown, GripVertical, LayoutGrid, Lock, LifeBuoy, Share2, Copy, Trash2, Sun, Moon, SunMoon, Bell, Check } from '../EmojiIcons';
 import { useApp } from '../../App';
 import { getThemePref, setThemePref, subscribeTheme, type ThemePref } from '../../../lib/theme';
 import { type MobileNavItem, VISIBLE_SLOTS } from './navPrefs';
@@ -61,8 +62,8 @@ const T = {
     settingsAlt: 'Instellingen',
     notifTitle: 'Meldingen',
     notifHint: 'Hoe wij u op de hoogte brengen',
-    notifEmail: 'E-mail (standaard)',
-    notifInapp: 'In de app',
+    notifEmail: 'E-mail',
+    notifInapp: 'In de app (standaard)',
     notifBoth: 'Beide',
     notifSaved: 'Opgeslagen',
     notifFailed: 'Opslaan mislukt',
@@ -110,8 +111,8 @@ const T = {
     settingsAlt: 'Ayarlar',
     notifTitle: 'Bildirimler',
     notifHint: 'Sizi nasıl haberdar edelim',
-    notifEmail: 'E-posta (varsayılan)',
-    notifInapp: 'Uygulama içi',
+    notifEmail: 'E-posta',
+    notifInapp: 'Uygulama içi (varsayılan)',
     notifBoth: 'Her ikisi',
     notifSaved: 'Kaydedildi',
     notifFailed: 'Kaydedilemedi',
@@ -237,7 +238,7 @@ export default function SettingsPanel({
   // screen for *who you are* — a delivery preference and a permanent deletion
   // are settings, and this is the settings screen.
   const [notifPref, setNotifPref] = useState<'email' | 'inapp' | 'both'>(
-    ((user as any)?.notificationPref as any) || 'email',
+    ((user as any)?.notificationPref as any) || 'inapp',
   );
   const [notifSaved, setNotifSaved] = useState(false);
   const showNotifPref = user?.role === 'parent' || user?.role === 'teacher';

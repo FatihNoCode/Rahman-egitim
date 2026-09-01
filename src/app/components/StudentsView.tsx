@@ -1,18 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ChevronRight,
-  Frown,
-  Layers,
-  Meh,
-  Pencil,
-  Plus,
-  Search,
-  Smile,
-  SlidersHorizontal,
-  Trash2,
-  UserPlus,
-  X,
-} from 'lucide-react';
+import { ChevronRight, Frown, Layers, Meh, Pencil, Plus, Search, Smile, SlidersHorizontal, Trash2, UserPlus, X } from './EmojiIcons';
 import StudentProfile from './StudentProfile';
 import LoadingState from './ui/LoadingState';
 import TabIntro from './ui/TabIntro';

@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  CalendarCheck, MessageCircle, GraduationCap, Bell,
-} from 'lucide-react';
+import { CalendarCheck, MessageCircle, GraduationCap, Bell } from './EmojiIcons';
 import type { Language } from '../App';
 import { useForceLightTheme } from '../../lib/theme';
 import SiteHeader from './SiteHeader';

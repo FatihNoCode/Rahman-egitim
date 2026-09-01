@@ -1,22 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  BarChart2,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  Copy,
-  FileText,
-  Info,
-  Pencil,
-  Play,
-  Plus,
-  Printer,
-  Radio,
-  Send,
-  StopCircle,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { BarChart2, Check, CheckCircle2, ChevronDown, Copy, FileText, Info, Pencil, Play, Plus, Printer, Radio, Send, StopCircle, Trash2, X } from '../EmojiIcons';
 import QRCode from 'qrcode';
 import ExamBuilder from './ExamBuilder';
 import ExamPrintView from './ExamPrintView';
@@ -418,7 +401,7 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
   }
 
   if (mode.view === 'edit') {
-    return <ExamBuilder language={language} initial={mode.exam} onSave={saveExam} onCancel={() => setMode({ view: 'list' })} />;
+    return <ExamBuilder language={language} initial={mode.exam} onSave={saveExam} onCancel={() => setMode({ view: 'list' })} apiRequest={apiRequest} />;
   }
 
   // ── Nakijken ────────────────────────────────────────────────────────────

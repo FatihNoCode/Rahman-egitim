@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, createContext, useContext, lazy, Suspense } from 'react';
-import { Mail } from 'lucide-react';
+import { Mail } from './components/EmojiIcons';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../lib/supabase';
 import LoginPage from './components/LoginPage';
@@ -12,6 +12,7 @@ import { markSessionStart, clearSessionStart, isSessionExpired } from '../lib/se
 import { isNative, isAppLayout, NATIVE_AUTH_REDIRECT } from '../lib/native';
 import { logAction, logError } from '../lib/deviceLog';
 import { initPush, unregisterPush, takePendingPushLink } from '../lib/push';
+import { primeBootData, takeBootData, clearBootData } from '../lib/bootPrefetch';
 import GreetingSplash, { rememberGreeting, forgetGreeting } from './components/mobile/GreetingSplash';
 import logoUrl from '../imports/logo.svg';
 
@@ -187,6 +188,10 @@ function prefetchDashboard() {
   // Swallow failures: this is a head start, not a dependency. If it fails the
   // real lazy() import below retries and surfaces the error properly.
   void load?.().catch(() => {});
+  // The chunk was only ever half the wait. Ask for the data the dashboard
+  // opens with at the same time, so the greeting covers that too instead of
+  // handing over to a spinner the moment it finishes.
+  primeBootData(API_BASE, role);
 }
 
 // The chosen language, kept across launches. Without this the app reset to
@@ -298,6 +303,15 @@ export default function App() {
   // Stable across renders so it can be depended on from a child's effect
   // without re-firing that effect on every unrelated App state change.
   const apiRequest = useCallback(async (endpoint: string, options: RequestInit = {}) => {
+    // Boot may already have asked for this while the greeting was on screen
+    // (see primeBootData). Only for a plain read of the account's own scope:
+    // anything with a method, a body or an acting school is a different
+    // request than the one that was prefetched.
+    if (!options.method && !options.body && !actingSchoolId) {
+      const prefetched = await takeBootData(endpoint);
+      if (prefetched !== undefined) return prefetched;
+    }
+
     // Prefer the live Supabase session token (auto-refreshed) so long
     // sessions don't fail with an expired token; fall back to state/anon.
     let token = accessToken || publicAnonKey;
@@ -546,6 +560,8 @@ export default function App() {
       body: JSON.stringify({ role }),
     });
     if (data.user) {
+      // The new role sees different data; a leftover prefetch is the old one.
+      clearBootData();
       setActingSchoolId(null);
       setViewMode('superadmin');
       setMfaChallenge(false);
@@ -591,6 +607,8 @@ export default function App() {
     // call, and after signOut there is nothing left to authenticate with.
     await unregisterPush(apiRequest);
     await supabase.auth.signOut();
+    // Anything prefetched at boot belongs to the session that just ended.
+    clearBootData();
     clearSessionStart();
     forgetGreeting();
     rememberRole(null);
@@ -615,6 +633,9 @@ export default function App() {
           : 'U wordt afgemeld en heeft uw wachtwoord nodig om weer in te loggen.',
       confirmLabel: language === 'tr' ? 'Çıkış yap' : 'Uitloggen',
       cancelLabel: language === 'tr' ? 'Vazgeç' : 'Annuleren',
+      // Red, not the default black: the button that ends the session should
+      // not look like the button that confirms a save.
+      destructive: true,
     });
     if (!ok) return;
     await signOutNow();

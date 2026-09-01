@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Settings, X, Check, Trash2, Plus, Pencil, BellRing, ListOrdered, Users, Search } from 'lucide-react';
+import { Settings, X, Check, Trash2, Plus, Pencil, BellRing, ListOrdered, Users, Search } from './EmojiIcons';
 import { notify, confirmDialog } from './ui/feedback';
 import LoadError from './ui/load-error';
 import LoadingState from './ui/LoadingState';

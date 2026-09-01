@@ -556,9 +556,12 @@ async function createNotification(userId: string, opts: {
 }
 
 // Delivers a notification to a user via the channel(s) they opted into:
-// 'email' (default), 'inapp' (bell only) or 'both'. New features should
-// route through this instead of calling createNotification/sendEmail
-// directly, so the user's preference is always honoured.
+// 'inapp' (default: the bell entry plus a push to their phone), 'email' or
+// 'both'. New features should route through this instead of calling
+// createNotification/sendEmail directly, so the user's preference is always
+// honoured. The default is in-app because a push lands on the phone the
+// moment it happens and opens straight onto the message; mail is the
+// opt-in for people who would rather read it in their inbox.
 async function notifyUser(userId: string, opts: {
   type: string;
   titleNl: string;
@@ -571,7 +574,7 @@ async function notifyUser(userId: string, opts: {
 }) {
   const userRecord = await kv.get(`user:${userId}`);
   if (!userRecord) return;
-  const pref = userRecord.notificationPref || 'email';
+  const pref = userRecord.notificationPref || 'inapp';
   if (pref === 'inapp' || pref === 'both') {
     await createNotification(userId, opts);
   } else {
@@ -5137,6 +5140,230 @@ function autoGradeAnswers(exam: any, answers: Record<string, any>) {
 }
 
 const EXAM_LEVELS = ['hazirlik', 'TB1', 'TB2', 'TB3'];
+
+// ── AI question drafting (Gemini) ───────────────────────────────────────
+// Teachers can ask for draft questions on a topic instead of typing every one
+// by hand. The scope is deliberately narrow: the model is sent the teacher's
+// topic, the level and the language, and nothing else — no pupil name, mark,
+// attendance record or anything else out of the school's data ever reaches
+// Google. That is what makes the free tier acceptable here, because free-tier
+// content is used to improve Google's models.
+//
+// That tier is metered per project (15 requests/minute, 500/day), so the
+// budget is rationed here rather than discovered as a 429 in a teacher's
+// face: a per-teacher daily allowance, a project-wide daily ceiling that
+// leaves headroom under Google's, and a per-minute gate.
+const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const AI_PER_TEACHER_PER_DAY = 20;
+const AI_PROJECT_PER_DAY = 400;   // of 500 free RPD — headroom for retries
+const AI_PROJECT_PER_MINUTE = 10; // of 15 free RPM
+
+// Google's daily quota rolls over at midnight Pacific, so the counter is keyed
+// to that day and not to ours. An Amsterdam-keyed counter would reset nine
+// hours early and hand out an allowance Google has not actually restored yet.
+function pacificDay(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+}
+
+type AiBudget = { ok: true } | { ok: false; reason: 'user' | 'project' | 'minute' };
+
+async function claimAiBudget(userId: string): Promise<AiBudget> {
+  const day = pacificDay();
+  const minute = Math.floor(Date.now() / 60000);
+  const userKey = `ai_quota:user:${userId}:${day}`;
+  const dayKey = `ai_quota:project:${day}`;
+  const minKey = `ai_quota:minute:${minute}`;
+
+  const [userUsed, projectUsed, minuteUsed] = await kv.mget([userKey, dayKey, minKey]);
+
+  if ((userUsed || 0) >= AI_PER_TEACHER_PER_DAY) return { ok: false, reason: 'user' };
+  if ((projectUsed || 0) >= AI_PROJECT_PER_DAY) return { ok: false, reason: 'project' };
+  if ((minuteUsed || 0) >= AI_PROJECT_PER_MINUTE) return { ok: false, reason: 'minute' };
+
+  // Read-then-write rather than an atomic increment: two teachers pressing
+  // generate in the same instant can read the same count and each spend the
+  // same slot. At this volume the worst case is a request or two over the
+  // line, and the headroom under Google's real limit absorbs it — an exact
+  // counter here would cost a stored procedure for no practical gain.
+  await kv.mset(
+    [userKey, dayKey, minKey],
+    [(userUsed || 0) + 1, (projectUsed || 0) + 1, (minuteUsed || 0) + 1],
+  );
+  return { ok: true };
+}
+
+// The Interactions API nests its output differently per model and revision,
+// so rather than hard-coding one path this collects every `text` field it can
+// reach. If Google reshapes the envelope again this keeps working; if it
+// stops working the raw body is logged, which is what a path-specific reader
+// would have failed to give us.
+function extractGeminiText(payload: any): string {
+  if (typeof payload?.output_text === 'string') return payload.output_text;
+  const chunks: string[] = [];
+  const walk = (node: any, depth: number) => {
+    if (!node || typeof node !== 'object' || depth > 8) return;
+    if (Array.isArray(node)) { for (const n of node) walk(n, depth + 1); return; }
+    if (typeof node.text === 'string') chunks.push(node.text);
+    for (const value of Object.values(node)) walk(value, depth + 1);
+  };
+  walk(payload, 0);
+  return chunks.join('\n');
+}
+
+// Models wrap JSON in prose or a ```json fence often enough that trusting a
+// bare JSON.parse would fail on a good answer.
+function parseJsonArray(text: string): any[] | null {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = fenced ? fenced[1] : text;
+  const start = candidate.indexOf('[');
+  const end = candidate.lastIndexOf(']');
+  if (start === -1 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(candidate.slice(start, end + 1));
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+const AI_QUESTION_TYPES = ['mc', 'yesno', 'gap', 'open'];
+
+// Whatever the model returns is treated as a suggestion, not as data: every
+// field is rebuilt into the shape the builder expects, and a question that
+// does not survive validation is dropped rather than shown half-formed. The
+// teacher still sets the points and still has to press save — a generated
+// question is a draft in the editor, never a saved toets.
+function normaliseGeneratedQuestion(raw: any, type: string): any | null {
+  const prompt = String(raw?.prompt || '').trim().slice(0, 1000);
+  if (!prompt) return null;
+  const base = { id: crypto.randomUUID().slice(0, 8), type, prompt, points: null as number | null };
+
+  if (type === 'mc') {
+    const options = (Array.isArray(raw?.options) ? raw.options : [])
+      .map((o: any) => String(o || '').trim().slice(0, 300))
+      .filter((o: string) => o)
+      .slice(0, 6);
+    if (options.length < 2) return null;
+    const correct = (Array.isArray(raw?.correct) ? raw.correct : [raw?.correct])
+      .map((i: any) => Number(i))
+      .filter((i: number) => Number.isInteger(i) && i >= 0 && i < options.length);
+    if (correct.length === 0) return null;
+    return { ...base, options, correct: [...new Set(correct)] };
+  }
+  if (type === 'yesno') {
+    if (typeof raw?.correct !== 'boolean') return null;
+    return { ...base, correct: raw.correct };
+  }
+  if (type === 'gap') {
+    const answer = String(raw?.correct || '').trim().slice(0, 200);
+    // Without the blank the question reads as a statement and the pupil has
+    // nothing to fill in, so a missing ___ is a broken question, not a style
+    // problem.
+    if (!answer || !prompt.includes('___')) return null;
+    return { ...base, correct: answer };
+  }
+  return base; // open
+}
+
+app.post("/make-server-6679cacd/exams/generate", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'teacher' && userData?.role !== 'admin') {
+      return c.json({ error: 'Only teachers can generate questions' }, 403);
+    }
+
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) return c.json({ error: 'AI_NOT_CONFIGURED' }, 503);
+
+    const body = await c.req.json();
+    const topic = String(body?.topic || '').trim().slice(0, 500);
+    if (!topic) return c.json({ error: 'TOPIC_REQUIRED' }, 400);
+    const count = Math.min(Math.max(Number(body?.count) || 5, 1), 10);
+    const type = AI_QUESTION_TYPES.includes(body?.type) ? body.type : 'mc';
+    const level = EXAM_LEVELS.includes(body?.level) ? body.level : 'hazirlik';
+    const language = body?.language === 'nl' ? 'nl' : 'tr';
+
+    // The reason travels in the error code itself: the client's apiRequest
+    // helper surfaces `data.error` and drops every sibling field, so a separate
+    // `reason` would never reach the teacher who needs to know whether to wait
+    // a minute or come back tomorrow.
+    const budget = await claimAiBudget(user.id);
+    if (!budget.ok) return c.json({ error: `AI_QUOTA_${budget.reason.toUpperCase()}` }, 429);
+
+    const shape = {
+      mc: '{"prompt": "de vraag", "options": ["a", "b", "c", "d"], "correct": [0]}',
+      yesno: '{"prompt": "de stelling", "correct": true}',
+      gap: '{"prompt": "een zin met ___ op de plek van het ontbrekende woord", "correct": "het ontbrekende woord"}',
+      open: '{"prompt": "de open vraag"}',
+    }[type];
+
+    const languageName = language === 'nl' ? 'Dutch' : 'Turkish';
+    const levelName = {
+      hazirlik: 'preparatory year (youngest pupils, roughly age 6-8)',
+      TB1: 'year 1 (roughly age 8-10)',
+      TB2: 'year 2 (roughly age 10-12)',
+      TB3: 'year 3 (roughly age 12-14)',
+    }[level];
+
+    const prompt = [
+      `You write exam questions for an Islamic weekend school.`,
+      `Write exactly ${count} questions about: ${topic}`,
+      `Level: ${levelName}. Write every question and every answer option in ${languageName}.`,
+      `Keep the language simple enough for that age group.`,
+      `Only use facts that are widely agreed; avoid contested points of jurisprudence.`,
+      `Return ONLY a JSON array, no prose and no markdown fence, where each element looks exactly like:`,
+      shape,
+    ].join('\n');
+
+    let response: Response;
+    try {
+      response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          model: GEMINI_MODEL,
+          input: prompt,
+          generation_config: { temperature: 0.7, max_output_tokens: 4096 },
+        }),
+        signal: AbortSignal.timeout(45000),
+      });
+    } catch (err) {
+      console.log('Gemini request failed:', err);
+      return c.json({ error: 'AI_UNAVAILABLE' }, 502);
+    }
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      console.log('Gemini error', response.status, JSON.stringify(payload).slice(0, 800));
+      // Google's own rate limit rather than ours: the local budget said yes,
+      // so report it as the temporary condition it is instead of a failure
+      // the teacher could have avoided.
+      if (response.status === 429) return c.json({ error: 'AI_QUOTA_PROJECT' }, 429);
+      return c.json({ error: 'AI_UNAVAILABLE' }, 502);
+    }
+
+    const text = extractGeminiText(payload);
+    const rows = parseJsonArray(text);
+    if (!rows) {
+      console.log('Gemini unparseable response:', JSON.stringify(payload).slice(0, 1500));
+      return c.json({ error: 'AI_UNPARSEABLE' }, 502);
+    }
+
+    const questions = rows
+      .map((row: any) => normaliseGeneratedQuestion(row, type))
+      .filter((q: any) => q)
+      .slice(0, count);
+
+    if (questions.length === 0) return c.json({ error: 'AI_UNPARSEABLE' }, 502);
+    return c.json({ questions });
+  } catch (err) {
+    console.log('Generate questions error:', err);
+    return c.json({ error: 'Failed to generate questions' }, 500);
+  }
+});
+
 
 app.post("/make-server-6679cacd/exams", async (c) => {
   try {

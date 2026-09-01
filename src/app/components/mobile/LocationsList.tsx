@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { MapPin, Search } from 'lucide-react';
+import { MapPin, Search } from '../EmojiIcons';
 import type { LocationRecord } from '../LocationsMap';
 import { matchesAny } from '../../../lib/search';
 

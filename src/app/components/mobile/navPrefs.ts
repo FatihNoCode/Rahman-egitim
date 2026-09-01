@@ -1,13 +1,6 @@
 import { useEffect, useState } from 'react';
-import {
-  BellRing,
-  CalendarDays,
-  FolderOpen,
-  Home,
-  MessageSquare,
-  SlidersHorizontal,
-  type LucideIcon,
-} from 'lucide-react';
+import { type LucideIcon } from 'lucide-react';
+import { BellRing, CalendarDays, FolderOpen, Home, MessageSquare, SlidersHorizontal } from '../EmojiIcons';
 
 export interface MobileNavItem {
   id: string;

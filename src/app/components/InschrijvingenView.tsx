@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Phone, User, Calendar, Tag, ChevronDown, ChevronUp, RefreshCw, MessageCircleQuestion, Archive, Undo2 } from 'lucide-react';
+import { Mail, Phone, User, Calendar, Tag, ChevronDown, ChevronUp, RefreshCw, MessageCircleQuestion, Archive, Undo2 } from './EmojiIcons';
 import { notify } from './ui/feedback';
 import LoadError from './ui/load-error';
 import Spinner from './ui/Spinner';
@@ -383,7 +383,7 @@ export default function InschrijvingenView({ language, apiRequest, classes }: In
                                 }`}
                               >
                                 {language === 'tr' ? info.tr : info.nl}
-                                {active && ' ✓'}
+                                {active && ' ✅'}
                               </button>
                             );
                           })}

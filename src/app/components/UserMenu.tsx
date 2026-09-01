@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, ShieldCheck, Sun, Moon, SunMoon } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
+import { User as UserIcon, LogOut, Bell, Pencil, X, Check, Trash2, Sun, Moon, SunMoon } from './EmojiIcons';
 import { useApp, supabase } from '../App';
 import { getThemePref, setThemePref, subscribeTheme, type ThemePref } from '../../lib/theme';
 import { startTotpEnroll, confirmTotpEnroll } from '../../lib/mfaEnroll';
@@ -170,7 +171,7 @@ export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuPr
   const [editPhone, setEditPhone] = useState('');
   const [editSignature, setEditSignature] = useState<string | null>(user?.signature || null);
   const [editNotificationPref, setEditNotificationPref] = useState<'email' | 'inapp' | 'both'>(
-    ((user as any)?.notificationPref as any) || 'email'
+    ((user as any)?.notificationPref as any) || 'inapp'
   );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -324,7 +325,7 @@ export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuPr
     setEditName(user?.name || '');
     setEditPhone((user as any)?.phone || '');
     setEditSignature(user?.signature || null);
-    setEditNotificationPref(((user as any)?.notificationPref as any) || 'email');
+    setEditNotificationPref(((user as any)?.notificationPref as any) || 'inapp');
   };
 
   // Zero is the initial value and means "nobody asked" — only a bump counts,
@@ -565,8 +566,8 @@ export default function UserMenu({ onLogout, openProfileSignal = 0 }: UserMenuPr
                     </label>
                     <div className="space-y-1.5">
                       {([
-                        ['email', language === 'tr' ? 'E-posta (varsayılan)' : 'E-mail (standaard)'],
-                        ['inapp', language === 'tr' ? 'Uygulama içi' : 'In de app'],
+                        ['inapp', language === 'tr' ? 'Uygulama içi (varsayılan)' : 'In de app (standaard)'],
+                        ['email', language === 'tr' ? 'E-posta' : 'E-mail'],
                         ['both', language === 'tr' ? 'Her ikisi' : 'Beide'],
                       ] as const).map(([value, label]) => (
                         <label key={value} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">

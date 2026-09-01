@@ -88,13 +88,15 @@ const DISCARD_INDEX_KEYS = [
  * 1 — one whole school per tester. Left six identically named lestypes under
  *     the demo mosque, and the ids in such a sandbox point at a school that
  *     rebuilding removes.
- * 2 — one shared lestype, private classes per tester (this file).
+ * 2 — one shared lestype, private classes per tester.
+ * 3 — the same, sliced to a three-week window and shifted onto the tester's
+ *     own calendar (this file).
  *
  * Stored on the manifest so a tester still on the old shape can be recognised
  * and repaired without guessing from their record. Bump it whenever a change
  * here makes an existing sandbox wrong rather than merely out of date.
  */
-export const SANDBOX_LAYOUT = 2;
+export const SANDBOX_LAYOUT = 3;
 
 /** True when this tester needs rebuilding before their session will work. */
 export async function sandboxNeedsRepair(testerId: string): Promise<boolean> {
@@ -145,6 +147,55 @@ export async function sandboxContext(testerId: string) {
   };
 }
 
+// ============= THE THREE-WEEK WINDOW =============
+//
+// The template holds a whole season: lessons back to May, two rounds of
+// oudergesprekken, months of behaviour notes and cases. A tester who opens
+// the app on all of that lands in somebody else's history and has to work out
+// which week is "now" before they can do anything. So a sandbox gets a slice
+// rather than the season — last week, this week and next week — and every
+// dated row outside it is left behind.
+//
+// A slice on its own would be empty, because the template is fixed data and
+// the calendar is not: its last lesson is in August no matter what month a
+// tester is created in. So the clone is also *shifted*, until the template's
+// last teaching week lands on the tester's last week. The shift is a whole
+// number of weeks, never a number of days: the demo school teaches Saturday
+// and Sunday, and a shift that moved lessons off the weekend would leave the
+// agenda showing an empty week.
+
+const DAY = 86400000;
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+
+/** The Monday of the week containing `d`, at UTC midnight. */
+function mondayOf(d: Date): Date {
+  const out = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  return new Date(out.getTime() - ((out.getUTCDay() + 6) % 7) * DAY);
+}
+
+/** Last week's Monday through next week's Sunday, inclusive. */
+function demoWindow(now: Date) {
+  const thisWeek = mondayOf(now);
+  return {
+    from: isoDay(new Date(thisWeek.getTime() - 7 * DAY)),
+    to: isoDay(new Date(thisWeek.getTime() + 13 * DAY)),
+    thisWeek,
+  };
+}
+
+// Anchored on the century so it cannot bite into a uuid, which never has a
+// dash two characters after a run of four digits.
+const DATE_RE = /\b20\d{2}-\d{2}-\d{2}\b/g;
+
+/** Move every calendar date in a string by `days`, timestamps included. */
+function shiftDates(text: string, days: number): string {
+  if (!days) return text;
+  return text.replace(DATE_RE, (m) => {
+    const t = Date.parse(`${m}T00:00:00Z`);
+    return Number.isNaN(t) ? m : isoDay(new Date(t + days * DAY));
+  });
+}
+
 type Row = { key: string; value: any };
 
 async function loadAllRows(): Promise<Row[]> {
@@ -183,7 +234,7 @@ async function loadAllRows(): Promise<Row[]> {
  * absent: those are the shared lestype, and cloning them is exactly what used
  * to turn one demo mosque into six.
  */
-function collectTemplate(rows: Row[]) {
+function collectTemplate(rows: Row[], now: Date = new Date()) {
   const byKey = new Map(rows.map((r) => [r.key, r.value]));
   const obj = (v: any) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
 
@@ -202,13 +253,22 @@ function collectTemplate(rows: Row[]) {
   }
   for (const id of TEMPLATE_CHILD_STUDENT_IDS) studentIds.add(id);
 
-  const liveExamIds = new Set<string>();
+  // How far the template has to move for its last teaching week to be the
+  // tester's last week. Both ends are Mondays, so the difference is always a
+  // whole number of weeks.
+  const { from, to, thisWeek } = demoWindow(now);
+  let lastLesson = '';
   for (const r of rows) {
-    const v = obj(r.value);
-    if (r.key.startsWith('exam_live:') && v && classIds.has(v.classId) && v.examId) {
-      liveExamIds.add(v.examId);
+    const seg = r.key.split(':');
+    if (seg[0] === 'lesson' && classIds.has(seg[1]) && (seg[2] ?? '') > lastLesson) {
+      lastLesson = seg[2];
     }
   }
+  const shiftDays = lastLesson
+    ? Math.round(
+        (thisWeek.getTime() - 7 * DAY - mondayOf(new Date(`${lastLesson}T00:00:00Z`)).getTime()) / DAY,
+      )
+    : 0;
 
   const inScope = (key: string, value: any): boolean => {
     const seg = key.split(':');
@@ -219,7 +279,6 @@ function collectTemplate(rows: Row[]) {
       case 'student': case 'diploma':
       case 'student_absence_notifications': return studentIds.has(seg[1]);
       case 'lesson': case 'attendance':     return classIds.has(seg[1]);
-      case 'homework_completion':           return studentIds.has(seg[1]);
       case 'homework':                      return classIds.has(v?.classId);
       case 'behavior': case 'boekhouding_payment':
       case 'absence_notification':          return studentIds.has(v?.studentId);
@@ -229,13 +288,89 @@ function collectTemplate(rows: Row[]) {
       // A live sitting belongs to a class; the exam it is a sitting *of*
       // belongs to the school's shared question bank and is not copied.
       case 'exam_live':                     return classIds.has(v?.classId);
-      case 'exam_live_codes':               return liveExamIds.has(seg[1]);
-      case 'exam_attempt':                  return seg.slice(1).some((x) => studentIds.has(x));
       case 'case':                          return (v?.studentIds || []).some((sid: string) => studentIds.has(sid));
       case 'oudergesprek':                  return classIds.has(v?.classId);
       default:                              return false;
     }
   };
+
+  /**
+   * Which date decides whether a row is inside the window — after the shift,
+   * because the shift is what makes the window mean anything.
+   *
+   * A `null` keeps the row. Rows without a date are not a feed: a pupil, a
+   * roster, a diploma and the per-pupil boekhouding ledger are standing state,
+   * and a ledger cut down to three weeks would show every family as a debtor.
+   */
+  const dateOf = (key: string, value: any): string | null => {
+    const seg = key.split(':');
+    const v = obj(value);
+    switch (seg[0]) {
+      case 'lesson': case 'attendance': return seg[2] ?? null;
+      case 'homework':                  return v?.lessonDate ?? v?.dueDate ?? null;
+      case 'behavior':                  return v?.date ?? null;
+      case 'absence_notification':      return v?.lessonDate ?? null;
+      case 'exam_live':                 return v?.startedAt ?? null;
+      case 'case':                      return v?.createdAt ?? null;
+      case 'oudergesprek':              return v?.date ?? null;
+      default:                          return null;
+    }
+  };
+
+  const inWindow = (date: string | null): boolean => {
+    if (!date) return true;
+    const day = shiftDates(date.slice(0, 10), shiftDays);
+    return day >= from && day <= to;
+  };
+
+  // Rows that stand on their own. The three derived kinds below are decided
+  // afterwards, because what they hang off may have just been dropped.
+  const DERIVED = new Set(['homework_completion', 'exam_attempt', 'exam_live_codes']);
+  const kept: Row[] = [];
+  const gesprekken: Row[] = [];
+  for (const r of rows) {
+    const prefix = r.key.split(':')[0];
+    if (DERIVED.has(prefix)) continue;
+    if (!inScope(r.key, r.value)) continue;
+    if (!inWindow(dateOf(r.key, r.value))) continue;
+    if (prefix === 'oudergesprek') { gesprekken.push(r); continue; }
+    kept.push(r);
+  }
+
+  // One oudergesprek, not four. A parent with a child in each class was being
+  // handed a slot in both, twice over; the screen makes its point with one.
+  // Prefer the tester's own classroom, and the soonest sitting in it.
+  gesprekken.sort((a, b) => {
+    const rank = (r: Row) => (r.value?.classId === TEMPLATE_TEACHER_CLASS_ID ? 0 : 1);
+    return rank(a) - rank(b) || String(a.value?.date).localeCompare(String(b.value?.date));
+  });
+  if (gesprekken[0]) kept.push(gesprekken[0]);
+
+  const liveCodes = new Set<string>();
+  const liveExamIds = new Set<string>();
+  const homeworkIds = new Set<string>();
+  for (const r of kept) {
+    const seg = r.key.split(':');
+    if (seg[0] === 'exam_live') {
+      liveCodes.add(seg[1]);
+      if (r.value?.examId) liveExamIds.add(r.value.examId);
+    }
+    if (seg[0] === 'homework') homeworkIds.add(seg[1]);
+  }
+  for (const r of rows) {
+    const seg = r.key.split(':');
+    switch (seg[0]) {
+      case 'homework_completion':
+        if (studentIds.has(seg[1]) && homeworkIds.has(seg[2])) kept.push(r);
+        break;
+      case 'exam_attempt':
+        if (liveCodes.has(seg[1]) && seg.slice(1).some((x) => studentIds.has(x))) kept.push(r);
+        break;
+      case 'exam_live_codes':
+        if (liveExamIds.has(seg[1])) kept.push(r);
+        break;
+    }
+  }
 
   const userIds = new Set(
     rows.filter((r) => r.key.startsWith('user:')).map((r) => r.key.slice(5)),
@@ -243,8 +378,7 @@ function collectTemplate(rows: Row[]) {
 
   const keys: string[] = [];
   const ids = new Set<string>([...classIds, ...studentIds]);
-  for (const r of rows) {
-    if (!inScope(r.key, r.value)) continue;
+  for (const r of kept) {
     keys.push(r.key);
     // Safe to harvest now that scope is decided by rule: every id in an
     // in-scope key is an entity of one of these classes (a pupil, a live
@@ -259,7 +393,7 @@ function collectTemplate(rows: Row[]) {
   ids.delete(TEMPLATE_SCHOOL_YEAR_ID);
   // Exams stay shared, so a live sitting has to keep pointing at the real one.
   for (const id of liveExamIds) ids.delete(id);
-  return { ids, keys };
+  return { ids, keys, shiftDays };
 }
 
 /**
@@ -317,7 +451,7 @@ export async function provisionDemoSandbox(
   const supabase = admin();
   const rows = await loadAllRows();
 
-  const { ids, keys } = collectTemplate(rows);
+  const { ids, keys, shiftDays } = collectTemplate(rows);
 
   const map = new Map<string, string>();
   for (const id of ids) map.set(id, await sandboxId(testerId, id));
@@ -334,8 +468,10 @@ export async function provisionDemoSandbox(
   const clonedKeys: string[] = [];
 
   for (const key of keys) {
-    const newKey = substitute(key, map, codes);
-    const newValue = JSON.parse(substitute(JSON.stringify(byKey.get(key)), map, codes));
+    const newKey = shiftDates(substitute(key, map, codes), shiftDays);
+    const newValue = JSON.parse(
+      shiftDates(substitute(JSON.stringify(byKey.get(key)), map, codes), shiftDays),
+    );
     // `exam_live_codes:<examId>` is keyed on an exam, and exams are shared, so
     // its key does not change under substitution — writing it as a clone would
     // overwrite the shared list, and recording it in the manifest would make a

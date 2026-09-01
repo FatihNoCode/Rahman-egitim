@@ -1,19 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Keeps a loading flag "on" long enough for the branded waw spinner
- * (src/app/components/ui/Spinner.tsx) to write itself at least once.
+ * How long a panel keeps rendering its loading placeholder.
  *
- * Without this, a fetch that resolves in 150ms flips `loading` back to false
- * before the spinner has drawn a single stroke — the screen flashes an empty
- * panel and the reader is left wondering whether anything happened. Pass the
- * raw loading flag in, render the returned value instead: while the real load
- * is running it passes straight through, and once the load finishes it stays
- * true until `minMs` has elapsed since the load began.
+ * Two failure modes sit on either side of this. Drop the placeholder the
+ * instant a 150ms fetch resolves and the panel flashes. Hold every load for a
+ * fixed second and the app stops feeling responsive — a panel whose data was
+ * already in hand still makes you wait, which is the more expensive mistake
+ * of the two, because it is paid on every screen.
  *
- * A load that genuinely takes longer than `minMs` is not delayed at all.
+ * The answer is split over two places. Here: the placeholder is up for as
+ * long as the load runs, and afterwards only long enough that a spinner which
+ * did get drawn is not yanked away mid-stroke. In LoadingState: the waw
+ * itself does not appear until `SPINNER_DELAY_MS` have passed, so a load that
+ * beats the grace period never draws one at all — the content simply appears,
+ * which is what "instant" looks like.
+ *
+ * A load that genuinely takes longer than the grace period is not delayed.
  */
-export function useMinimumLoading(active: boolean, minMs = 1100): boolean {
+export const SPINNER_DELAY_MS = 220;
+
+export function useMinimumLoading(active: boolean, minMs = 600): boolean {
   const [held, setHeld] = useState(active);
   const startedAt = useRef<number | null>(active ? Date.now() : null);
 
@@ -29,7 +36,10 @@ export function useMinimumLoading(active: boolean, minMs = 1100): boolean {
       return;
     }
 
-    const remaining = minMs - (Date.now() - startedAt.current);
+    const elapsed = Date.now() - startedAt.current;
+    // Nothing was drawn yet, so there is nothing to hold on screen.
+    const until = elapsed < SPINNER_DELAY_MS ? 0 : SPINNER_DELAY_MS + minMs;
+    const remaining = until - elapsed;
     if (remaining <= 0) {
       startedAt.current = null;
       setHeld(false);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, BookOpen, Check, CalendarClock, CheckCircle2 } from 'lucide-react';
+import { Archive, BookOpen, Check, CalendarClock, CheckCircle2 } from './EmojiIcons';
 import LoadingState from './ui/LoadingState';
 import { useMinimumLoading } from '../hooks/useMinimumLoading';
 

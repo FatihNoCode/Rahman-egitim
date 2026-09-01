@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Pencil, Calendar, Sun, PartyPopper } from 'lucide-react';
+import { Plus, Trash2, Pencil, Calendar, Sun, PartyPopper } from './EmojiIcons';
 import AgendaCalendar from './AgendaCalendar';
 import { notify, confirmDialog } from './ui/feedback';
 import LoadError from './ui/load-error';

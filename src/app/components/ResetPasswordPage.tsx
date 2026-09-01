@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from './EmojiIcons';
 import { getSupabaseClient } from '../../lib/supabase';
 import { validatePassword } from '../../lib/password';
 import type { Language } from '../App';

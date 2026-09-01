@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User as UserIcon, Bell, LogOut, Check, ChevronRight, X } from 'lucide-react';
+import { User as UserIcon, Bell, LogOut, Check, ChevronRight, X } from '../EmojiIcons';
 import { useApp } from '../../App';
 import { notify } from '../ui/feedback';
 import { isNative } from '../../../lib/native';

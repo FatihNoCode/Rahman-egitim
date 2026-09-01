@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useApp, isTestAccount } from '../App';
 import { translations } from './translations';
 import { useHashTab } from '../useHashTab';
-import { Euro, Moon, AlertTriangle, BarChart3, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen, CalendarDays, CalendarX2 } from 'lucide-react';
+import { Euro, Moon, AlertTriangle, BarChart3, Check, Receipt, Sparkles, ArrowLeft, GraduationCap, BookOpen, CalendarDays, CalendarX2 } from './EmojiIcons';
 import booksLogo from '../../imports/logo.svg';
 import UserMenu from './UserMenu';
 import AgendaCalendar from './AgendaCalendar';
@@ -15,6 +16,7 @@ import Modal from './ui/modal';
 import { notify } from './ui/feedback';
 import LoadError from './ui/load-error';
 import Spinner from './ui/Spinner';
+import { takeBootBundle, PARENT_BOOT_ENDPOINTS } from '../../lib/bootPrefetch';
 import LoadingState from './ui/LoadingState';
 import { isAppLayout } from '../../lib/native';
 import { logAction } from '../../lib/deviceLog';
@@ -96,9 +98,19 @@ function getSchoolPrice(s: BoekhoudingSettings, isMember: boolean, hasSibling: b
 export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const { language, setLanguage, apiRequest, user } = useApp();
   const t = translations[language];
+  // Boot asked for this dashboard's opening data while the greeting was still
+  // typing itself out (see primeBootData). If it all came back in time, the
+  // screen has nothing to wait for and the spinner below is never rendered —
+  // and if it didn't, this is null and the normal load runs.
+  // Through a ref rather than useMemo: taking the bundle consumes it, and a
+  // memo React is free to discard would consume it a second time and get
+  // nothing — leaving the screen holding neither the data nor a load.
+  const bootRef = useRef<unknown[] | null | undefined>(undefined);
+  if (bootRef.current === undefined) bootRef.current = takeBootBundle(PARENT_BOOT_ENDPOINTS);
+  const bootData = bootRef.current as any[] | null;
   const [students, setStudents] = useState<Student[]>([]);
   const [homeworkCompletion, setHomeworkCompletion] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!bootData);
   // The whole dashboard hangs off this one load, so a failure has to be
   // visible: an empty screen reads as "your child has nothing" rather than
   // "we could not reach the server".
@@ -110,6 +122,8 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   const [loadingChild, setLoadingChild] = useState(false);
   const [conferSessions, setConferSessions] = useState<any[]>([]);
   const [bookingSessionId, setBookingSessionId] = useState<string | null>(null);
+  /** `${sessionId}:${slotIndex}` of the slot whose write is in flight. */
+  const [pendingSlot, setPendingSlot] = useState<string | null>(null);
   const [showAbsenceModal, setShowAbsenceModal] = useState(false);
   // In flight, so the send button can lock. Without it a slow connection
   // invites a second tap and the mosque gets the same ziekmelding twice.
@@ -173,8 +187,15 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
   // scroll to it twice.
   const [agendaFocus, setAgendaFocus] = useState<{ date: string; nonce: number } | null>(null);
 
+  // A layout effect, not a plain one: the prefetched payloads have to be in
+  // state before the browser paints, or the first frame is an empty dashboard
+  // — which reads as "your child has nothing" rather than as loading.
+  useLayoutEffect(() => {
+    if (bootData) applyData(bootData[0], bootData[1], bootData[2], bootData[3]);
+  }, []);
+
   useEffect(() => {
-    loadData();
+    if (!bootData) loadData();
     loadDeadlineSettings();
   }, []);
 
@@ -257,16 +278,11 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     }
   };
 
-  const loadData = async () => {
-    setLoadFailed(false);
-    try {
-      const [studentsData, classesData, completionData, conferData] = await Promise.all([
-        apiRequest('/students'),
-        apiRequest('/classes/all'),
-        apiRequest('/homework/completion'),
-        apiRequest('/oudergesprekken').catch(() => ({ sessions: [] })),
-      ]);
-      setConferSessions(conferData.sessions || []);
+  // The state-setting half of the load, shared by the network path below and
+  // by the boot prefetch, so both routes into this screen agree on exactly
+  // what the payloads mean.
+  const applyData = (studentsData: any, classesData: any, completionData: any, conferData: any) => {
+    setConferSessions(conferData.sessions || []);
 
       // Build a map of class IDs to class names
       const classMap: Record<string, Class> = {};
@@ -302,6 +318,18 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
 
       // Load homework completion status from server
       setHomeworkCompletion(completionData.completions || {});
+  };
+
+  const loadData = async () => {
+    setLoadFailed(false);
+    try {
+      const [studentsData, classesData, completionData, conferData] = await Promise.all([
+        apiRequest('/students'),
+        apiRequest('/classes/all'),
+        apiRequest('/homework/completion'),
+        apiRequest('/oudergesprekken').catch(() => ({ sessions: [] })),
+      ]);
+      applyData(studentsData, classesData, completionData, conferData);
     } catch (error: any) {
       console.error('Error loading data:', error);
       console.error('Error details:', error.message);
@@ -377,19 +405,28 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     return items;
   }, [conferSessions, students, selectedChildId]);
 
+  // The checkbox flips on the tap, not on the round trip. Waiting for the
+  // server before redrawing left a second of nothing after a click, which
+  // reads as a dead button — so the new state is drawn immediately and put
+  // back only if the write actually fails.
   const toggleHomeworkCompletion = async (studentId: string, homeworkId: string) => {
     const key = `${studentId}:${homeworkId}`;
     const completed = !homeworkCompletion[key];
+
+    setHomeworkCompletion((prev) => ({ ...prev, [key]: completed }));
 
     try {
       await apiRequest(`/homework/${homeworkId}/complete`, {
         method: 'POST',
         body: JSON.stringify({ studentId, completed }),
       });
-
-      setHomeworkCompletion({ ...homeworkCompletion, [key]: completed });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating homework:', error);
+      setHomeworkCompletion((prev) => ({ ...prev, [key]: !completed }));
+      notify.error(
+        error?.message ||
+          (language === 'tr' ? 'Kaydedilemedi, tekrar deneyin.' : 'Niet opgeslagen, probeer opnieuw.'),
+      );
     }
   };
 
@@ -537,48 +574,103 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
     }
   };
 
+  // Booking cannot be answered locally — the slot may already be gone — so the
+  // click has to reach the server. What it must not do is look like nothing
+  // happened for a second: the tapped slot goes into a pending state right
+  // away (spinner in place of the time), the rest of the grid locks, and the
+  // grid is redrawn from the local state the moment the write returns. The
+  // full refetch still runs, but in the background, where its second round
+  // trip costs the parent nothing.
+  const applySlotChange = (sessionId: string, mutate: (slots: any[]) => any[]) => {
+    setConferSessions((prev) =>
+      prev.map((session: any) =>
+        session.id === sessionId ? { ...session, slots: mutate(session.slots || []) } : session,
+      ),
+    );
+  };
+
+  const refreshConferSessions = () => {
+    apiRequest('/oudergesprekken')
+      .then((data) => setConferSessions(data?.sessions || []))
+      .catch(() => {});
+  };
+
   const bookSlot = async (sessionId: string, slotIndex: number) => {
-    if (!selectedChildId) return;
+    if (!selectedChildId || pendingSlot) return;
+    const child = students.find((s) => s.id === selectedChildId);
+    setPendingSlot(`${sessionId}:${slotIndex}`);
     try {
       await apiRequest(`/oudergesprekken/${sessionId}/book`, {
         method: 'POST',
         body: JSON.stringify({ slotIndex, studentId: selectedChildId }),
       });
+      applySlotChange(sessionId, (slots) =>
+        slots.map((slot: any, i: number) =>
+          i === slotIndex
+            ? {
+                ...slot,
+                bookedBy: user?.id || selectedChildId,
+                studentId: selectedChildId,
+                studentName: child?.name || slot.studentName,
+              }
+            : slot,
+        ),
+      );
       notify.success(language === 'tr' ? 'Zaman dilimi rezerve edildi!' : 'Tijdslot geboekt!');
       setBookingSessionId(null);
-      // Refresh sessions
-      const conferData = await apiRequest('/oudergesprekken').catch(() => ({ sessions: [] }));
-      setConferSessions(conferData.sessions || []);
       // A booked slot is an agenda entry, so the calendar has to be told.
       setAgendaRefresh((n) => n + 1);
+      refreshConferSessions();
     } catch (err: any) {
       const msg = err.message || '';
       if (msg.includes('already booked') || msg.includes('Already booked')) {
         notify.error(language === 'tr' ? 'Bu zaman dilimi zaten dolu veya zaten rezerve edilmiş.' : 'Dit tijdslot is al bezet of u heeft al geboekt.');
+        refreshConferSessions();
       } else {
         notify.error(msg || 'Error');
       }
+    } finally {
+      setPendingSlot(null);
     }
   };
 
   const rescheduleSlot = async (sessionId: string, fromSlotIndex: number, toSlotIndex: number) => {
-    if (!selectedChildId) return;
+    if (!selectedChildId || pendingSlot) return;
+    const child = students.find((s) => s.id === selectedChildId);
+    setPendingSlot(`${sessionId}:${toSlotIndex}`);
     try {
       await apiRequest(`/oudergesprekken/${sessionId}/reschedule`, {
         method: 'POST',
         body: JSON.stringify({ fromSlotIndex, toSlotIndex, studentId: selectedChildId }),
       });
+      applySlotChange(sessionId, (slots) =>
+        slots.map((slot: any, i: number) => {
+          if (i === fromSlotIndex) return { ...slot, bookedBy: null, studentId: null, studentName: null };
+          if (i === toSlotIndex) {
+            return {
+              ...slot,
+              bookedBy: user?.id || selectedChildId,
+              studentId: selectedChildId,
+              studentName: child?.name || slot.studentName,
+            };
+          }
+          return slot;
+        }),
+      );
       notify.success(language === 'tr' ? 'Zaman dilimi değiştirildi!' : 'Tijdslot gewijzigd!');
       setBookingSessionId(null);
-      const conferData = await apiRequest('/oudergesprekken').catch(() => ({ sessions: [] }));
-      setConferSessions(conferData.sessions || []);
+      setAgendaRefresh((n) => n + 1);
+      refreshConferSessions();
     } catch (err: any) {
       const msg = err.message || '';
       if (msg.includes('already booked') || msg.includes('Already booked')) {
         notify.error(language === 'tr' ? 'Bu zaman dilimi zaten dolu.' : 'Dit tijdslot is al bezet.');
+        refreshConferSessions();
       } else {
         notify.error(msg || 'Error');
       }
+    } finally {
+      setPendingSlot(null);
     }
   };
 
@@ -1390,29 +1482,44 @@ export default function ParentDashboard({ onLogout }: ParentDashboardProps) {
                             {language === 'tr' ? 'Boş bir zaman dilimi seçin:' : 'Kies een vrij tijdslot:'}
                           </p>
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                            {session.slots.map((slot: any, i: number) => (
+                            {session.slots.map((slot: any, i: number) => {
+                              const isPending = pendingSlot === `${session.id}:${i}`;
+                              const locked = !!pendingSlot && !isPending;
+                              return (
                               <button
                                 key={i}
-                                disabled={!!slot.bookedBy}
+                                disabled={!!slot.bookedBy || !!pendingSlot}
                                 onClick={() =>
                                   myBooking
                                     ? rescheduleSlot(session.id, myBookingIndex, i)
                                     : bookSlot(session.id, i)
                                 }
-                                className={`p-3 rounded-lg text-sm font-medium transition ${
-                                  slot.bookedBy
-                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : 'bg-white border-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-500'
+                                className={`p-3 rounded-lg text-sm font-medium transition active:scale-95 ${
+                                  isPending
+                                    ? 'bg-emerald-600 border-2 border-emerald-600 text-white'
+                                    : slot.bookedBy
+                                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                      : `bg-white border-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-500 ${locked ? 'opacity-50' : ''}`
                                 }`}
                               >
-                                {slot.start} - {slot.end}
-                                {slot.bookedBy && (
-                                  <span className="block text-xs text-gray-400 mt-0.5">
-                                    {language === 'tr' ? 'Dolu' : 'Bezet'}
+                                {isPending ? (
+                                  <span className="flex items-center justify-center gap-1.5">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    {slot.start}
                                   </span>
+                                ) : (
+                                  <>
+                                    {slot.start} - {slot.end}
+                                    {slot.bookedBy && (
+                                      <span className="block text-xs text-gray-400 mt-0.5">
+                                        {language === 'tr' ? 'Dolu' : 'Bezet'}
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                               </button>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Lock, ArrowLeft, CheckCircle2, Circle, Eye, EyeOff, Clock, AlertTriangle } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, CheckCircle2, Circle, Eye, EyeOff, Clock, AlertTriangle } from './EmojiIcons';
 import { translations } from './translations';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { getSupabaseClient } from '../../lib/supabase';

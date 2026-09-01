@@ -21,7 +21,10 @@ jobs:
       # it — which is exactly how the 7eef12a deploy failed while the Pages
       # deploy succeeded, leaving the frontend live against a stale backend.
       # Bump this deliberately.
-      - uses: supabase/setup-cli@v1
+      # @v3 for the action itself — v1 still ships a Node 20 runtime, which
+      # GitHub was already force-running on Node 24. The CLI `version` below
+      # is a separate pin and is unchanged.
+      - uses: supabase/setup-cli@v3
         with:
           version: 2.109.1
       - run: supabase functions deploy make-server-6679cacd --project-ref uriirwsjpzsjnaosqlph --no-verify-jwt

@@ -6,8 +6,12 @@ import { notify } from '../ui/feedback';
 import { ExamQuestion, QuestionType } from './examTypes';
 import { extractPdfText } from './pdfText';
 
-/** Quran-gap questions are built from the verse picker, not drafted. */
-type AiType = Exclude<QuestionType, 'qurangap'>;
+/**
+ * Quran-gap questions are built from the verse picker, not drafted, so they
+ * are not offered here. 'mix' is not a question type at all — it asks the
+ * model to pick a type per question.
+ */
+type AiType = Exclude<QuestionType, 'qurangap'> | 'mix';
 
 interface AiQuestionDialogProps {
   open: boolean;
@@ -89,7 +93,11 @@ export default function AiQuestionDialog({
       yesno: tr ? 'Evet / Hayır' : 'Ja / Nee',
       gap: tr ? 'Boşluk doldurma' : 'Invullen (gatentekst)',
       open: tr ? 'Açık uçlu' : 'Open vraag',
+      mix: tr ? 'Karışık (en uygun türü seç)' : 'Gemengd (kiest zelf per vraag)',
     } as Record<AiType, string>,
+    mixHint: tr
+      ? 'Her soru için en uygun tür seçilir; her türden soru çıkması gerekmez.'
+      : 'Per vraag wordt het passende type gekozen; niet elk type hoeft voor te komen.',
 
     generate: tr ? 'Soruları hazırla' : 'Vragen opstellen',
     working: tr ? 'Hazırlanıyor…' : 'Bezig…',
@@ -313,7 +321,7 @@ export default function AiQuestionDialog({
                 onChange={(e) => setType(e.target.value as AiType)}
                 className={`${fieldCls} bg-white`}
               >
-                {(['mc', 'yesno', 'gap', 'open'] as const).map((t) => (
+                {(['mix', 'mc', 'yesno', 'gap', 'open'] as const).map((t) => (
                   <option key={t} value={t}>{text.types[t]}</option>
                 ))}
               </select>
@@ -328,6 +336,7 @@ export default function AiQuestionDialog({
               />
             </div>
           </div>
+          {type === 'mix' && <p className="-mt-1.5 text-[11px] text-gray-400">{text.mixHint}</p>}
 
           <div>
             <p className={labelCls}>{text.complexity}</p>

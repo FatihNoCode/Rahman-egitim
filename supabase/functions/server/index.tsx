@@ -5227,6 +5227,10 @@ function parseJsonArray(text: string): any[] | null {
 }
 
 const AI_QUESTION_TYPES = ['mc', 'yesno', 'gap', 'open'];
+// 'mix' is a request, not a question type: the model picks a type per
+// question and says which one it used, and every row is validated as that
+// type on the way back.
+const AI_REQUEST_TYPES = [...AI_QUESTION_TYPES, 'mix'];
 const AI_MAX_QUESTIONS = 15;
 // Roughly 8k tokens of lesson material. Generous enough for the handouts
 // teachers actually use, and short enough that a whole textbook dropped in by
@@ -5305,7 +5309,7 @@ app.post("/make-server-6679cacd/exams/generate", async (c) => {
     // this part of them".
     if (!topic && !sourceText) return c.json({ error: 'TOPIC_REQUIRED' }, 400);
     const count = Math.min(Math.max(Number(body?.count) || 5, 1), AI_MAX_QUESTIONS);
-    const type = AI_QUESTION_TYPES.includes(body?.type) ? body.type : 'mc';
+    const type = AI_REQUEST_TYPES.includes(body?.type) ? body.type : 'mc';
     const complexity = AI_COMPLEXITY[Math.min(Math.max(Number(body?.complexity) || 2, 1), 4) - 1];
     const language = body?.language === 'nl' ? 'nl' : 'tr';
     const instructions = String(body?.instructions || '').trim().slice(0, 500);
@@ -5323,12 +5327,27 @@ app.post("/make-server-6679cacd/exams/generate", async (c) => {
     const budget = await claimAiBudget(user.id);
     if (!budget.ok) return c.json({ error: `AI_QUOTA_${budget.reason.toUpperCase()}` }, 429);
 
-    const shape = {
-      mc: '{"prompt": "de vraag", "options": ["a", "b", "c", "d"], "correct": [0]}',
-      yesno: '{"prompt": "de stelling", "correct": true}',
-      gap: '{"prompt": "een zin met ___ op de plek van het ontbrekende woord", "correct": "het ontbrekende woord"}',
-      open: '{"prompt": "de open vraag"}',
-    }[type];
+    const shapes: Record<string, string> = {
+      mc: '{"type": "mc", "prompt": "the question", "options": ["a", "b", "c", "d"], "correct": [0]}',
+      yesno: '{"type": "yesno", "prompt": "the statement", "correct": true}',
+      gap: '{"type": "gap", "prompt": "a sentence with ___ where the missing word belongs", "correct": "the missing word"}',
+      open: '{"type": "open", "prompt": "the open question"}',
+    };
+    // Asked for a mix, the model is given every shape and told to choose per
+    // question — and told explicitly not to spread the set across all four
+    // types for the sake of variety. A topic that is entirely factual recall
+    // is better as four multiple-choice questions than as one of each.
+    const shape = type === 'mix'
+      ? [
+          'Choose the question type that suits each question best, and set "type" accordingly.',
+          'Do not feel obliged to use every type: use only the types that genuinely fit this material, even if that means they all end up the same.',
+          'The four shapes are:',
+          shapes.mc,
+          shapes.yesno,
+          shapes.gap,
+          shapes.open,
+        ].join('\n')
+      : shapes[type];
 
     const languageName = language === 'nl' ? 'Dutch' : 'Turkish';
 
@@ -5389,7 +5408,15 @@ app.post("/make-server-6679cacd/exams/generate", async (c) => {
     }
 
     const questions = rows
-      .map((row: any) => normaliseGeneratedQuestion(row, type))
+      .map((row: any) => {
+        // On a mixed run the row says what it is. A row that claims a type
+        // outside the four (or forgets to say) is dropped rather than
+        // guessed at: the wrong shape here means a question the pupil
+        // cannot answer or that auto-grades wrong.
+        const rowType = type === 'mix' ? String(row?.type || '') : type;
+        if (!AI_QUESTION_TYPES.includes(rowType)) return null;
+        return normaliseGeneratedQuestion(row, rowType);
+      })
       .filter((q: any) => q)
       .slice(0, count);
 

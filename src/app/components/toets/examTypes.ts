@@ -32,7 +32,10 @@ export interface ExamDraft {
 export const EMPTY_EXAM: ExamDraft = {
   name: '',
   level: 'hazirlik',
-  language: 'tr',
+  // Dutch by default: it is the language the teachers write in, and the one
+  // the pupils read fastest. A toets that is genuinely in Turkish is a
+  // deliberate choice the teacher makes in the dropdown.
+  language: 'nl',
   timeLimitMinutes: null,
   isTemplate: false,
   questions: [],

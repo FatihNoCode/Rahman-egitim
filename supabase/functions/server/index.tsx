@@ -5466,6 +5466,7 @@ app.post("/make-server-6679cacd/exams", async (c) => {
     const ids: string[] = await kv.get(`exam_ids:${schoolId}`) || [];
     ids.unshift(id);
     await kv.set(`exam_ids:${schoolId}`, ids);
+    if (exam.isTemplate) await setSharedIndexed(id, true);
     return c.json({ exam });
   } catch (err) {
     console.log('Create exam error:', err);
@@ -5497,6 +5498,183 @@ app.get("/make-server-6679cacd/exams", async (c) => {
   }
 });
 
+// ── The shared library ──────────────────────────────────────────────────
+// A toets whose author ticked "anderen mogen mijn toets gebruiken" goes into
+// one library the whole organisation can copy from. Deliberately not scoped
+// to a school: a teacher in Amersfoort preparing a lesson on the same subject
+// as a colleague in Amsterdam should find their work, which is the entire
+// point of a shared library and was exactly what the per-school listing
+// prevented.
+//
+// Copying is the only thing anyone else can do with it. The original stays
+// the author's — editing and deleting are still refused for everyone else by
+// the routes above — so contributing costs the author nothing.
+const SHARED_INDEX_KEY = 'exam_shared_ids';
+
+async function readSharedIndex(): Promise<string[]> {
+  const stored = await kv.get(SHARED_INDEX_KEY);
+  if (Array.isArray(stored)) return stored;
+  // First run after this shipped: exams marked as templates before the shared
+  // library existed have never been indexed. Build the index once from the
+  // exams themselves rather than asking every school to re-share their work.
+  const all = await kv.getByPrefix('exam:');
+  const ids = all.filter((e: any) => e?.id && e.isTemplate).map((e: any) => e.id);
+  await kv.set(SHARED_INDEX_KEY, ids);
+  return ids;
+}
+
+async function setSharedIndexed(examId: string, shared: boolean): Promise<void> {
+  const ids = await readSharedIndex();
+  const has = ids.includes(examId);
+  if (shared === has) return;
+  await kv.set(SHARED_INDEX_KEY, shared ? [examId, ...ids] : ids.filter((id) => id !== examId));
+}
+
+// What a browsing teacher is shown. The questions themselves are included —
+// they are about to be copyable in full, so hiding them would only stop
+// someone deciding whether the toets is worth copying — but trimmed to a
+// preview so the library list does not ship every question of every exam.
+function sharedExamSummary(exam: any, userId: string) {
+  const questions = exam.questions || [];
+  return {
+    id: exam.id,
+    name: exam.name,
+    level: exam.level,
+    language: exam.language,
+    timeLimitMinutes: exam.timeLimitMinutes || null,
+    questionCount: questions.length,
+    createdAt: exam.createdAt,
+    createdByName: exam.createdByName || '',
+    mine: exam.createdBy === userId,
+    preview: questions.slice(0, 3).map((q: any) => String(q.prompt || '').slice(0, 140)).filter((p: string) => p),
+  };
+}
+
+app.get("/make-server-6679cacd/exams/shared", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'teacher' && userData?.role !== 'admin') {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    const ids = await readSharedIndex();
+    const exams = ids.length > 0 ? await kv.mget(ids.map((id: string) => `exam:${id}`)) : [];
+    const shared = exams
+      // An exam can leave the library by being un-shared or deleted while the
+      // index still names it; the index is repaired on the next toggle, and
+      // in the meantime a stale id must not become a blank row.
+      .filter((e: any) => e?.id && e.isTemplate)
+      .sort((a: any, b: any) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .map((e: any) => sharedExamSummary(e, user.id));
+    return c.json({ exams: shared });
+  } catch (err) {
+    console.log('List shared exams error:', err);
+    return c.json({ error: 'Failed to get shared exams' }, 500);
+  }
+});
+
+// Searching the library by what the questions are actually about.
+//
+// The keyword pass runs first and always: it costs nothing, it is the answer
+// for "fatiha" typed into a library that has a toets with Fatiha in the name,
+// and it is what the teacher still gets when the day's AI budget is gone. The
+// model is then asked to widen that — "wassing" should also find a toets
+// about wudu — and its verdict is merged in, never trusted on its own: an id
+// it invents matches nothing and is dropped.
+app.post("/make-server-6679cacd/exams/shared/search", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'teacher' && userData?.role !== 'admin') {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    const body = await c.req.json();
+    const query = String(body?.query || '').trim().slice(0, 200);
+    if (!query) return c.json({ error: 'QUERY_REQUIRED' }, 400);
+
+    const ids = await readSharedIndex();
+    const stored = ids.length > 0 ? await kv.mget(ids.map((id: string) => `exam:${id}`)) : [];
+    const library = stored.filter((e: any) => e?.id && e.isTemplate);
+    if (library.length === 0) return c.json({ exams: [], usedAi: false });
+
+    const haystack = (exam: any) =>
+      [exam.name, ...(exam.questions || []).map((q: any) => `${q.prompt || ''} ${(q.options || []).join(' ')}`)]
+        .join(' ')
+        .toLocaleLowerCase('tr');
+    const terms = query.toLocaleLowerCase('tr').split(/\s+/).filter((t: string) => t.length > 2);
+    const keywordHits = new Set(
+      library.filter((e: any) => terms.some((t: string) => haystack(e).includes(t))).map((e: any) => e.id),
+    );
+
+    // The AI pass is best-effort in every sense: no key, no budget, a refusal
+    // or an unreadable answer all end the same way, with the keyword results
+    // the teacher would have got anyway.
+    const aiHits: string[] = [];
+    let usedAi = false;
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (apiKey && (await claimAiBudget(user.id)).ok) {
+      // A catalogue, not the exams: enough of each toets to judge what it is
+      // about, capped so a library of hundreds still fits one request.
+      const catalogue = library.slice(0, 60).map((e: any) => ({
+        id: e.id,
+        name: e.name,
+        level: e.level,
+        language: e.language,
+        questions: (e.questions || []).slice(0, 12).map((q: any) => String(q.prompt || '').slice(0, 120)),
+      }));
+      const prompt = [
+        'A teacher is looking through a library of existing exams for one they can reuse.',
+        `They are looking for: ${query}`,
+        'Below is the catalogue as JSON. Decide which exams are actually about that subject — match on meaning, not on spelling, and across Dutch, Turkish and Arabic terms for the same thing (wassing/abdest/wudu are one subject).',
+        'Return ONLY a JSON array of the matching ids, best match first, at most 10, like ["id1","id2"]. Return [] if none of them fit.',
+        JSON.stringify(catalogue),
+      ].join('\n');
+      try {
+        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body: JSON.stringify({
+            model: GEMINI_MODEL,
+            input: prompt,
+            generation_config: { temperature: 0.1, max_output_tokens: 1024 },
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
+        if (response.ok) {
+          const rows = parseJsonArray(extractGeminiText(await response.json()));
+          if (rows) {
+            for (const id of rows) {
+              if (typeof id === 'string' && library.some((e: any) => e.id === id)) aiHits.push(id);
+            }
+            usedAi = true;
+          }
+        } else {
+          console.log('Shared search AI error', response.status);
+        }
+      } catch (err) {
+        console.log('Shared search AI failed:', err);
+      }
+    }
+
+    // The model's ranking leads, since it is the one that understood the
+    // question; a keyword hit it missed still gets listed rather than dropped.
+    const ordered = [
+      ...aiHits,
+      ...library.filter((e: any) => keywordHits.has(e.id) && !aiHits.includes(e.id)).map((e: any) => e.id),
+    ];
+    const byId = new Map(library.map((e: any) => [e.id, e]));
+    return c.json({
+      exams: ordered.map((id) => sharedExamSummary(byId.get(id), user.id)).slice(0, 20),
+      usedAi,
+    });
+  } catch (err) {
+    console.log('Search shared exams error:', err);
+    return c.json({ error: 'Failed to search' }, 500);
+  }
+});
+
 app.put("/make-server-6679cacd/exams/:id", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
@@ -5523,6 +5701,7 @@ app.put("/make-server-6679cacd/exams/:id", async (c) => {
     if (!EXAM_LEVELS.includes(updated.level)) return c.json({ error: 'Invalid level' }, 400);
     updated.updatedAt = new Date().toISOString();
     await kv.set(`exam:${exam.id}`, updated);
+    if (body.isTemplate !== undefined) await setSharedIndexed(exam.id, !!updated.isTemplate);
     return c.json({ exam: updated });
   } catch (err) {
     console.log('Update exam error:', err);
@@ -5545,6 +5724,7 @@ app.delete("/make-server-6679cacd/exams/:id", async (c) => {
     await kv.del(`exam:${exam.id}`);
     const ids: string[] = await kv.get(`exam_ids:${exam.schoolId}`) || [];
     await kv.set(`exam_ids:${exam.schoolId}`, ids.filter((id: string) => id !== exam.id));
+    await setSharedIndexed(exam.id, false);
     return c.json({ success: true });
   } catch (err) {
     console.log('Delete exam error:', err);
@@ -5561,13 +5741,25 @@ app.post("/make-server-6679cacd/exams/:id/duplicate", async (c) => {
     if (!exam) return c.json({ error: 'Not found' }, 404);
     const userData = await getUserData(user.id);
     const schoolIds = await getUserSchoolIds(user.id, userData);
-    if (!schoolIds.has(exam.schoolId)) return c.json({ error: 'Unauthorized' }, 403);
+    // Own school, or anything its author put in the shared library. Copying
+    // across locations is what the library is for: the same subject is taught
+    // in Amersfoort and in Amsterdam, and the second teacher should not have
+    // to write it again.
+    if (!schoolIds.has(exam.schoolId) && !exam.isTemplate) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    // The copy lands in the copier's own school, never in the author's.
+    const targetSchoolId = schoolIds.has(exam.schoolId) ? exam.schoolId : [...schoolIds][0];
+    if (!targetSchoolId) return c.json({ error: 'No school context' }, 400);
 
     const id = crypto.randomUUID();
     const copy = {
       ...exam,
       id,
+      schoolId: targetSchoolId,
       name: `${exam.name} (kopie)`,
+      // A copy is never itself shared. Putting it in the library is a fresh
+      // decision for the person who now owns it.
       isTemplate: false,
       createdBy: user.id,
       createdByName: userData?.name || userData?.email,
@@ -5575,9 +5767,9 @@ app.post("/make-server-6679cacd/exams/:id/duplicate", async (c) => {
       updatedAt: new Date().toISOString(),
     };
     await kv.set(`exam:${id}`, copy);
-    const ids: string[] = await kv.get(`exam_ids:${exam.schoolId}`) || [];
+    const ids: string[] = await kv.get(`exam_ids:${targetSchoolId}`) || [];
     ids.unshift(id);
-    await kv.set(`exam_ids:${exam.schoolId}`, ids);
+    await kv.set(`exam_ids:${targetSchoolId}`, ids);
     return c.json({ exam: copy });
   } catch (err) {
     console.log('Duplicate exam error:', err);

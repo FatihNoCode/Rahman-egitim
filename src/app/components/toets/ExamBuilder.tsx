@@ -37,7 +37,15 @@ export default function ExamBuilder({ language, initial, onSave, onCancel, apiRe
       ? 'Seçilen dile göre yazım denetimi metin alanlarında otomatik çalışır.'
       : 'De spellingscontrole van je browser werkt automatisch in de gekozen taal.',
     timeLimit: tr ? 'Süre limiti (dakika, boş = limitsiz)' : 'Tijdslimiet (minuten, leeg = geen limiet)',
-    template: tr ? 'Şablon olarak kaydet' : 'Opslaan als sjabloon',
+    // Named after what ticking it does, not after the filing cabinet it used
+    // to put the toets in: "opslaan als sjabloon" never said that colleagues
+    // would be able to see and copy the work.
+    template: tr
+      ? 'Diğer öğretmenler bu sınavı kullanabilir'
+      : 'Anderen mogen mijn toets gebruiken',
+    templateHint: tr
+      ? 'Sınav, tüm konumlardaki öğretmenlerin arayıp kopyalayabileceği kütüphaneye eklenir. Orijinali sizde kalır; kimse değiştiremez veya silemez.'
+      : 'De toets komt in de bibliotheek die docenten van alle locaties kunnen doorzoeken en kopiëren. Het origineel blijft van u — niemand anders kan hem wijzigen of verwijderen.',
     addQuestion: tr ? 'Soru ekle' : 'Vraag toevoegen',
     aiOpen: tr ? 'Yapay zeka ile soru hazırla' : 'Vragen laten opstellen',
     aiAdded: (n: number) =>
@@ -381,10 +389,14 @@ export default function ExamBuilder({ language, initial, onSave, onCancel, apiRe
             onChange={(e) => set((d) => ({ ...d, timeLimitMinutes: e.target.value ? Number(e.target.value) : null }))}
             className={inputCls} />
         </div>
-        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer self-end pb-2">
+        <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer self-end pb-1 sm:col-span-2">
           <input type="checkbox" checked={draft.isTemplate}
-            onChange={(e) => set((d) => ({ ...d, isTemplate: e.target.checked }))} className="accent-emerald-600" />
-          {text.template}
+            onChange={(e) => set((d) => ({ ...d, isTemplate: e.target.checked }))}
+            className="accent-emerald-600 mt-0.5 shrink-0" />
+          <span>
+            {text.template}
+            <span className="block text-[11px] text-gray-400">{text.templateHint}</span>
+          </span>
         </label>
       </div>
 

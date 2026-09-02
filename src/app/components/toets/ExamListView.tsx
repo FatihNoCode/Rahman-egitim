@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { BarChart2, Check, CheckCircle2, ChevronDown, Copy, FileText, Info, Pencil, Play, Plus, Printer, Radio, Send, StopCircle, Trash2, X } from 'lucide-react';
+import { BarChart2, Check, CheckCircle2, ChevronDown, Copy, FileText, Info, Pencil, Play, Plus, Printer, Radio, Search, Send, StopCircle, Trash2, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import ExamBuilder from './ExamBuilder';
 import ExamPrintView from './ExamPrintView';
@@ -24,7 +24,7 @@ type Mode =
   | { view: 'edit'; exam: ExamDraft }
   | { view: 'review'; code: string };
 
-type Tab = 'toetsen' | 'sjablonen' | 'afgenomen';
+type Tab = 'toetsen' | 'afgenomen';
 
 /**
  * The toets screen, rebuilt around the two things that actually exist.
@@ -52,24 +52,19 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
     title: tr ? 'Sınavlar' : 'Toetsen',
     tabs: {
       toetsen: tr ? 'Sınavlar' : 'Toetsen',
-      sjablonen: tr ? 'Şablonlar' : 'Sjablonen',
       afgenomen: tr ? 'Yapılan sınavlar' : 'Afgenomen',
     } as Record<Tab, string>,
     tabHelp: {
       toetsen: tr
         ? 'Kendi yazdığınız sınavlar. Bir sınavı bir sınıf için canlı başlatın veya kâğıda yazdırın.'
         : 'De toetsen die u zelf heeft geschreven. Zet er een live voor een klas, of druk hem af op papier.',
-      sjablonen: tr
-        ? 'Meslektaşların paylaştığı sınavlar. Bir şablonu kopyalayıp kendi sürümünüzü düzenleyebilirsiniz; orijinali yalnızca sahibi değiştirebilir.'
-        : 'Toetsen die collega’s hebben gedeeld. Maak een kopie en pas die naar wens aan — het origineel blijft van de maker.',
       afgenomen: tr
         ? 'Her sınav oturumu: canlı olanlar, okunmayı bekleyenler ve notları yayınlananlar.'
         : 'Elke keer dat een toets is afgenomen: wat nu live is, wat nagekeken moet worden en wat al gepubliceerd is.',
     } as Record<Tab, string>,
-    templateBadge: tr ? 'Şablon' : 'Sjabloon',
+    templateBadge: tr ? 'Paylaşılıyor' : 'Gedeeld',
     newExam: tr ? 'Yeni sınav' : 'Nieuwe toets',
     empty: tr ? 'Henüz sınav yok.' : 'Nog geen toetsen.',
-    emptyTemplates: tr ? 'Henüz paylaşılan şablon yok.' : 'Nog geen gedeelde sjablonen.',
     emptySessions: tr ? 'Henüz sınav yapılmadı.' : 'Er is nog geen toets afgenomen.',
     duplicate: tr ? 'Kopyala' : 'Dupliceren',
     duplicateHint: tr
@@ -77,7 +72,7 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
       : 'Maakt een kopie die u zelf kunt aanpassen. Het origineel blijft ongewijzigd.',
     edit: tr ? 'Düzenle' : 'Bewerken',
     delete: tr ? 'Sil' : 'Verwijderen',
-    golive: tr ? 'Canlı başlat' : 'Zet live',
+    golive: tr ? 'Sınavı başlat' : 'Toets afnemen',
     goliveHint: tr
       ? 'Bir sınıf seçin; öğrenciler bir kod veya QR ile katılır.'
       : 'Kies een klas; leerlingen doen mee met een code of QR-code.',
@@ -141,11 +136,39 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
     onlyMine: tr ? 'Sadece benimkiler' : 'Alleen die van mij',
     yes: tr ? 'Evet' : 'Ja',
     no: tr ? 'Hayır' : 'Nee',
-    makeTemplate: tr ? 'Şablon olarak paylaş' : 'Deel als sjabloon',
-    unmakeTemplate: tr ? 'Paylaşımı kaldır' : 'Delen stoppen',
-    templateHint: tr
-      ? 'Şablon olarak paylaşılan bir sınavı meslektaşlarınız görebilir ve kopyalayabilir.'
-      : 'Een gedeeld sjabloon kunnen collega’s bekijken en kopiëren.',
+    // What the checkbox in the builder switches on, said the same way here so
+    // the badge on a card and the checkbox that produced it read as one thing.
+    sharedBadgeHint: tr
+      ? 'Bu sınav kütüphanede: diğer öğretmenler kopyalayabilir.'
+      : 'Deze toets staat in de bibliotheek — andere docenten kunnen hem kopiëren.',
+
+    storeTitle: tr ? 'Mevcut sınavlarda ara' : 'Bestaande toetsen zoeken',
+    storeIntro: tr
+      ? 'Tüm konumlardaki öğretmenlerin paylaştığı sınavlar. Kopyalayın ve kendinize göre düzenleyin — orijinali sahibinde kalır.'
+      : 'Toetsen die docenten van alle locaties hebben gedeeld. Maak een kopie en pas die aan — het origineel blijft van de maker.',
+    storeSearch: tr ? 'Konu yazın' : 'Typ een onderwerp',
+    storeSearchHint: tr
+      ? 'Örnek: abdest, Fatiha, tecvid. Yapay zeka sınavların içeriğine bakar, yalnızca adına değil.'
+      : 'Bijvoorbeeld: wassing, Fatiha, tecvid. De AI kijkt naar de inhoud van de toetsen, niet alleen naar de naam.',
+    storeSearchGo: tr ? 'Ara' : 'Zoeken',
+    storeClear: tr ? 'Aramayı temizle' : 'Zoekopdracht wissen',
+    storeEmpty: tr ? 'Henüz paylaşılan sınav yok.' : 'Er zijn nog geen gedeelde toetsen.',
+    storeNoResults: tr ? 'Bu konuya uygun sınav bulunamadı.' : 'Geen toets gevonden over dit onderwerp.',
+    storeResults: (n: number) =>
+      tr ? `${n} sonuç` : `${n} ${n === 1 ? 'resultaat' : 'resultaten'}`,
+    storeCopy: tr ? 'Kendime kopyala' : 'Kopieer naar mijn toetsen',
+    storeMine: tr ? 'Sizin' : 'Van u',
+    storeCreated: tr ? 'Oluşturulma' : 'Gemaakt op',
+    storeShowAll: tr ? 'Tümünü göster' : 'Alles tonen',
+    storeSearching: tr ? 'Aranıyor…' : 'Zoeken…',
+
+    goingLive: tr ? 'Sınav başlatıldı' : 'De toets is afgenomen',
+    goingLiveHint: tr
+      ? '“Yapılan sınavlar” sekmesine taşınıyor…'
+      : 'Hij verhuist naar het tabblad Afgenomen…',
+    liveJoinUrl: tr ? 'Bağlantı' : 'Link',
+    copyCode: tr ? 'Kodu kopyala' : 'Code kopiëren',
+    copied: tr ? 'Kopyalandı' : 'Gekopieerd',
     loading: tr ? 'Yükleniyor...' : 'Laden...',
   };
 
@@ -157,7 +180,19 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
   const showLoading = useMinimumLoading(loading);
   const [onlyMineSessions, setOnlyMineSessions] = useState(true);
 
+  // The shared library, and the search over it.
+  const [store, setStore] = useState<any[]>([]);
+  const [storeOpen, setStoreOpen] = useState(false);
+  const [storeQuery, setStoreQuery] = useState('');
+  const [storeResults, setStoreResults] = useState<any[] | null>(null);
+  const [storeSearching, setStoreSearching] = useState(false);
+
   const [goLiveFor, setGoLiveFor] = useState<any>(null);
+  // Between pressing "toets afnemen" and the code appearing: the toets is
+  // shown moving to the afgenomen tab, because that is where it now lives and
+  // a teacher who does not see it happen goes looking for it under Toetsen.
+  const [goingLive, setGoingLive] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [liveInfo, setLiveInfo] = useState<{ code: string; qr: string; className: string } | null>(null);
   const [printExam, setPrintExam] = useState<any>(null);
   const [printCopies, setPrintCopies] = useState(25);
@@ -181,6 +216,15 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
     }
   }, [apiRequest]);
 
+  const loadStore = useCallback(async () => {
+    try {
+      const data = await apiRequest('/exams/shared');
+      setStore(data.exams || []);
+    } catch {
+      /* the library is an offer, not the screen's job — a failure hides it */
+    }
+  }, [apiRequest]);
+
   const loadSessions = useCallback(async () => {
     try {
       const data = await apiRequest('/exams/sessions');
@@ -192,7 +236,8 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
 
   useEffect(() => {
     load();
-  }, [load]);
+    loadStore();
+  }, [load, loadStore]);
 
   // Polled while the list is on screen: a live toets is the one thing here
   // that changes by itself while the teacher watches.
@@ -237,6 +282,7 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
     try {
       const res = await apiRequest(`/exams/${exam.id}/duplicate`, { method: 'POST' });
       await load();
+      loadStore();
       // Straight into editing the fresh copy — copying a toets is never the
       // goal, changing it is.
       if (res?.exam) {
@@ -248,16 +294,21 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
     }
   };
 
-  const toggleTemplate = async (exam: any) => {
+  const searchStore = async () => {
+    const query = storeQuery.trim();
+    if (!query) { setStoreResults(null); return; }
+    setStoreSearching(true);
     try {
-      await apiRequest(`/exams/${exam.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ isTemplate: !exam.isTemplate }),
+      const data = await apiRequest('/exams/shared/search', {
+        method: 'POST',
+        body: JSON.stringify({ query }),
       });
-      notify.success(text.saved);
-      await load();
+      setStoreResults(data.exams || []);
     } catch (err: any) {
       notify.error(err.message || 'Error');
+      setStoreResults(null);
+    } finally {
+      setStoreSearching(false);
     }
   };
 
@@ -278,8 +329,18 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
       const url = `${window.location.origin}/toets?code=${code}`;
       const qr = await QRCode.toDataURL(url, { width: 280, margin: 1 });
       setGoLiveFor(null);
-      setLiveInfo({ code, qr, className: res.live.className });
+      setCodeCopied(false);
+      // Hand-off, in three beats: the confirmation, the move to the tab the
+      // toets now belongs to, and only then the code the class needs. Showing
+      // the code first and switching tabs behind it is what left teachers
+      // hunting for the toets afterwards.
+      setGoingLive(true);
       loadSessions();
+      window.setTimeout(() => {
+        setTab('afgenomen');
+        setGoingLive(false);
+        setLiveInfo({ code, qr, className: res.live.className });
+      }, 1100);
     } catch (err: any) {
       notify.error(err.message || 'Error');
     }
@@ -366,8 +427,14 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
       closed: 'bg-amber-100 text-amber-700',
     }) as Record<string, string>)[status] || 'bg-gray-100 text-gray-500';
 
-  const myExams = useMemo(() => exams.filter((e) => isOwner(e) && !e.isTemplate), [exams, currentUserId]);
-  const templates = useMemo(() => exams.filter((e) => e.isTemplate), [exams]);
+  // Everything this teacher wrote, shared or not. Sharing used to move a
+  // toets out of this list and into a separate tab, so ticking the box looked
+  // like the toets had been filed away somewhere else.
+  const myExams = useMemo(() => exams.filter(isOwner), [exams, currentUserId]);
+  const storeVisible = useMemo(
+    () => (storeResults !== null ? storeResults : store),
+    [storeResults, store],
+  );
   const visibleSessions = useMemo(
     () => (onlyMineSessions ? sessions.filter((s) => s.mine) : sessions),
     [sessions, onlyMineSessions],
@@ -706,7 +773,10 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
           <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-800">
             {exam.name}
             {exam.isTemplate && (
-              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+              <span
+                title={text.sharedBadgeHint}
+                className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700"
+              >
                 {text.templateBadge}
               </span>
             )}
@@ -722,7 +792,13 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        {/* One grid of five fixed slots, the same on every card. These buttons
+            used to be a wrapping flex row whose labels differ in length, so
+            every card broke in a different place and the eye had to find
+            "afdrukken" again on each row. A column each keeps them in line,
+            and an action this teacher may not perform leaves its slot empty
+            rather than shifting the rest along. */}
+        <div className="grid w-full shrink-0 grid-cols-2 gap-1.5 sm:w-auto sm:grid-cols-5">
           <ActionButton
             tone="primary"
             icon={<Play className="h-4 w-4" />}
@@ -753,13 +829,6 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
                 onClick={() => setMode({ view: 'edit', exam })}
               />
               <ActionButton
-                tone="neutral"
-                icon={<Send className="h-4 w-4" />}
-                label={exam.isTemplate ? text.unmakeTemplate : text.makeTemplate}
-                hint={text.templateHint}
-                onClick={() => toggleTemplate(exam)}
-              />
-              <ActionButton
                 tone="danger"
                 icon={<Trash2 className="h-4 w-4" />}
                 label={text.delete}
@@ -767,15 +836,60 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
               />
             </>
           ) : (
-            <span title={text.ownerOnly} className="inline-flex items-center gap-1 text-xs text-gray-400">
-              <Info className="h-3.5 w-3.5" />
-              {text.ownerOnly}
+            <span
+              title={text.ownerOnly}
+              className="col-span-2 hidden items-center gap-1 text-xs text-gray-400 sm:inline-flex"
+            >
+              <Info className="h-3.5 w-3.5 shrink-0" />
             </span>
           )}
         </div>
       </div>
     );
   };
+
+  // A card in the shared library: what it is, who wrote it, when — and the
+  // one thing anyone else can do with it.
+  const storeCard = (exam: any) => (
+    <div
+      key={exam.id}
+      className="flex flex-col gap-3 rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="min-w-0">
+        <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-800">
+          {exam.name}
+          {exam.mine && (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+              {text.storeMine}
+            </span>
+          )}
+        </p>
+        <p className="mt-0.5 text-xs text-gray-400">
+          {exam.createdByName ? `${text.by} ${exam.createdByName} · ` : ''}
+          {text.storeCreated} {exam.createdAt ? new Date(exam.createdAt).toLocaleDateString(tr ? 'tr-TR' : 'nl-NL') : '—'}
+          {' · '}
+          {exam.level === 'hazirlik' ? 'Hazırlık' : exam.level} · {exam.language === 'tr' ? 'Türkçe' : 'Nederlands'} · {exam.questionCount} {text.questions}
+        </p>
+        {exam.preview?.length > 0 && (
+          // Two lines of the actual questions: the name of a toets rarely
+          // says whether it is the one you need, and the alternative is
+          // copying it to find out.
+          <p className="mt-1 line-clamp-2 text-xs italic text-gray-400">
+            {exam.preview.join(' · ')}
+          </p>
+        )}
+      </div>
+      <div className="shrink-0">
+        <ActionButton
+          tone="primary"
+          icon={<Copy className="h-4 w-4" />}
+          label={text.storeCopy}
+          hint={text.duplicateHint}
+          onClick={() => duplicate(exam)}
+        />
+      </div>
+    </div>
+  );
 
   const sessionCard = (s: any) => (
     <button
@@ -851,7 +965,7 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
       )}
 
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1">
-        {(['toetsen', 'sjablonen', 'afgenomen'] as Tab[]).map((id) => (
+        {(['toetsen', 'afgenomen'] as Tab[]).map((id) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -875,26 +989,89 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
       </p>
 
       {tab === 'toetsen' && (
-        <div className="space-y-2">
-          {myExams.length === 0 ? (
-            <div className="rounded-xl bg-white p-8 text-center text-sm text-gray-400 shadow-sm ring-1 ring-black/5">
-              {text.empty}
-            </div>
-          ) : (
-            myExams.map(examCard)
-          )}
-        </div>
-      )}
+        <div className="space-y-4">
+          {/* The library sits above your own toetsen, folded shut. Writing a
+              toets that already exists is the expensive mistake here, so the
+              question "has a colleague done this?" is asked first — but it is
+              one line until you open it, because most visits to this screen
+              are to run a toets you already have. */}
+          <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5">
+            <button
+              onClick={() => setStoreOpen((open) => !open)}
+              aria-expanded={storeOpen}
+              className="flex w-full items-center gap-2 px-4 py-3 text-left transition hover:bg-gray-50"
+            >
+              <Search className="h-4 w-4 shrink-0 text-emerald-700" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-gray-800">{text.storeTitle}</span>
+                <span className="block truncate text-xs text-gray-400">{text.storeIntro}</span>
+              </span>
+              {store.length > 0 && (
+                <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                  {store.length}
+                </span>
+              )}
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 ${storeOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
 
-      {tab === 'sjablonen' && (
-        <div className="space-y-2">
-          {templates.length === 0 ? (
-            <div className="rounded-xl bg-white p-8 text-center text-sm text-gray-400 shadow-sm ring-1 ring-black/5">
-              {text.emptyTemplates}
-            </div>
-          ) : (
-            templates.map(examCard)
-          )}
+            {storeOpen && (
+              <div className="space-y-3 border-t border-gray-100 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    value={storeQuery}
+                    onChange={(e) => setStoreQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') searchStore(); }}
+                    placeholder={text.storeSearch}
+                    maxLength={200}
+                    className="min-w-[12rem] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    onClick={searchStore}
+                    disabled={storeSearching}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                    {storeSearching ? text.storeSearching : text.storeSearchGo}
+                  </button>
+                  {storeResults !== null && (
+                    <button
+                      onClick={() => { setStoreResults(null); setStoreQuery(''); }}
+                      className="text-xs font-medium text-gray-500 underline hover:text-gray-700"
+                    >
+                      {text.storeShowAll}
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-400">{text.storeSearchHint}</p>
+
+                {storeResults !== null && (
+                  <p className="text-xs font-medium text-gray-500">{text.storeResults(storeResults.length)}</p>
+                )}
+
+                <div className="space-y-2">
+                  {storeVisible.length === 0 ? (
+                    <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-400">
+                      {storeResults !== null ? text.storeNoResults : text.storeEmpty}
+                    </div>
+                  ) : (
+                    storeVisible.map(storeCard)
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            {myExams.length === 0 ? (
+              <div className="rounded-xl bg-white p-8 text-center text-sm text-gray-400 shadow-sm ring-1 ring-black/5">
+                {text.empty}
+              </div>
+            ) : (
+              myExams.map(examCard)
+            )}
+          </div>
         </div>
       )}
 
@@ -940,24 +1117,105 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
         </div>
       )}
 
+      {/* The hand-off: confirmation, then the toets visibly moves to the tab
+          it now lives under, then the code. */}
+      {goingLive && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <style>{`
+            @keyframes toets-handoff {
+              0%   { opacity: 0; transform: translateY(-8px) scale(0.94); }
+              35%  { opacity: 1; transform: translateY(0) scale(1); }
+              75%  { opacity: 1; transform: translateY(0) scale(1); }
+              100% { opacity: 0; transform: translateY(26px) scale(0.96); }
+            }
+            @keyframes toets-ring {
+              0%   { transform: scale(0.6); opacity: 0; }
+              45%  { transform: scale(1); opacity: 1; }
+              100% { transform: scale(1); opacity: 1; }
+            }
+            @media (prefers-reduced-motion: reduce) {
+              .toets-handoff, .toets-handoff-ring { animation: none !important; }
+            }
+          `}</style>
+          <div
+            className="toets-handoff flex flex-col items-center gap-3 rounded-2xl bg-white px-8 py-7 text-center shadow-xl"
+            style={{ animation: 'toets-handoff 1100ms cubic-bezier(0.2, 0, 0, 1) forwards' }}
+          >
+            <span
+              className="toets-handoff-ring flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100"
+              style={{ animation: 'toets-ring 480ms cubic-bezier(0.2, 0, 0, 1) forwards' }}
+            >
+              <Check className="h-7 w-7 text-emerald-700" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-emerald-800">{text.goingLive}</p>
+              <p className="mt-0.5 text-xs text-gray-500">{text.goingLiveHint}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Live code + QR */}
       {liveInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setLiveInfo(null)}>
-          <div className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-6 text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-end">
-              <button onClick={() => setLiveInfo(null)}>
-                <X className="h-5 w-5 text-gray-400" />
-              </button>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setLiveInfo(null)}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setLiveInfo(null)}
+              aria-label={text.close}
+              className="absolute right-2.5 top-2.5 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/80 text-gray-500 transition hover:bg-white hover:text-gray-700 active:scale-90"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="bg-emerald-600 px-6 pb-5 pt-6 text-center text-white">
+              <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-100">
+                <Radio className="h-3 w-3 animate-pulse" />
+                {text.statusLive}
+              </p>
+              <h4 className="mt-1 text-lg font-bold">{text.liveTitle}</h4>
+              <p className="text-xs text-emerald-100">{liveInfo.className}</p>
             </div>
-            <h4 className="text-base font-bold text-emerald-800">{text.liveTitle}</h4>
-            <p className="text-xs text-gray-500">
-              {liveInfo.className} — {text.liveHint}
-            </p>
-            <p className="font-mono text-4xl font-bold tracking-[0.3em] text-gray-800">{liveInfo.code}</p>
-            <img src={liveInfo.qr} alt="QR" className="mx-auto rounded-lg" />
-            <p className="break-all text-xs text-gray-400">
-              {window.location.origin}/toets?code={liveInfo.code}
-            </p>
+
+            <div className="space-y-4 px-6 py-5 text-center">
+              <p className="text-xs text-gray-500">{text.liveHint}</p>
+
+              {/* The code is what a class of children types in, from the back
+                  of the room. It gets the largest type on the screen. */}
+              <div className="rounded-xl bg-gray-50 p-4">
+                <p className="font-mono text-4xl font-bold tracking-[0.28em] text-gray-800">{liveInfo.code}</p>
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(liveInfo.code);
+                      setCodeCopied(true);
+                      window.setTimeout(() => setCodeCopied(false), 2000);
+                    } catch {
+                      /* clipboard refused (http, or an older webview) — the
+                         code is on screen to be read out either way */
+                    }
+                  }}
+                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 transition hover:text-emerald-900"
+                >
+                  {codeCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {codeCopied ? text.copied : text.copyCode}
+                </button>
+              </div>
+
+              <img src={liveInfo.qr} alt="QR" className="mx-auto rounded-xl ring-1 ring-gray-100" />
+
+              <p className="break-all text-[11px] text-gray-400">
+                {window.location.origin}/toets?code={liveInfo.code}
+              </p>
+            </div>
           </div>
         </div>
       )}

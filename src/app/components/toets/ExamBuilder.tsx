@@ -45,19 +45,22 @@ export default function ExamBuilder({ language, initial, onSave, onCancel, apiRe
       : 'Anderen mogen mijn toets gebruiken',
     templateHint: tr
       ? 'Sınav, tüm konumlardaki öğretmenlerin arayıp kopyalayabileceği kütüphaneye eklenir. Orijinali sizde kalır; kimse değiştiremez veya silemez.'
-      : 'De toets komt in de bibliotheek die docenten van alle locaties kunnen doorzoeken en kopiëren. Het origineel blijft van u — niemand anders kan hem wijzigen of verwijderen.',
+      : 'De toets komt in de bibliotheek die docenten van alle locaties kunnen doorzoeken en kopiëren. Het origineel blijft van u. Niemand anders kan hem wijzigen of verwijderen.',
     addQuestion: tr ? 'Soru ekle' : 'Vraag toevoegen',
-    aiOpen: tr ? 'Yapay zeka ile soru hazırla' : 'Vragen laten opstellen',
+    aiOpen: tr ? 'Yapay zeka ile soru hazırla' : 'AI vragen laten maken',
+    aiHint: tr
+      ? 'Bir konu yazın veya bir PDF yükleyin; taslak sorular listenin sonuna eklenir.'
+      : 'Geef een onderwerp op of upload een PDF. De voorstellen komen onderaan de lijst te staan.',
     aiAdded: (n: number) =>
       tr
-        ? `${n} soru eklendi — kontrol edip puanlarını girin.`
-        : `${n} ${n === 1 ? 'vraag' : 'vragen'} toegevoegd — controleer ze en vul de punten in.`,
+        ? `${n} soru eklendi. Kontrol edip puanlarını girin.`
+        : `${n} ${n === 1 ? 'vraag' : 'vragen'} toegevoegd. Controleer ze en vul de punten in.`,
     prompt: tr ? 'Soru metni' : 'Vraagtekst',
     points: tr ? 'Puan' : 'Punten',
     pointsForQuestion: tr ? 'Bu soru kaç puan değerinde?' : 'Hoeveel punten is deze vraag waard?',
     needPoints: tr
-      ? 'Her soru için puan girin — puanı boş kalan sorular kırmızı ile işaretlendi.'
-      : 'Vul bij elke vraag het aantal punten in — vragen zonder punten zijn rood gemarkeerd.',
+      ? 'Her soru için puan girin. Puanı boş kalan sorular kırmızı ile işaretlendi.'
+      : 'Vul bij elke vraag het aantal punten in. Vragen zonder punten zijn rood gemarkeerd.',
     duplicate: tr ? 'Soruyu çoğalt' : 'Vraag dupliceren',
     moveUp: tr ? 'Yukarı taşı' : 'Naar boven',
     moveDown: tr ? 'Aşağı taşı' : 'Naar beneden',
@@ -90,8 +93,8 @@ export default function ExamBuilder({ language, initial, onSave, onCancel, apiRe
     needName: tr ? 'Sınav adı gerekli' : 'Naam van de toets is verplicht',
     needQuestions: tr ? 'En az bir soru ekleyin' : 'Voeg minimaal één vraag toe',
     needFields: tr
-      ? 'Her soruyu tamamlayın — soru metni, seçenekler ve doğru cevap eksikse sorular kırmızı ile işaretlendi.'
-      : 'Vul elke vraag volledig in — vragen zonder vraagtekst, opties of een juist antwoord zijn rood gemarkeerd.',
+      ? 'Her soruyu tamamlayın. Soru metni, seçenekler veya doğru cevap eksik olan sorular kırmızı ile işaretlendi.'
+      : 'Vul elke vraag volledig in. Vragen zonder vraagtekst, opties of een juist antwoord zijn rood gemarkeerd.',
     undo: tr ? 'Geri al' : 'Ongedaan maken',
     redo: tr ? 'Yinele' : 'Opnieuw',
     dragHint: tr ? 'Sıralamayı değiştirmek için sürükleyin' : 'Sleep om te herordenen',
@@ -398,6 +401,18 @@ export default function ExamBuilder({ language, initial, onSave, onCancel, apiRe
             <span className="block text-[11px] text-gray-400">{text.templateHint}</span>
           </span>
         </label>
+
+        {/* Up here with the toets's own settings rather than at the far end of
+            the question list. Asking the AI for questions is something you
+            decide before writing any, and at the bottom of a long toets it was
+            below everything it was meant to save you from typing. */}
+        <div className="sm:col-span-2 border-t border-gray-100 pt-3">
+          <button onClick={() => setAiOpen(true)}
+            className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition">
+            <Sparkles className="h-4 w-4" />{text.aiOpen}
+          </button>
+          <p className="text-[11px] text-gray-400 mt-1.5">{text.aiHint}</p>
+        </div>
       </div>
 
       {/* Questions */}
@@ -587,9 +602,7 @@ export default function ExamBuilder({ language, initial, onSave, onCancel, apiRe
         <p className="text-sm text-gray-400 text-center py-6">{text.noQuestions}</p>
       )}
 
-      {/* Add question. The AI sits at the end of the same row of choices,
-          marked out but not set apart: it is one more way to get a question
-          onto the page, not a separate mode. */}
+      {/* Add question */}
       <div className="bg-white rounded-xl shadow-sm ring-1 ring-black/5 p-4">
         <p className="text-xs font-medium text-gray-600 mb-2">{text.addQuestion}</p>
         <div className="flex flex-wrap gap-2">
@@ -599,10 +612,6 @@ export default function ExamBuilder({ language, initial, onSave, onCancel, apiRe
               <Plus className="h-3.5 w-3.5" />{text.types[type]}
             </button>
           ))}
-          <button onClick={() => setAiOpen(true)}
-            className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition">
-            <Sparkles className="h-3.5 w-3.5" />{text.aiOpen}
-          </button>
         </div>
       </div>
 

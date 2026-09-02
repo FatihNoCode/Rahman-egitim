@@ -5675,6 +5675,35 @@ app.post("/make-server-6679cacd/exams/shared/search", async (c) => {
   }
 });
 
+// Read a toets the way a pupil will see it: the questions, the options, no
+// answers. Used by the preview in the teacher's list, including for a toets
+// from the shared library that this teacher does not own and has not copied,
+// which is the whole point of being able to look before you copy.
+app.get("/make-server-6679cacd/exams/:id/preview", async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw);
+    if (error) return c.json({ error }, 401);
+    const userData = await getUserData(user.id);
+    if (userData?.role !== 'teacher' && userData?.role !== 'admin') {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    const exam = await kv.get(`exam:${c.req.param('id')}`);
+    if (!exam) return c.json({ error: 'Not found' }, 404);
+    const schoolIds = await getUserSchoolIds(user.id, userData);
+    if (!schoolIds.has(exam.schoolId) && !exam.isTemplate) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+    return c.json({
+      exam: examForStudent(exam),
+      createdByName: exam.createdByName || '',
+      createdAt: exam.createdAt || null,
+    });
+  } catch (err) {
+    console.log('Preview exam error:', err);
+    return c.json({ error: 'Failed to load exam' }, 500);
+  }
+});
+
 app.put("/make-server-6679cacd/exams/:id", async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw);
@@ -5950,7 +5979,15 @@ app.get("/make-server-6679cacd/exams/sessions", async (c) => {
       return c.json({ error: 'Unauthorized' }, 403);
     }
     const schoolIds = await getUserSchoolIds(user.id, userData);
-    const sessions = (await kv.getByPrefix('exam_live:')).filter((s: any) => s?.code && schoolIds.has(s.schoolId));
+    // Only the sittings this teacher started. A toets being taken by someone
+    // else's class is not this teacher's business: it was noise in the list,
+    // and the live banner meant every teacher in the school saw a join code
+    // for a class that was not theirs. Sittings from before this field
+    // existed have no owner to compare against and stay visible to everyone
+    // who could already see them.
+    const sessions = (await kv.getByPrefix('exam_live:')).filter(
+      (s: any) => s?.code && schoolIds.has(s.schoolId) && (!s.startedBy || s.startedBy === user.id),
+    );
     const examIds = [...new Set(sessions.map((s: any) => s.examId))];
     const exams = examIds.length > 0 ? await kv.mget(examIds.map((id: string) => `exam:${id}`)) : [];
     const examById = new Map(exams.filter((e: any) => e?.id).map((e: any) => [e.id, e]));
@@ -5971,8 +6008,7 @@ app.get("/make-server-6679cacd/exams/sessions", async (c) => {
         closedAt: session.closedAt || null,
         publishedAt: session.publishedAt || null,
         startedBy: session.startedBy,
-        // "Mijn afgenomen toetsen" — the ones this teacher ran themselves.
-        mine: session.startedBy === user.id,
+        mine: true,
         studentCount: attempts.length,
         submittedCount: attempts.filter((a: any) => a.submittedAt).length,
         // Whether anything is actually waiting on a human: an exam whose

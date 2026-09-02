@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { BarChart2, Check, CheckCircle2, ChevronDown, Copy, FileText, Info, Pencil, Play, Plus, Printer, Radio, Search, Send, StopCircle, Trash2, X } from 'lucide-react';
+import { BarChart2, Check, CheckCircle2, ChevronDown, Copy, Eye, FileText, Info, Pencil, Play, Plus, Printer, Radio, Search, Send, StopCircle, Trash2, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import ExamBuilder from './ExamBuilder';
 import ExamPrintView from './ExamPrintView';
+import ExamPreview from './ExamPreview';
 import { ExamDraft, EMPTY_EXAM } from './examTypes';
 import LoadingState from '../ui/LoadingState';
 import { useMinimumLoading } from '../../hooks/useMinimumLoading';
@@ -59,8 +60,8 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
         ? 'Kendi yazdığınız sınavlar. Bir sınavı bir sınıf için canlı başlatın veya kâğıda yazdırın.'
         : 'De toetsen die u zelf heeft geschreven. Zet er een live voor een klas, of druk hem af op papier.',
       afgenomen: tr
-        ? 'Her sınav oturumu: canlı olanlar, okunmayı bekleyenler ve notları yayınlananlar.'
-        : 'Elke keer dat een toets is afgenomen: wat nu live is, wat nagekeken moet worden en wat al gepubliceerd is.',
+        ? 'Sizin başlattığınız sınav oturumları: canlı olanlar, okunmayı bekleyenler ve notları yayınlananlar.'
+        : 'De toetsen die u zelf heeft afgenomen: wat nu live is, wat nagekeken moet worden en wat al gepubliceerd is.',
     } as Record<Tab, string>,
     templateBadge: tr ? 'Paylaşılıyor' : 'Gedeeld',
     newExam: tr ? 'Yeni sınav' : 'Nieuwe toets',
@@ -133,19 +134,18 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
     analysis: tr ? 'Soru analizi' : 'Vraaganalyse',
     show: tr ? 'Göster' : 'Tonen',
     hide: tr ? 'Gizle' : 'Verbergen',
-    onlyMine: tr ? 'Sadece benimkiler' : 'Alleen die van mij',
     yes: tr ? 'Evet' : 'Ja',
     no: tr ? 'Hayır' : 'Nee',
     // What the checkbox in the builder switches on, said the same way here so
     // the badge on a card and the checkbox that produced it read as one thing.
     sharedBadgeHint: tr
       ? 'Bu sınav kütüphanede: diğer öğretmenler kopyalayabilir.'
-      : 'Deze toets staat in de bibliotheek — andere docenten kunnen hem kopiëren.',
+      : 'Deze toets staat in de bibliotheek. Andere docenten kunnen hem kopiëren.',
 
     storeTitle: tr ? 'Mevcut sınavlarda ara' : 'Bestaande toetsen zoeken',
     storeIntro: tr
-      ? 'Tüm konumlardaki öğretmenlerin paylaştığı sınavlar. Kopyalayın ve kendinize göre düzenleyin — orijinali sahibinde kalır.'
-      : 'Toetsen die docenten van alle locaties hebben gedeeld. Maak een kopie en pas die aan — het origineel blijft van de maker.',
+      ? 'Tüm konumlardaki öğretmenlerin paylaştığı sınavlar. Kopyalayın ve kendinize göre düzenleyin. Orijinali sahibinde kalır.'
+      : 'Toetsen die docenten van alle locaties hebben gedeeld. Maak een kopie en pas die aan. Het origineel blijft van de maker.',
     storeSearch: tr ? 'Konu yazın' : 'Typ een onderwerp',
     storeSearchHint: tr
       ? 'Örnek: abdest, Fatiha, tecvid. Yapay zeka sınavların içeriğine bakar, yalnızca adına değil.'
@@ -157,6 +157,10 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
     storeResults: (n: number) =>
       tr ? `${n} sonuç` : `${n} ${n === 1 ? 'resultaat' : 'resultaten'}`,
     storeCopy: tr ? 'Kendime kopyala' : 'Kopieer naar mijn toetsen',
+    preview: tr ? 'Önizleme' : 'Bekijken',
+    previewHint: tr
+      ? 'Sınavı öğrencilerin göreceği hâliyle açar.'
+      : 'Opent de toets zoals de leerlingen hem zien.',
     storeMine: tr ? 'Sizin' : 'Van u',
     storeCreated: tr ? 'Oluşturulma' : 'Gemaakt op',
     storeShowAll: tr ? 'Tümünü göster' : 'Alles tonen',
@@ -178,7 +182,6 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const showLoading = useMinimumLoading(loading);
-  const [onlyMineSessions, setOnlyMineSessions] = useState(true);
 
   // The shared library, and the search over it.
   const [store, setStore] = useState<any[]>([]);
@@ -195,6 +198,7 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
   const [codeCopied, setCodeCopied] = useState(false);
   const [liveInfo, setLiveInfo] = useState<{ code: string; qr: string; className: string } | null>(null);
   const [printExam, setPrintExam] = useState<any>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const [printCopies, setPrintCopies] = useState(25);
 
   // Review screen
@@ -435,10 +439,7 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
     () => (storeResults !== null ? storeResults : store),
     [storeResults, store],
   );
-  const visibleSessions = useMemo(
-    () => (onlyMineSessions ? sessions.filter((s) => s.mine) : sessions),
-    [sessions, onlyMineSessions],
-  );
+
   const liveSessions = sessions.filter((s) => s.status === 'live');
 
   // ── Builder ─────────────────────────────────────────────────────────────
@@ -453,7 +454,7 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
           reason={
             tr
               ? 'Sınav düzenleyicisi aynı anda birden fazla sütun gerektirir ve telefon ekranına sığmaz. Sınavı web sitesinde hazırlayın; hazırladıktan sonra buradan canlı başlatabilir, sonuçları görebilir ve yazdırabilirsiniz.'
-              : 'De toetsbouwer heeft meerdere kolommen tegelijk nodig en past niet op een telefoonscherm. Maak de toets op de website — daarna kunt u hem hier live zetten, nakijken en afdrukken.'
+              : 'De toetsbouwer heeft meerdere kolommen tegelijk nodig en past niet op een telefoonscherm. Maak de toets op de website. Daarna kunt u hem hier afnemen, nakijken en afdrukken.'
           }
           tab="toets"
         />
@@ -771,7 +772,16 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
       >
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-800">
-            {exam.name}
+            {/* The name is the way in to the preview. A toets is a document,
+                and the thing you do with a document you are unsure about is
+                open it. */}
+            <button
+              onClick={() => setPreviewId(exam.id)}
+              title={text.previewHint}
+              className="text-left underline decoration-transparent underline-offset-2 transition hover:decoration-emerald-400"
+            >
+              {exam.name}
+            </button>
             {exam.isTemplate && (
               <span
                 title={text.sharedBadgeHint}
@@ -857,7 +867,13 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
     >
       <div className="min-w-0">
         <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-800">
-          {exam.name}
+          <button
+            onClick={() => setPreviewId(exam.id)}
+            title={text.previewHint}
+            className="text-left underline decoration-transparent underline-offset-2 transition hover:decoration-emerald-400"
+          >
+            {exam.name}
+          </button>
           {exam.mine && (
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
               {text.storeMine}
@@ -879,7 +895,14 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
           </p>
         )}
       </div>
-      <div className="shrink-0">
+      <div className="flex shrink-0 flex-wrap gap-1.5">
+        <ActionButton
+          tone="neutral"
+          icon={<Eye className="h-4 w-4" />}
+          label={text.preview}
+          hint={text.previewHint}
+          onClick={() => setPreviewId(exam.id)}
+        />
         <ActionButton
           tone="primary"
           icon={<Copy className="h-4 w-4" />}
@@ -1077,21 +1100,12 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
 
       {tab === 'afgenomen' && (
         <div className="space-y-2">
-          <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-gray-500">
-            <input
-              type="checkbox"
-              checked={onlyMineSessions}
-              onChange={(e) => setOnlyMineSessions(e.target.checked)}
-              className="h-3.5 w-3.5 accent-emerald-600"
-            />
-            {text.onlyMine}
-          </label>
-          {visibleSessions.length === 0 ? (
+          {sessions.length === 0 ? (
             <div className="rounded-xl bg-white p-8 text-center text-sm text-gray-400 shadow-sm ring-1 ring-black/5">
               {text.emptySessions}
             </div>
           ) : (
-            visibleSessions.map(sessionCard)
+            sessions.map(sessionCard)
           )}
         </div>
       )}
@@ -1251,6 +1265,13 @@ export default function ExamListView({ language, apiRequest, classes, currentUse
         </div>
       )}
       {printExam && <ExamPrintView exam={printExam} copies={printCopies} />}
+
+      <ExamPreview
+        examId={previewId}
+        onClose={() => setPreviewId(null)}
+        language={language}
+        apiRequest={apiRequest}
+      />
     </div>
   );
 }

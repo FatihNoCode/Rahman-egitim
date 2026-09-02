@@ -59,16 +59,16 @@ export default function AiQuestionDialog({
         ? `${pages} sayfa okundu · yaklaşık ${Math.round(chars / 1000)}k karakter kullanılacak`
         : `${pages} pagina's gelezen · ongeveer ${Math.round(chars / 1000)}k tekens worden gebruikt`,
     pdfTruncated: tr
-      ? 'Dosya uzun — yalnızca ilk bölümü kullanılacak.'
-      : 'Het document is lang — alleen het eerste deel wordt gebruikt.',
+      ? 'Dosya uzun. Yalnızca ilk bölümü kullanılacak.'
+      : 'Het document is lang. Alleen het eerste deel wordt gebruikt.',
     pdfWithTopic: tr
       ? 'Konu da yazarsanız sorular dosyanın o bölümüne odaklanır.'
       : 'Vult u ook een onderwerp in, dan gaan de vragen over dat deel van het document.',
     pdfTooBig: tr ? 'Dosya çok büyük (en fazla 20 MB).' : 'Het bestand is te groot (maximaal 20 MB).',
     pdfNotPdf: tr ? 'Yalnızca PDF dosyası seçilebilir.' : 'Kies een PDF-bestand.',
     pdfEmpty: tr
-      ? 'Bu PDF’den metin çıkmadı — büyük ihtimalle taranmış bir belge. Konuyu elle yazın.'
-      : 'Uit deze PDF komt geen tekst — waarschijnlijk een scan. Typ het onderwerp dan zelf.',
+      ? 'Bu PDF’den metin çıkmadı, büyük ihtimalle taranmış bir belge. Konuyu elle yazın.'
+      : 'Uit deze PDF komt geen tekst, waarschijnlijk is het een scan. Typ het onderwerp dan zelf.',
     pdfFailed: tr ? 'Dosya okunamadı.' : 'Het bestand kon niet worden gelezen.',
 
     setupHeading: tr ? '2. Nasıl sorular?' : '2. Wat voor vragen?',
@@ -82,8 +82,8 @@ export default function AiQuestionDialog({
       { label: tr ? 'Zor' : 'Moeilijk', age: tr ? '13-15 yaş' : '13-15 jaar' },
     ],
     complexityHint: tr
-      ? 'Sınıfın seviyesini seçin — sınavın kayıtlı olduğu seviye olmak zorunda değil.'
-      : 'Kies het niveau van de klas — dat hoeft niet het niveau van de toets te zijn.',
+      ? 'Sınıfın seviyesini seçin. Sınavın kayıtlı olduğu seviye olmak zorunda değil.'
+      : 'Kies het niveau van de klas. Dat hoeft niet het niveau van de toets te zijn.',
     instructions: tr ? 'Ek yönerge (isteğe bağlı)' : 'Extra aanwijzing (optioneel)',
     instructionsHint: tr
       ? 'Örnek: sadece ilk üç konuyu sor, günlük hayattan örnek ver'
@@ -107,8 +107,8 @@ export default function AiQuestionDialog({
       : 'Vul een onderwerp in of kies een PDF.',
     added: (n: number) =>
       tr
-        ? `${n} soru eklendi — kontrol edip puanlarını girin.`
-        : `${n} ${n === 1 ? 'vraag' : 'vragen'} toegevoegd — controleer ze en vul de punten in.`,
+        ? `${n} soru eklendi. Kontrol edip puanlarını girin.`
+        : `${n} ${n === 1 ? 'vraag' : 'vragen'} toegevoegd. Controleer ze en vul de punten in.`,
     privacy: tr
       ? 'Metin Google Gemini’ye gönderilir ve Google tarafından modellerini geliştirmek için kullanılabilir. Öğrenci bilgisi veya henüz yapılmamış bir sınavı buraya koymayın.'
       : 'De tekst gaat naar Google Gemini en mag door Google gebruikt worden om hun modellen te verbeteren. Zet hier geen leerlinggegevens in, en geen toets die nog afgenomen moet worden.',
@@ -120,8 +120,8 @@ export default function AiQuestionDialog({
       ? 'Okulun bugünkü hakkı doldu. Yarın tekrar deneyin.'
       : 'Het dagelijkse tegoed van de school is op. Probeer het morgen opnieuw.',
     quotaMinute: tr
-      ? 'Çok hızlı gitti — bir dakika sonra tekrar deneyin.'
-      : 'Even te snel achter elkaar — probeer het over een minuut opnieuw.',
+      ? 'Çok hızlı gitti. Bir dakika sonra tekrar deneyin.'
+      : 'Even te snel achter elkaar. Probeer het over een minuut opnieuw.',
     unavailable: tr
       ? 'Yapay zeka şu anda yanıt vermiyor. Soruları elle ekleyebilirsiniz.'
       : 'De AI reageert nu niet. U kunt de vragen gewoon zelf toevoegen.',

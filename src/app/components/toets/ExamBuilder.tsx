@@ -392,6 +392,18 @@ export default function ExamBuilder({ language, initial, onSave, onCancel, apiRe
             onChange={(e) => set((d) => ({ ...d, timeLimitMinutes: e.target.value ? Number(e.target.value) : null }))}
             className={inputCls} />
         </div>
+        {/* In the settings card, in the column beside the time limit. Asking
+            the AI for questions is something you decide before writing any,
+            and at the bottom of a long toets it sat below everything it was
+            meant to save you from typing. */}
+        <div className="self-start">
+          <span className="block text-xs font-medium text-gray-600 mb-1">&nbsp;</span>
+          <button onClick={() => setAiOpen(true)}
+            className="w-full inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
+            <Sparkles className="h-4 w-4" />{text.aiOpen}
+          </button>
+          <p className="text-[11px] text-gray-400 mt-1">{text.aiHint}</p>
+        </div>
         <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer self-end pb-1 sm:col-span-2">
           <input type="checkbox" checked={draft.isTemplate}
             onChange={(e) => set((d) => ({ ...d, isTemplate: e.target.checked }))}
@@ -401,18 +413,6 @@ export default function ExamBuilder({ language, initial, onSave, onCancel, apiRe
             <span className="block text-[11px] text-gray-400">{text.templateHint}</span>
           </span>
         </label>
-
-        {/* Up here with the toets's own settings rather than at the far end of
-            the question list. Asking the AI for questions is something you
-            decide before writing any, and at the bottom of a long toets it was
-            below everything it was meant to save you from typing. */}
-        <div className="sm:col-span-2 border-t border-gray-100 pt-3">
-          <button onClick={() => setAiOpen(true)}
-            className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition">
-            <Sparkles className="h-4 w-4" />{text.aiOpen}
-          </button>
-          <p className="text-[11px] text-gray-400 mt-1.5">{text.aiHint}</p>
-        </div>
       </div>
 
       {/* Questions */}
